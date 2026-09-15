@@ -275,6 +275,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
    information a Product Owner needs. Muted and italic so it never reads as data. */
 .empty-field { font-style: italic; font-weight: 400; opacity: .45; }
 
+/* Names with no description on the source page -- tool tiles, contact cards.
+   Shown as plain labels rather than as empty prose fields. */
+.label-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.label-chips li {
+  padding: 5px 11px; border-radius: 999px; font-size: 13px; font-weight: 500; line-height: 1.3;
+  background: rgba(244, 241, 238, .06); border: 1px solid rgba(244, 241, 238, .14);
+}
+
 /* The raw scraped page is kept below the structured fields: humans read the
    structure, retrieval still needs the prose. */
 .source-original { margin: 18px 0 0; border-top: 1px solid rgba(244, 241, 238, .12); padding-top: 14px; }

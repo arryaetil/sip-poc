@@ -130,7 +130,7 @@ Context, which is the exact failure the rest of the app is written to prevent �
 | # | Decision | Status |
 |---|---|---|
 | 1 | `value_proposition` — resolved 15 Sep 2026: assembled from the page's own "Business Impact" claims (`_impact_statement`), never from `short_summary`. Fills 38/69; the rest have no such block and stay empty. Still verbatim page text, so the no-invention policy holds. | **Decided** |
-| 2 | Missing descriptions — resolved 15 Sep 2026: the 22 recoverable items across 6 files were read from the live pages and restored verbatim. 188 empty headings remain and are **correct** (logo tiles, contact cards). Still open: they should render as a label list, not as "Information listed on the page". | **Partly done** — renderer still to fix |
+| 2 | Missing descriptions — resolved 15 Sep 2026: 22 recoverable items across 6 files restored verbatim from the live pages. The remaining empty headings are **correct** (logo tiles, contact cards) and now render as a plain label list rather than the "Information listed on the page" placeholder — 173 items across 42 documents. | **Decided** |
 | 3 | Should `sections` (the raw page prose, currently collapsed under "Original page content") stay visible to Product Owners? It must be retained either way — it is what gets embedded for retrieval. | Kept, collapsed |
 | 4 | Access control model for user-uploaded documents. Must be settled **before** the first Azure AI Search index is created. | Open |
 

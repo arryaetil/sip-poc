@@ -602,17 +602,37 @@ function createSourceSection(title, introduction, items) {
     field.append(value);
     grid.append(field);
   }
-  items.forEach((item) => {
+  // Items that carry a description are shown as labelled fields. Items without one
+  // are not broken data: on the source websites they are logo tiles and contact
+  // cards that genuinely have no prose. Showing a placeholder sentence under each
+  // made the page look defective, so they render as a plain list of names instead.
+  items
+    .filter((item) => item.value)
+    .forEach((item) => {
+      const field = document.createElement("div");
+      field.className = "field";
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      const value = document.createElement("div");
+      value.className = "read-only-field multiline";
+      value.textContent = item.value;
+      field.append(label, value);
+      grid.append(field);
+    });
+  const labelOnlyItems = items.filter((item) => !item.value);
+  if (labelOnlyItems.length) {
     const field = document.createElement("div");
-    field.className = "field";
-    const label = document.createElement("span");
-    label.textContent = item.label;
-    const value = document.createElement("div");
-    value.className = "read-only-field multiline";
-    value.textContent = item.value || t("source.listed_on_page");
-    field.append(label, value);
+    field.className = "field full-width";
+    const list = document.createElement("ul");
+    list.className = "label-chips";
+    labelOnlyItems.forEach((item) => {
+      const chip = document.createElement("li");
+      chip.textContent = item.label;
+      list.append(chip);
+    });
+    field.append(list);
     grid.append(field);
-  });
+  }
   section.append(heading, grid);
   return section;
 }
