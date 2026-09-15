@@ -24,9 +24,11 @@ At this corpus size that is milliseconds.
 from __future__ import annotations
 
 from array import array
+from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 import json
+import math
 import os
 from pathlib import Path
 
@@ -39,6 +41,12 @@ from app.knowledge import _tokens
 RRF_K = 60
 # How many results each half contributes before fusion.
 CANDIDATES_PER_METHOD = 20
+# Keyword hits scoring below this fraction of the best hit are discarded rather
+# than allowed to vote in the fusion. See keyword_ranking().
+KEYWORD_SCORE_FLOOR = 0.35
+# If fewer than this fraction of the query's words appear anywhere in the corpus,
+# the keyword half abstains entirely. See keyword_ranking().
+MIN_QUERY_VOCABULARY_COVERAGE = 0.4
 
 
 def vector_store_path() -> Path:
@@ -139,26 +147,82 @@ def _cosine(query: list[float], stored: array, query_magnitude: float) -> float:
     return dot / (query_magnitude * magnitude) if magnitude else 0.0
 
 
+@lru_cache(maxsize=1)
+def _keyword_statistics() -> tuple[tuple[Counter[str], ...], Counter[str], int]:
+    """Tokenise every chunk once and count how many chunks each word appears in."""
+    chunks, _ = load_vector_index()
+    tokenised = tuple(
+        Counter(_tokens(f"{chunk.heading} {chunk.section} {chunk.text}")) for chunk in chunks
+    )
+    document_frequency: Counter[str] = Counter()
+    for counts in tokenised:
+        document_frequency.update(counts.keys())
+    return tokenised, document_frequency, len(tokenised)
+
+
 def keyword_ranking(query: str, chunks: tuple[KnowledgeChunk, ...]) -> list[int]:
-    """Rank chunks by literal word overlap, reusing the existing tokeniser."""
+    """Rank chunks by word overlap, weighting each word by how rare it is.
+
+    Without this weighting the scorer treated every matched word alike, so a Dutch
+    question about finding information faster was answered with the "Over ons" page:
+    it matched "onze", "informatie" and "organisatie", words that appear almost
+    everywhere. Rare words carry nearly all the signal, so score by rarity.
+
+    `idf` is the standard BM25 inverse document frequency: a word in almost every
+    chunk scores near zero, a word in one chunk scores high. `1 + log(tf)` keeps
+    repetition from dominating, matching what knowledge.py already does.
+    """
     query_tokens = set(_tokens(query))
     if query_tokens - {"ibc", "group"}:
         query_tokens -= {"ibc", "group"}
     if not query_tokens:
         return []
 
+    tokenised, document_frequency, total = _keyword_statistics()
+    idf = {
+        token: math.log(
+            (total - document_frequency[token] + 0.5) / (document_frequency[token] + 0.5) + 1
+        )
+        for token in query_tokens
+        if document_frequency[token]
+    }
+    if not idf:
+        return []
+
+    # Abstain when the query barely overlaps the corpus vocabulary at all.
+    #
+    # A German question ("Wie koennen wir unsere Softwarequalitaet verbessern?")
+    # had five of its six words absent from this corpus. The survivor was "wie",
+    # rare here and therefore scored highly by idf -- but rare in *Dutch*, where it
+    # means "who", not the German "how". idf measures rarity, not relevance, so a
+    # rare wrong match outranks a common right one, and rank fusion then promotes
+    # it. When almost none of the query is in our vocabulary, keyword search has
+    # nothing useful to say and meaning should decide alone.
+    if len(idf) / len(query_tokens) < MIN_QUERY_VOCABULARY_COVERAGE:
+        return []
+
     scored: list[tuple[float, int]] = []
-    for index, chunk in enumerate(chunks):
-        haystack = _tokens(f"{chunk.heading} {chunk.section} {chunk.text}")
-        if not haystack:
+    for index, counts in enumerate(tokenised):
+        length = sum(counts.values())
+        if not length:
             continue
-        hits = sum(1 for token in haystack if token in query_tokens)
-        if not hits:
-            continue
-        # Divide by length so a long chunk does not win purely by being long.
-        scored.append((hits / (len(haystack) ** 0.5), index))
+        score = sum(
+            weight * (1 + math.log(counts[token]))
+            for token, weight in idf.items()
+            if counts[token]
+        )
+        if score:
+            # Divide by length so a long chunk does not win purely by being long.
+            scored.append((score / (length**0.5), index))
+    if not scored:
+        return []
+
     scored.sort(key=lambda item: (-item[0], item[1]))
-    return [index for _, index in scored[:CANDIDATES_PER_METHOD]]
+    # A weak list is worse than a short one. Under rank fusion a mediocre entry
+    # present in both lists outranks an excellent entry present in one, so keyword
+    # results far behind the best are dropped rather than allowed to vote.
+    floor = scored[0][0] * KEYWORD_SCORE_FLOOR
+    return [index for score, index in scored[:CANDIDATES_PER_METHOD] if score >= floor]
 
 
 def vector_ranking(query: str, vectors: tuple[array, ...]) -> list[int]:
