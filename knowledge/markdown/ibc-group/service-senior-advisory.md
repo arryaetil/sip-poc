@@ -10,6 +10,8 @@ source_last_modified: "2026-08-04T08:02:56+00:00"
 retrieved_at: "2026-09-10T11:57:41.436345+00:00"
 content_hash: "sha256:39f2de23e39b131a02d710fe87210dd1f3e5db70057bcbbe7e90b3ae07db9d48"
 extraction_method: "deterministic_html_block_extraction"
+content_repaired_at: "2026-09-15"
+content_repair: "Restored item descriptions dropped by the 2026-09-10 block extraction; read verbatim from the live page. Original content_hash and retrieved_at left untouched so genuine upstream changes stay detectable."
 ---
 
 # Senior advisory for IT with plan and perspective.
@@ -38,9 +40,15 @@ Focused impulses and value-stream insights that turn ideas into concrete, manage
 
 ### IT strategy development
 
+Planning and defining future-proof IT strategies that connect architecture, operations and business needs.
+
 ### Organisational & operating model design
 
+Design of efficient IT organisations and decision structures – from roles and responsibilities to governance models.
+
 ### Status & health analysis
+
+Assessment of current projects, systems and initiatives to identify risks, overlaps and urgent action areas.
 
 ### Potential & value-stream analysis
 
@@ -48,7 +56,11 @@ Identification of unused potential in processes, platforms and applications, inc
 
 ### Location & maturity assessment
 
+Objective classification of your IT landscape against benchmarks and best practices to derive strategic next steps.
+
 ### Firestarting & innovation impulses
+
+Targeted impulses, workshops and sparring to realign, accelerate or re-focus your IT and digital agenda.
 
 ## How we work:
 

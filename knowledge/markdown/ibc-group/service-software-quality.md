@@ -10,6 +10,8 @@ source_last_modified: "2026-08-04T08:37:12+00:00"
 retrieved_at: "2026-09-10T11:57:41.436345+00:00"
 content_hash: "sha256:1d005d433dce94ec84135557681e16fc0a374d91765307a4a0221f2c86735946"
 extraction_method: "deterministic_html_block_extraction"
+content_repaired_at: "2026-09-15"
+content_repair: "Restored item descriptions dropped by the 2026-09-10 block extraction; read verbatim from the live page. Original content_hash and retrieved_at left untouched so genuine upstream changes stay detectable."
 ---
 
 # Software quality: Secure, scalable, sustainable.
@@ -42,11 +44,19 @@ Analysis of your current quality processes and tool landscape, identification of
 
 ### Automated tests & quality gates
 
+Setup and integration of automated tests and quality gates into your CI/CD pipelines to secure every release.
+
 ### Test management with overview
+
+Introduction or optimisation of test management with tools such as Jira/Xray or TestRail for transparent coverage and seamless processes in agile teams.
 
 ### Quality-first culture in the team
 
+Workshops, coaching and best practices (e.g. Scrum, SAFe, Definition of Done) to anchor quality awareness in development and product teams.
+
 ### Experienced QA experts on demand
+
+Flexible reinforcement with test engineers, QA leads and quality coaches – project-based, agile and method-safe.
 
 ## How we work:
 

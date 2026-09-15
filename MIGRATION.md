@@ -130,7 +130,7 @@ Context, which is the exact failure the rest of the app is written to prevent �
 | # | Decision | Status |
 |---|---|---|
 | 1 | `value_proposition` — resolved 15 Sep 2026: assembled from the page's own "Business Impact" claims (`_impact_statement`), never from `short_summary`. Fills 38/69; the rest have no such block and stay empty. Still verbatim page text, so the no-invention policy holds. | **Decided** |
-| 2 | "Information listed on the page" is shown for headings with no body. A live check found ~168 of 220 such headings are correct (logo tiles, contact cards) and only ~22 across 6 files have recoverable text. Fix the renderer, then re-scrape only those files. | **Needs a decision** |
+| 2 | Missing descriptions — resolved 15 Sep 2026: the 22 recoverable items across 6 files were read from the live pages and restored verbatim. 188 empty headings remain and are **correct** (logo tiles, contact cards). Still open: they should render as a label list, not as "Information listed on the page". | **Partly done** — renderer still to fix |
 | 3 | Should `sections` (the raw page prose, currently collapsed under "Original page content") stay visible to Product Owners? It must be retained either way — it is what gets embedded for retrieval. | Kept, collapsed |
 | 4 | Access control model for user-uploaded documents. Must be settled **before** the first Azure AI Search index is created. | Open |
 
@@ -143,13 +143,15 @@ Found during a live comparison of the snapshot against the source websites
 
 - `etil/expertise-data-ai-kennisdeling.md` contains a scraper artifact: an accordion
   "Toggle Title" wrapper mangled into a heading. One occurrence corpus-wide.
-- One FAQ answer is genuinely missing and is recoverable from the live site
-  (`### Vervangt AI onze medewerkers?`).
-- Five ibc group service files are missing the descriptive sentences under "What you
-  can expect from us" — 21 items in total, all recoverable:
-  `service-cloud-solution-design`, `service-organizational-changemanagement`,
-  `service-senior-advisory`, `service-software-quality`,
-  `service-projectmanagement-consulting`.
+- **Fixed 15 Sep 2026.** One missing FAQ answer (`### Vervangt AI onze medewerkers?`)
+  and 21 missing capability descriptions across five ibc group service files were
+  read from the live pages and restored verbatim. The affected files carry
+  `content_repaired_at` and `content_repair` in their front matter; `content_hash`
+  and `retrieved_at` were deliberately left untouched so genuine upstream changes
+  remain detectable.
+- The extractor dropped descriptions in an **alternating pattern** (one card kept,
+  the next dropped), so it is a bug in the card/accordion handling, not lost pages.
+  **Fix the extractor before the next scrape**, or the same gaps return.
 - Some pages carry cross-sold content from the *other* organisation — e.g. the ibc
   group AI & Knowledge Management page contains an ETIL ArbeidsmarktInZicht case.
   This already pollutes lexical search and will pollute embeddings harder, because

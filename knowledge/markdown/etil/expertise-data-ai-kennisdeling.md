@@ -10,6 +10,8 @@ source_last_modified: "2026-08-04T08:52:53+00:00"
 retrieved_at: "2026-09-10T11:57:41.436345+00:00"
 content_hash: "sha256:80f3f1e5c78a65520a36f3642e154c68d3fc973dd311f7475b01eebf3535d100"
 extraction_method: "deterministic_html_block_extraction"
+content_repaired_at: "2026-09-15"
+content_repair: "Restored item descriptions dropped by the 2026-09-10 block extraction; read verbatim from the live page. Original content_hash and retrieved_at left untouched so genuine upstream changes stay detectable."
 ---
 
 # Van informatie naar intelligente ondersteuning.
@@ -123,6 +125,8 @@ FAQ
 ## Veelgestelde Vragen
 
 ### Vervangt AI onze medewerkers?
+
+Nee. AI ondersteunt medewerkers bij hun werkzaamheden en helpt hen sneller toegang te krijgen tot relevante informatie. De inhoudelijke beoordeling blijft altijd bij mensen.
 
 ### Hoe zorgen jullie voor veilig gebruik van AI?
 

@@ -10,6 +10,8 @@ source_last_modified: "2026-08-04T08:19:02+00:00"
 retrieved_at: "2026-09-10T11:57:41.436345+00:00"
 content_hash: "sha256:85a140a92b8c337e034c6f98994a624e1c13d19d08b96e755b7e54499c6ca6c5"
 extraction_method: "deterministic_html_block_extraction"
+content_repaired_at: "2026-09-15"
+content_repair: "Restored item descriptions dropped by the 2026-09-10 block extraction; read verbatim from the live page. Original content_hash and retrieved_at left untouched so genuine upstream changes stay detectable."
 ---
 
 # Cloud & solution design that turn technology into a growth engine.
@@ -38,15 +40,27 @@ Architectures and governance that keep cloud spend under control while supportin
 
 ### Solution & system architecture
 
+Design of application and system architectures that fit your business processes, security requirements and future roadmap.
+
 ### Cloud infrastructure & migration
+
+Planning and execution of cloud migrations, hybrid scenarios and cloud-native platforms.
 
 ### Process & integration design
 
+Design of interfaces, workflows and integrations so systems work together smoothly.
+
 ### DevOps & CI/CD automation
+
+Introduction of pipelines, environments and automation that stabilise operations and accelerate releases.
 
 ### Performance, security & reliability
 
+Analysis and optimisation of performance, security posture and resilience – including monitoring concepts.
+
 ### Decision support for IT leadership
+
+Roadmaps, options and business cases that help executives make informed technology decisions quickly.
 
 ## How we work:
 

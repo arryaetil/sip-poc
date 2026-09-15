@@ -10,6 +10,8 @@ source_last_modified: "2026-08-25T14:36:10+00:00"
 retrieved_at: "2026-09-10T11:57:41.436345+00:00"
 content_hash: "sha256:cf332538b3bcfee1c509539339b8eca61a3655a3e56800250e7f29ee97bce7e7"
 extraction_method: "deterministic_html_block_extraction"
+content_repaired_at: "2026-09-15"
+content_repair: "Restored item descriptions dropped by the 2026-09-10 block extraction; read verbatim from the live page. Original content_hash and retrieved_at left untouched so genuine upstream changes stay detectable."
 ---
 
 # Change that people drive forward.
@@ -38,17 +40,27 @@ Teams build the mindset and skills to handle ongoing change with more confidence
 
 ### Change strategy & case for change
 
+Clarifies why change is needed, what success looks like and how it connects to your strategy.
+
 ### Stakeholder & impact analysis
 
 Identifies who is affected, how strongly and what they need to move from awareness to commitment.
 
 ### Change roadmap & governance
 
+Defines a pragmatic roadmap with clear roles, responsibilities and decision forums.
+
 ### Communication & storytelling
+
+Makes change tangible and understandable through targeted messages, formats and channels.
 
 ### Leadership & sponsor enablement
 
+Prepares leaders and sponsors to take a visible, credible role throughout the change.
+
 ### Training, enablement & adoption tracking
+
+Provides training, on-the-job support and KPIs to measure and steer adoption over time.
 
 ## How we work:
 

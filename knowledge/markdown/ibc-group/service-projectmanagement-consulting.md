@@ -10,6 +10,8 @@ source_last_modified: "2026-08-04T07:59:12+00:00"
 retrieved_at: "2026-09-10T11:57:41.436345+00:00"
 content_hash: "sha256:8c662402bad00163912c7a9710a658fd4b20bffbf445eb5d7c79a6a762dda9a0"
 extraction_method: "deterministic_html_block_extraction"
+content_repaired_at: "2026-09-15"
+content_repair: "Restored item descriptions dropped by the 2026-09-10 block extraction; read verbatim from the live page. Original content_hash and retrieved_at left untouched so genuine upstream changes stay detectable."
 ---
 
 # Project Management that simply delivers.
@@ -45,6 +47,8 @@ Support spans the full initiative lifecycle, from initial setup and planning to 
 For projects that are stuck, delayed or under pressure, focus returns through clearer governance, sharper priorities and structured recovery support.
 
 ### PMO, governance and steering
+
+Decision-making, reporting, risk tracking and escalation paths are designed to create transparency and control without adding unnecessary overhead.
 
 ### Resource, budget and vendor coordination
 
