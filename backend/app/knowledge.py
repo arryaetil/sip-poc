@@ -71,6 +71,14 @@ class KnowledgeSection:
 
 @dataclass(frozen=True)
 class WebsiteOfferingProfile:
+    """One website page expressed in the BusinessContext field structure.
+
+    Only fields the page actually states are filled. Anything a public marketing
+    page cannot know about -- market context, differentiators, and above all the
+    assumptions and open questions that exist because a Product Owner declared
+    them -- stays empty rather than being inferred. See MIGRATION.md.
+    """
+
     name: str
     offering_type: str
     short_summary: str
@@ -78,6 +86,16 @@ class WebsiteOfferingProfile:
     customer_problems_addressed: tuple[str, ...]
     core_capabilities: tuple[str, ...]
     value_proposition: str
+    differentiators: tuple[str, ...]
+    people: tuple[str, ...]
+    target_organisations: tuple[str, ...]
+    relevant_industries: tuple[str, ...]
+    relevant_roles_and_decision_makers: tuple[str, ...]
+    geographic_focus: tuple[str, ...]
+    supporting_evidence_or_knowledge_sources: tuple[str, ...]
+    key_marketing_messages: tuple[str, ...]
+    assumptions: tuple[str, ...]
+    open_questions: tuple[str, ...]
     sections: tuple[KnowledgeSection, ...]
 
 
@@ -147,10 +165,16 @@ def _plain_text(value: str) -> str:
     )
 
 
+OFFERING_PAGE_TYPES = {"service", "solution"}
+
+
 def create_website_offering_profile(document: KnowledgeDocument) -> WebsiteOfferingProfile:
-    """Structure one reviewed service or solution page without inventing fields."""
-    if document.page_type not in {"service", "solution"}:
-        raise ValueError("Only service and solution pages are portfolio offerings")
+    """Structure any reviewed website page without inventing fields.
+
+    Every page type in the corpus is structured, not only services and solutions,
+    so the portfolio presents one consistent layout. Pages that are not an offering
+    (expertise, case, about, news) simply leave the offering fields empty.
+    """
 
     blocks = [block.strip() for block in re.split(r"\n{2,}", document.content) if block.strip()]
     first_section = next(
@@ -178,6 +202,7 @@ def create_website_offering_profile(document: KnowledgeDocument) -> WebsiteOffer
     )
 
     sections: list[KnowledgeSection] = []
+    contact_people: list[str] = []
     section_title = ""
     section_body: list[str] = []
     section_items: list[tuple[str, str]] = []
@@ -199,7 +224,9 @@ def create_website_offering_profile(document: KnowledgeDocument) -> WebsiteOffer
             and not section_items[-1][1]
             and (section_key.startswith("ask ") or section_key.startswith("waarom "))
         ):
-            section_items.pop()
+            # A trailing item with no body inside an FAQ block is the page's contact
+            # person, not a question. It was previously discarded; keep it as People.
+            contact_people.append(section_items.pop()[0])
         if section_title and (section_body or section_items):
             sections.append(
                 KnowledgeSection(
@@ -301,10 +328,16 @@ def create_website_offering_profile(document: KnowledgeDocument) -> WebsiteOffer
         ),
         None,
     )
+    # The impact block is usually a set of "### claim / body" items with no lead
+    # paragraph, so introduction is often empty. Previously this fell back to
+    # short_summary, which printed the same sentence twice under two headings.
+    # An empty value proposition is the honest answer: the page does not state one.
     value_proposition = (
-        impact_section.introduction
-        if impact_section and impact_section.introduction
-        else short_summary
+        impact_section.introduction if impact_section and impact_section.introduction else ""
+    )
+    key_marketing_messages = tuple(
+        f"{title} - {body}" if body else title
+        for title, body in (impact_section.items if impact_section else ())
     )
     name = re.sub(
         r"\s*(?:\|\s*ibc group|-\s*Etil)\s*$",
@@ -312,14 +345,36 @@ def create_website_offering_profile(document: KnowledgeDocument) -> WebsiteOffer
         document.title,
         flags=re.IGNORECASE,
     ).strip()
+    if document.page_type == "solution":
+        offering_type = "product"
+    elif document.page_type == "service":
+        offering_type = "service"
+    else:
+        offering_type = ""
+
     return WebsiteOfferingProfile(
         name=name,
-        offering_type="product" if document.page_type == "solution" else "service",
+        offering_type=offering_type,
         short_summary=short_summary,
         details=details,
         customer_problems_addressed=customer_problems,
         core_capabilities=core_capabilities,
         value_proposition=value_proposition,
+        # Not stated on a public marketing page. Left empty on purpose -- see the
+        # class docstring and MIGRATION.md before deciding to infer any of these.
+        differentiators=(),
+        people=tuple(contact_people),
+        target_organisations=(),
+        relevant_industries=(),
+        relevant_roles_and_decision_makers=(),
+        geographic_focus=(),
+        # The page itself is the evidence for everything above it.
+        supporting_evidence_or_knowledge_sources=(document.canonical_url,),
+        key_marketing_messages=key_marketing_messages,
+        # A scraped page has no Product Owner, so it has neither of these. Filling
+        # them would make unvalidated content look like an approved Business Context.
+        assumptions=(),
+        open_questions=(),
         sections=tuple(sections),
     )
 

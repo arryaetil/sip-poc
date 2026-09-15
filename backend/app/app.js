@@ -44,6 +44,17 @@ const sourceCapabilitiesField = document.querySelector("#source-capabilities-fie
 const sourceProblems = document.querySelector("#source-problems");
 const sourceCapabilities = document.querySelector("#source-capabilities");
 const sourceValue = document.querySelector("#source-value");
+const sourceDifferentiators = document.querySelector("#source-differentiators");
+const sourcePeople = document.querySelector("#source-people");
+const sourceTargetOrganisations = document.querySelector("#source-target-organisations");
+const sourceRelevantIndustries = document.querySelector("#source-relevant-industries");
+const sourceRelevantRoles = document.querySelector("#source-relevant-roles");
+const sourceGeographicFocus = document.querySelector("#source-geographic-focus");
+const sourceEvidence = document.querySelector("#source-evidence");
+const sourceMarketingMessages = document.querySelector("#source-marketing-messages");
+const sourceAssumptions = document.querySelector("#source-assumptions");
+const sourceOpenQuestions = document.querySelector("#source-open-questions");
+const sourceOriginal = document.querySelector("#source-original");
 const sourceContent = document.querySelector("#source-content");
 const sourceOpenOriginal = document.querySelector("#source-open-original");
 const knowledgeChatForm = document.querySelector("#knowledge-chat-form");
@@ -537,8 +548,19 @@ async function loadPortfolio() {
   }
 }
 
+function createEmptyFieldNote() {
+  const note = document.createElement("span");
+  note.className = "empty-field";
+  note.textContent = t("source.field_empty");
+  return note;
+}
+
 function renderTextList(container, values) {
   container.replaceChildren();
+  if (!values || !values.length) {
+    container.append(createEmptyFieldNote());
+    return;
+  }
   const list = document.createElement("ul");
   list.className = "read-only-list";
   values.forEach((value) => {
@@ -547,6 +569,11 @@ function renderTextList(container, values) {
     list.append(item);
   });
   container.append(list);
+}
+
+function renderTextField(container, value) {
+  container.replaceChildren();
+  container.append(value ? document.createTextNode(value) : createEmptyFieldNote());
 }
 
 function renderSourceContent(source) {
@@ -601,14 +628,30 @@ async function openSource(sourceId) {
     sourceSummary.textContent = source.short_summary;
     sourceOrganisation.textContent = source.organisation;
     sourceLanguage.textContent = source.language.toUpperCase();
-    sourceType.textContent = source.offering_type === "service" ? t("review.field.type_service") : t("review.field.type_product");
+    sourceType.textContent = source.offering_type
+      ? (source.offering_type === "service" ? t("review.field.type_service") : t("review.field.type_product"))
+      : "";
+    renderTextField(sourceType, sourceType.textContent);
     sourcePageType.textContent = source.page_type.replaceAll("_", " ");
-    sourceProblemsField.hidden = !source.customer_problems_addressed.length;
-    sourceCapabilitiesField.hidden = !source.core_capabilities.length;
-    if (source.customer_problems_addressed.length) renderTextList(sourceProblems, source.customer_problems_addressed);
-    if (source.core_capabilities.length) renderTextList(sourceCapabilities, source.core_capabilities);
-    sourceValue.textContent = source.value_proposition;
+    // Every field is rendered whether or not the page supplied it. An empty field
+    // is information: it tells a Product Owner the website does not state this.
+    sourceProblemsField.hidden = false;
+    sourceCapabilitiesField.hidden = false;
+    renderTextList(sourceProblems, source.customer_problems_addressed);
+    renderTextList(sourceCapabilities, source.core_capabilities);
+    renderTextField(sourceValue, source.value_proposition);
+    renderTextList(sourceDifferentiators, source.differentiators);
+    renderTextList(sourcePeople, source.people);
+    renderTextList(sourceTargetOrganisations, source.target_organisations);
+    renderTextList(sourceRelevantIndustries, source.relevant_industries);
+    renderTextList(sourceRelevantRoles, source.relevant_roles_and_decision_makers);
+    renderTextList(sourceGeographicFocus, source.geographic_focus);
+    renderTextList(sourceEvidence, source.supporting_evidence_or_knowledge_sources);
+    renderTextList(sourceMarketingMessages, source.key_marketing_messages);
+    renderTextList(sourceAssumptions, source.assumptions);
+    renderTextList(sourceOpenQuestions, source.open_questions);
     sourceOpenOriginal.href = source.url;
+    sourceOriginal.hidden = !source.sections.length && !source.details.length;
     renderSourceContent(source);
   } catch (error) {
     sourceTitle.textContent = t("source.error_title");

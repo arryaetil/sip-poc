@@ -270,6 +270,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 }
 .read-only-list { margin: 0; padding-left: 20px; font-weight: 400; line-height: 1.55; }
 .read-only-list li + li { margin-top: 5px; }
+
+/* An unfilled field is shown, not hidden: "the website does not state this" is
+   information a Product Owner needs. Muted and italic so it never reads as data. */
+.empty-field { font-style: italic; font-weight: 400; opacity: .45; }
+
+/* The raw scraped page is kept below the structured fields: humans read the
+   structure, retrieval still needs the prose. */
+.source-original { margin: 18px 0 0; border-top: 1px solid rgba(244, 241, 238, .12); padding-top: 14px; }
+.source-original > summary { cursor: pointer; font-size: 13px; font-weight: 600; opacity: .65; padding: 6px 0; }
+.source-original > summary:hover { opacity: .9; }
+.source-original[open] > summary { margin-bottom: 10px; }
 .form-actions { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 18px 0; background: rgba(255, 255, 255, .96); }
 .form-actions .status { margin-right: auto; }
 

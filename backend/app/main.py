@@ -673,11 +673,7 @@ def list_portfolio_sources(
 
 
 def _source_summary(document) -> PortfolioSourceSummary:
-    profile = (
-        create_website_offering_profile(document)
-        if document.page_type in {"service", "solution"}
-        else None
-    )
+    profile = create_website_offering_profile(document)
     return PortfolioSourceSummary(
         id=document.source_id,
         title=document.title,
@@ -685,9 +681,9 @@ def _source_summary(document) -> PortfolioSourceSummary:
         language=document.language,
         page_type=document.page_type,
         url=document.canonical_url,
-        name=profile.name if profile else None,
-        offering_type=profile.offering_type if profile else None,
-        short_summary=profile.short_summary if profile else None,
+        name=profile.name,
+        offering_type=profile.offering_type or None,
+        short_summary=profile.short_summary,
     )
 
 
@@ -701,18 +697,26 @@ def get_portfolio_source(source_id: str) -> PortfolioSourceDetail:
     if document is None:
         raise HTTPException(status_code=404, detail="Website source not found")
     summary = _source_summary(document)
-    profile = (
-        create_website_offering_profile(document)
-        if document.page_type in {"service", "solution"}
-        else None
-    )
+    profile = create_website_offering_profile(document)
     return PortfolioSourceDetail(
         **summary.model_dump(),
         content=document.content,
-        details=[PortfolioSourceField(label=label, value=value) for label, value in profile.details] if profile else [],
-        customer_problems_addressed=list(profile.customer_problems_addressed) if profile else [],
-        core_capabilities=list(profile.core_capabilities) if profile else [],
-        value_proposition=profile.value_proposition if profile else "",
+        details=[PortfolioSourceField(label=label, value=value) for label, value in profile.details],
+        customer_problems_addressed=list(profile.customer_problems_addressed),
+        core_capabilities=list(profile.core_capabilities),
+        value_proposition=profile.value_proposition,
+        differentiators=list(profile.differentiators),
+        people=list(profile.people),
+        target_organisations=list(profile.target_organisations),
+        relevant_industries=list(profile.relevant_industries),
+        relevant_roles_and_decision_makers=list(profile.relevant_roles_and_decision_makers),
+        geographic_focus=list(profile.geographic_focus),
+        supporting_evidence_or_knowledge_sources=list(
+            profile.supporting_evidence_or_knowledge_sources
+        ),
+        key_marketing_messages=list(profile.key_marketing_messages),
+        assumptions=list(profile.assumptions),
+        open_questions=list(profile.open_questions),
         sections=[
             PortfolioSourceSection(
                 title=section.title,
@@ -720,7 +724,7 @@ def get_portfolio_source(source_id: str) -> PortfolioSourceDetail:
                 items=[PortfolioSourceField(label=label, value=value) for label, value in section.items],
             )
             for section in profile.sections
-        ] if profile else [],
+        ],
     )
 
 

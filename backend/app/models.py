@@ -156,11 +156,29 @@ class PortfolioSourceSection(BaseModel):
 
 
 class PortfolioSourceDetail(PortfolioSourceSummary):
+    """A website source presented in the same field structure as a BusinessContext.
+
+    Every BusinessContext field is present so the portfolio renders one consistent
+    layout. Fields that a public website page cannot supply stay empty on purpose:
+    a scraped page has no Product Owner, so it has no validated assumptions or open
+    questions. Empty means "the page does not say", never "we could not be bothered".
+    """
+
     content: str
     details: list[PortfolioSourceField] = Field(default_factory=list)
     customer_problems_addressed: list[str] = Field(default_factory=list)
     core_capabilities: list[str] = Field(default_factory=list)
     value_proposition: str = ""
+    differentiators: list[str] = Field(default_factory=list)
+    people: list[str] = Field(default_factory=list)
+    target_organisations: list[str] = Field(default_factory=list)
+    relevant_industries: list[str] = Field(default_factory=list)
+    relevant_roles_and_decision_makers: list[str] = Field(default_factory=list)
+    geographic_focus: list[str] = Field(default_factory=list)
+    supporting_evidence_or_knowledge_sources: list[str] = Field(default_factory=list)
+    key_marketing_messages: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
     sections: list[PortfolioSourceSection] = Field(default_factory=list)
 
 
