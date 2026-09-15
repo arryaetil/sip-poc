@@ -61,6 +61,26 @@ the production image — it adds hundreds of megabytes to the build.
 
 ---
 
+## 3b. Chunking
+
+**Now.** `backend/app/chunking.py` splits on the document's own headings, skips
+headings with no body, drops layout artifacts ("FAQ", "01"), and caps passages at
+1,200 **characters**, splitting only at paragraph boundaries. Produces 1,104 chunks
+from 69 documents; median embedded length 213 characters.
+
+**Production.** Azure AI Search performs the equivalent split server-side with its
+Split skill. Sizes there are measured in **tokens**, not characters -- the POC
+avoids a tokeniser dependency, so the budget must be re-expressed on migration.
+
+**Known residue.** About 12 chunks are navigation text the scraper captured as body
+("Oplossingen", "About us"). ~1% of the index; filter if it shows up in results.
+
+**Still to handle.** Cross-sold content -- e.g. the ETIL ArbeidsmarktInZicht case
+inside an ibc group page -- is currently chunked under the host document's identity,
+so it will be retrieved as if it belonged to that offering. Strip or re-attribute it.
+
+---
+
 ## 4. Vector storage
 
 **Now (planned).** At roughly 1,000–1,500 chunks, brute-force cosine similarity
