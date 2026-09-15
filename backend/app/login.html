@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · SIP</title>
+  <style>
+    :root { color-scheme: dark; font-family: Ubuntu, "Helvetica Neue", Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #050403 url("/login-hero.jpg") center center / cover no-repeat;
+      color: #f4f1ee;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(120% 100% at 50% 40%, rgba(5, 4, 3, 0.35) 0%, rgba(5, 4, 3, 0.72) 65%, rgba(5, 4, 3, 0.92) 100%);
+      z-index: 0;
+    }
+    .stage { position: relative; z-index: 1; width: 100%; display: grid; justify-items: center; gap: 28px; }
+    .brand { display: grid; justify-items: center; gap: 10px; text-align: center; }
+    .brand img { width: 220px; height: auto; border-radius: 10px; box-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); }
+    .brand .eyebrow { margin: 0; color: rgba(244, 241, 238, 0.72); font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+
+    .login-panel {
+      width: min(100%, 400px);
+      background: rgba(20, 16, 14, 0.55);
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      border: 1px solid rgba(244, 241, 238, 0.14);
+      border-radius: 16px;
+      padding: 36px 32px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+    h1 { margin: 0 0 22px; font-size: 26px; line-height: 1.15; letter-spacing: -.02em; text-align: center; }
+    .intro { margin: 0 0 26px; color: rgba(244, 241, 238, 0.65); font-size: 14px; line-height: 1.55; text-align: center; }
+    label { display: grid; gap: 8px; margin-top: 16px; font-size: 13px; font-weight: 600; color: rgba(244, 241, 238, 0.85); }
+    input {
+      width: 100%; min-height: 46px; border-radius: 8px; padding: 0 14px; font: inherit;
+      background: rgba(255, 255, 255, 0.06); color: #f4f1ee;
+      border: 1px solid rgba(244, 241, 238, 0.2);
+    }
+    input::placeholder { color: rgba(244, 241, 238, 0.35); }
+    input:focus { outline: 2px solid #ff7a30; outline-offset: 2px; border-color: #ff7a30; }
+    button {
+      width: 100%; min-height: 48px; margin-top: 24px; border: 0; border-radius: 8px; font: inherit; font-weight: 700; cursor: pointer;
+      background: linear-gradient(90deg, #ff4d2e, #ffb020); color: #14100e;
+      transition: filter .15s ease;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { cursor: wait; filter: grayscale(.4) brightness(.8); }
+    #error { min-height: 20px; margin: 14px 0 0; color: #ff9d8a; font-size: 13px; text-align: center; }
+
+    .powered-by { display: flex; align-items: center; gap: 8px; color: rgba(244, 241, 238, 0.45); font-size: 12px; }
+    .powered-by img { width: 64px; height: auto; border-radius: 4px; opacity: .85; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="brand">
+      <p class="eyebrow">Solution Intelligence Platform</p>
+    </div>
+
+    <section class="login-panel" aria-labelledby="login-title">
+      <h1 id="login-title">Log in</h1>
+      <form id="login-form">
+        <label>Email address<input id="email" type="email" autocomplete="username" required autofocus></label>
+        <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
+        <button id="submit" type="submit">Sign in</button>
+        <p id="error" role="alert"></p>
+      </form>
+    </section>
+
+    <div class="powered-by">
+      Powered by
+      <img src="/ibc-group-lockup.png" alt="ibc group">
+    </div>
+  </div>
+
+  <script>
+    document.querySelector("#login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = document.querySelector("#submit");
+      const error = document.querySelector("#error");
+      button.disabled = true;
+      error.textContent = "";
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: document.querySelector("#email").value,
+            password: document.querySelector("#password").value
+          })
+        });
+        if (!response.ok) throw new Error("Incorrect email or password.");
+        window.location.replace("/");
+      } catch (loginError) {
+        error.textContent = loginError.message;
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

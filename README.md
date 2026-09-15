@@ -1,22 +1,24 @@
-# SIP — Sales Intelligence Platform (Proof of Concept)
+# SIP — Solution Intelligence Platform (Proof of Concept)
 
-A FastAPI + vanilla-JS web application running on Railway. It lets sales and product people
-build a **Business Context**, browse the **ibc group / ETIL portfolio** of services and
-solutions, and ask a **multilingual knowledge assistant** backed by Azure AI Foundry.
+A FastAPI + vanilla-JS web application running on Railway. Sales and product people use it to
+build a **Business Context** through a guided conversation, browse the **ibc group / ETIL
+portfolio** of services and solutions, and ask a **multilingual knowledge assistant** grounded
+in a snapshot of both companies' public website content.
 
 | | |
 |---|---|
 | **Live** | https://sip-poc-production.up.railway.app |
 | **Status** | `SUCCESS` / `RUNNING` — deployment `19703fe0`, 11 Sep 2026 07:13 UTC |
-| **Stack** | Python 3.13 · FastAPI · Uvicorn · SQLite · Azure AI Foundry (`gpt-5-mini`) |
+| **Stack** | Python 3.13 · FastAPI 0.141 · Uvicorn · SQLite · Azure AI Foundry (`gpt-5-mini`) |
 | **Host** | Railway — project `sip-poc`, single `production` environment, single service |
 | **Languages** | English, Nederlands, Deutsch |
 
-> [!IMPORTANT]
-> **The application source code is not in this repository yet.** This repo currently
-> documents the *deployed* system. Everything below was reconstructed from the Railway CLI
-> (build logs, request logs, service manifest, environment variables) and from the publicly
-> served frontend bundle. See [Getting the source in here](#getting-the-source-in-here).
+> [!NOTE]
+> The application source in this repo was **extracted from the running container** (`railway ssh`),
+> because no Git source was ever connected to the Railway service. `backend/` and `knowledge/`
+> are byte-for-byte what production runs. The `Dockerfile` and `.dockerignore` are **reconstructed**
+> — they are not in the image — from the build logs and the container's actual start command.
+> Verify them against your local working copy before relying on them for a deploy.
 
 ---
 
@@ -25,163 +27,218 @@ solutions, and ask a **multilingual knowledge assistant** backed by Azure AI Fou
 ```mermaid
 flowchart LR
     U["Browser (SPA)"] -->|HTTPS| R["Railway edge<br/>sip-poc-production.up.railway.app"]
-    R --> A["FastAPI app<br/>uvicorn · /workspace/backend"]
+    R --> A["FastAPI app<br/>uvicorn · app.main:app"]
     A --> D[("SQLite<br/>/data/sip.db")]
-    A --> K["knowledge/<br/>baked into image"]
+    A --> K["knowledge/markdown<br/>69 docs, lexical search"]
     A -->|chat completions| F["Azure AI Foundry<br/>gpt-5-mini"]
     D -.->|persisted on| V["Railway volume<br/>sip-poc-volume · 5 GB"]
 ```
 
-One container plus one attached volume. There is no separate database service, no queue, no
-cache and no object storage — the whole POC is a single service.
+One container plus one attached volume. No separate database service, no queue, no cache, no
+object storage, no vector store — retrieval is local lexical scoring over markdown files baked
+into the image.
 
 ---
 
-## Structure
-
-The Dockerfile build stages reveal the repository layout the image is built from:
+## Repository structure
 
 ```
 .
-├── Dockerfile                    # python:3.13-slim base, 7 stages, CMD in shell form
-├── .dockerignore
+├── Dockerfile                             # reconstructed — see note above
+├── .dockerignore                          # reconstructed
+├── .env.example
 ├── backend/
-│   ├── requirements.txt          # pip install --no-cache-dir
-│   └── app/                      # FastAPI application  <- WORKDIR is /workspace/backend
-│       └── ...                   # routers, models, static assets (app.js, i18n.js, styles.css)
-└── knowledge/                    # knowledge base content, baked into the image
+│   ├── requirements.txt
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py                        # 28 KB — FastAPI app, all routes, auth middleware
+│       ├── models.py                      # 4 KB  — Pydantic request/response models
+│       ├── store.py                       # 16 KB — SQLite access + password hashing
+│       ├── knowledge.py                   # 15 KB — markdown loading, lexical retrieval, grounding
+│       ├── system_prompt.txt              # Business Context builder prompt
+│       ├── finalizer_prompt.txt           # Context finalisation prompt
+│       ├── knowledge_assistant_prompt.txt # "Ask ibc group" prompt
+│       ├── index.html                     # SPA shell (25 KB)
+│       ├── login.html                     # Login page
+│       ├── app.js                         # 35 KB — the entire SPA, no framework, no build step
+│       ├── i18n.js                        # 33 KB — en / nl / de translation table
+│       ├── styles.css                     # 18 KB — dark theme, orange accent (#ff7a30)
+│       └── *.png, login-hero.jpg          # ETIL and ibc group branding
+└── knowledge/
+    ├── README.md
+    └── markdown/
+        ├── etil/                          # 32 docs — expertises, solutions, company pages
+        └── ibc-group/                     # 37 docs — services, cases, company pages
 ```
 
-Inside the container:
+At runtime the image lays this out as `/workspace/backend` (the working directory) and
+`/workspace/knowledge`, with the Railway volume mounted at `/data`.
 
-| Path | Contents |
-|---|---|
-| `/workspace` | build root |
-| `/workspace/backend` | working directory at runtime |
-| `/workspace/backend/app` | application package |
-| `/workspace/knowledge` | knowledge corpus |
-| `/data` | **mounted volume** — holds `sip.db`, survives redeploys |
+### Knowledge base
+
+`knowledge/markdown/` is a reviewed snapshot of public ETIL and ibc group website content,
+retrieved 10 September 2026. Every document carries YAML front matter with `source_url`,
+`canonical_url`, `source_organisation`, `source_language`, `page_type`, `source_last_modified`,
+`retrieved_at`, a `content_hash` and the `extraction_method`.
+
+Retrieval (`knowledge.py`) is deliberately local and deterministic: tokenisation with a
+stopword list and token aliases, lexical scoring, and excerpt construction. The knowledge
+README states the intent to replace this with Azure AI Search before an Azure deployment,
+keeping the API response contract and source metadata unchanged.
 
 ### Frontend
 
-A server-rendered login page plus a single-page app served as three static files. All three
-are served **without authentication** — only the API is gated:
-
-| Asset | Size | Purpose |
-|---|---|---|
-| `app.js` | ~35 KB | The entire SPA — no framework, no build step |
-| `i18n.js` | ~33 KB | Translation table for `en` / `nl` / `de` |
-| `styles.css` | ~18 KB | Dark theme, orange accent (`#ff7a30`) |
-| `login-hero.jpg`, `ibc-group-lockup.png` | — | Branding |
-
-The SPA switches between five views via `showView()`:
+A single-page app in plain JavaScript — no framework, no bundler, no build step. It switches
+between five views via `showView()`:
 
 | View | What it does |
 |---|---|
-| `conversations` | List of saved Business Contexts — resume one or start new |
-| `builder` | Create/edit a context (the intake form) |
-| `review` | Review a generated context |
+| `conversations` | Saved Business Contexts — resume one or start new |
+| `builder` | The guided intake conversation |
+| `review` | Review and approve a generated context |
 | `portfolio` | Filterable table of solutions and website sources |
 | `source` | Detail view of one portfolio source |
 
-Navigation sections in `i18n.js` also include **Ask ibc group** (knowledge chat),
-**Integrations**, **Lead intelligence**, **Marketing studio**, **Team** and
-**Administration** — the last few look like placeholders (they carry only a `kicker` and
-`copy` string).
+Navigation in `i18n.js` also lists **Ask ibc group** (knowledge chat), **Integrations**,
+**Lead intelligence**, **Marketing studio**, **Team** and **Administration** — the middle
+three carry only a `kicker` and `copy` string, so they are placeholders.
 
-Three roles are referenced in the client and drive `applyRolePermissions()`:
-`admin`, `product_owner`, `sales`.
+`app.js`, `i18n.js`, `styles.css` and the images are served **unauthenticated**; only `/api`
+is gated.
 
 ---
 
-## API surface
+## API
 
-Observed in production request logs and in the frontend bundle. Everything under `/api`
-requires a session cookie; unauthenticated requests get `303 See Other` to `/login`.
-FastAPI's `/docs` and `/openapi.json` are gated the same way.
+`main.py` defines every route. An HTTP middleware (`require_login`) enforces the session
+cookie and per-role authorisation (`_role_allows`); unauthenticated requests get `303 See Other`
+to `/login`. FastAPI's `/docs` and `/openapi.json` are gated the same way.
 
 ### Auth
 
 | Method | Path |
 |---|---|
+| `GET` | `/login` |
 | `POST` | `/api/auth/login` |
 | `POST` | `/api/auth/logout` |
 | `GET` | `/api/auth/me` |
 
-### Conversations / Business Contexts
+### Users
+
+| Method | Path |
+|---|---|
+| `GET` `POST` | `/api/users` |
+| `PUT` `DELETE` | `/api/users/{user_id}` |
+
+Roles: `admin`, `product_owner`, `sales` — enforced server-side and mirrored in the client by
+`applyRolePermissions()`.
+
+### Conversations
 
 | Method | Path |
 |---|---|
 | `GET` `POST` | `/api/conversations` |
-| `GET` `DELETE` | `/api/conversations/{id}` |
-| `POST` | `/api/conversations/{id}/messages` |
-| — | `/api/conversations/{id}/portfolio` |
-| `GET` `PUT` | `/api/contexts/{id}` |
+| `GET` `DELETE` | `/api/conversations/{conversation_id}` |
+| `POST` | `/api/conversations/{conversation_id}/messages` |
+| `POST` | `/api/conversations/{conversation_id}/portfolio` |
+
+### Business Contexts
+
+| Method | Path |
+|---|---|
+| `GET` `POST` | `/api/contexts` |
+| `GET` `PUT` `DELETE` | `/api/contexts/{context_id}` |
+| `POST` | `/api/contexts/prepare` |
 
 ### Portfolio
 
 | Method | Path |
 |---|---|
 | `GET` | `/api/portfolio/solutions` |
-| `GET` | `/api/portfolio/sources?page_type=service\|solution&limit=100` |
+| `GET` | `/api/portfolio/sources` |
 | `GET` | `/api/portfolio/sources/{source_id}` |
 
-Source IDs are namespaced by organisation, for example
-`ibc-group:service-expert-staffing`, `ibc-group:service-ai-knowledge-management`,
+Source IDs are namespaced by organisation, e.g. `ibc-group:service-expert-staffing`,
 `etil:solution-vestigingen-vastgoedregister-limburg-vvl`.
 
-### Knowledge assistant
+### Chat
 
 | Method | Path |
 |---|---|
+| `POST` | `/api/chat` |
 | `POST` | `/api/knowledge/chat` |
 
-### Team / users
+### Static and operational
 
-| Method | Path |
-|---|---|
-| `GET` | `/api/users` |
-| — | `/api/users/{id}` |
-
-### Operational
-
-| Method | Path | Notes |
-|---|---|---|
-| `GET` | `/health` | Public, returns `{"status":"ok"}` |
+`/`, `/app.js`, `/i18n.js`, `/styles.css`, `/ibc-group-lockup.png`, `/login-hero.jpg`, and
+`GET /health` (public, returns `{"status":"ok"}`).
 
 ---
 
 ## Data
 
-SQLite at `/data/sip.db` on the Railway volume `sip-poc-volume`.
+SQLite at `/data/sip.db` on the Railway volume `sip-poc-volume` (~84 MB of 5000 MB used).
+`store.py` creates the schema on startup:
 
-- **Used:** ~84 MB of 5000 MB
-- **State:** `READY`, mounted at `/data`
+| Table | Notable columns |
+|---|---|
+| `business_contexts` | `id`, `status` (`draft` \| `approved`), `content`, timestamps |
+| `conversations` | `id`, `title`, `is_ready_to_save`, `readiness_reason`, `portfolio_context_id`, `language` (added by migration, default `en`), timestamps |
+| `conversation_messages` | `id`, `conversation_id` → `conversations(id)`, `role` (`user` \| `assistant`), `content`; indexed on `(conversation_id, id)` |
+| `users` | `id`, `email` (unique), `password_hash`, `salt`, `role` (`admin` \| `product_owner` \| `sales`), timestamps |
 
-Because state lives in a file on a single volume, the service **cannot scale beyond one
-replica** as built. `numReplicas` is 1, region `us-west2`.
+Passwords are salted and hashed in `store.py` (`_hash_password` / `verify_password`) —
+constant-time comparison via `hmac`.
+
+Because state is a file on a single volume, the service **cannot scale beyond one replica** as
+built. `numReplicas` is 1, region `us-west2`.
 
 ---
 
 ## Configuration
 
-All configuration comes from Railway environment variables. **No values are stored in this
-repo** — see [`.env.example`](.env.example) for the shape.
+All configuration comes from environment variables, loaded with `python-dotenv` locally and
+injected by Railway in production. **No values are stored in this repo** — see
+[`.env.example`](.env.example).
 
 | Variable | Purpose |
 |---|---|
 | `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry project endpoint |
-| `AZURE_AI_API_KEY` | Foundry API key |
+| `AZURE_AI_API_KEY` | Foundry API key (falls back to `DefaultAzureCredential`) |
 | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Service principal for Azure auth |
 | `MODEL_DEPLOYMENT` | Model deployment name — currently `gpt-5-mini` |
-| `SIP_DB_PATH` | SQLite path — `/data/sip.db` |
-| `SIP_AUTH_EMAIL` / `SIP_AUTH_PASSWORD` | Primary demo account |
-| `SIP_AUTH_EXTRA_USERS` | JSON map of additional demo accounts to passwords |
-| `SIP_SESSION_SECRET` | Session cookie signing secret |
-| `SIP_COOKIE_SECURE` | `true` in production |
+| `SIP_DB_PATH` | SQLite path — `/data/sip.db` in production |
+| `SIP_AUTH_EMAIL` / `SIP_AUTH_PASSWORD` | Primary bootstrap account |
+| `SIP_AUTH_ROLE` | Role for that account, default `admin` |
+| `SIP_AUTH_EXTRA_USERS` | JSON map of additional accounts to passwords |
+| `SIP_SESSION_SECRET` | HMAC secret for session cookies |
+| `SIP_COOKIE_SECURE` | `true` in production, `false` for local HTTP |
+| `PORT` | Injected by Railway (`8080`); falls back to `8000` |
 
-Railway also injects `RAILWAY_*` variables — project, service and environment IDs, public
-and private domains, volume name and mount path.
+---
+
+## Running locally
+
+```bash
+python -m venv .venv && .venv\Scripts\activate
+```
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+```bash
+copy .env.example .env
+```
+
+Fill in `.env`, then from the `backend/` directory:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+`knowledge.py` resolves the corpus as `<backend/app>/../../knowledge/markdown`, so the
+`backend/` + `knowledge/` layout must be preserved.
 
 ---
 
@@ -211,20 +268,21 @@ and private domains, volume name and mount path.
 | Sleep application | disabled |
 | Limits | 8 vCPU / 8 GB ceiling |
 
-### Runtime characteristics
-
-Essentially idle: CPU ~0.003 vCPU (0.0 % utilisation), memory ~122 MB of 8192 MB (1.5 %).
+Runtime is essentially idle: CPU ~0.003 vCPU, memory ~122 MB of 8192 MB (1.5 %).
 
 ---
 
 ## Deployment
 
-Deploys are made from a local working copy with the Railway CLI — **there is no Git source
-connected to the service** (`source: null`). All 20 recorded deployments were made through
-`railway up` driven by an AI coding agent (`cliCaller: skill:use-railway`).
+Deploys are made from a local working copy with the Railway CLI — **no Git source is connected
+to the service** (`source: null`). All 20 recorded deployments were made through `railway up`
+driven by an AI coding agent (`cliCaller: skill:use-railway`).
 
 ```bash
 railway link --project e0e06291-87e2-4b51-b83d-392ae919f448
+```
+
+```bash
 railway up
 ```
 
@@ -244,52 +302,31 @@ railway up
 
 ## Known gaps
 
-Things worth fixing before this POC is shown more widely or handed to anyone else.
-
-1. **No Git source.** Deploys depend on whoever holds the local working copy. Putting the
-   source in this repo and connecting it to the Railway service makes deploys reproducible
-   and gives the code a backup.
+1. **Nothing connects this repo to the deployment yet.** Point the Railway service at this
+   repo so pushes deploy and the code stops living only in a container.
 2. **Weak demo credentials.** `SIP_AUTH_PASSWORD` is 7 characters, and `SIP_AUTH_EXTRA_USERS`
-   stores per-user passwords in plaintext in the environment. Acceptable for a POC behind an
-   unlisted URL; not acceptable once it is demoed to customers.
-3. **No healthcheck configured.** `/health` exists and works — wiring it into the service
-   settings means a broken build never takes over live traffic.
-4. **Single replica by construction.** SQLite on a volume rules out horizontal scaling. Fine
-   for a POC; moving to Postgres is the unlock if this becomes real.
-5. **Dockerfile `CMD` uses shell form.** The build raises `JSONArgsRecommended`, so signals
-   (SIGTERM on redeploy) are not forwarded to the app and shutdowns are ungraceful.
-6. **Frontend bundle is public.** `app.js` and `i18n.js` are served unauthenticated, so the
-   full API surface, role model and UI copy are readable by anyone with the URL.
+   holds per-user passwords in plaintext in the environment. Fine for a POC behind an unlisted
+   URL; not fine once it is demoed to customers. Database users are properly salted and hashed.
+3. **No healthcheck configured.** `/health` works — wiring it into the service settings means a
+   broken build never takes over live traffic.
+4. **Single replica by construction.** SQLite on a volume rules out horizontal scaling. Moving
+   to Postgres is the unlock if this becomes real.
+5. **`CMD` in shell form.** The build raises `JSONArgsRecommended`: SIGTERM is not forwarded to
+   uvicorn, so redeploys shut down ungracefully.
+6. **Frontend bundle is public.** `app.js` and `i18n.js` are served unauthenticated, exposing
+   the full API surface, role model and UI copy to anyone with the URL.
+7. **Retrieval is a placeholder.** `knowledge/README.md` calls for replacing local lexical
+   search with Azure AI Search before an Azure deployment.
 
 ---
 
-## Getting the source in here
+## How this repo was assembled
 
-The running container holds the only copy reachable from this machine. To extract it:
-
-```bash
-ssh-keygen -t ed25519 -C "sip-poc railway access"
-```
+Source extracted from the live container; everything else read from the Railway CLI (v5.8.0):
 
 ```bash
-railway ssh keys add
+railway ssh "cd /workspace && tar -cz backend knowledge | base64 -w0"
 ```
-
-```bash
-railway ssh "tar -cz -C /workspace backend knowledge" > sip-poc-src.tar.gz
-```
-
-Registering an SSH key changes your Railway account settings, which is why it has not been
-done automatically. Once the source is in, drop it alongside this README, keep `.env` out of
-Git (see [`.gitignore`](.gitignore)), and connect the repo to the Railway service so that
-pushes deploy.
-
----
-
-## How this document was produced
-
-Entirely from the Railway CLI (v5.8.0) against the live project, plus unauthenticated
-fetches of the public frontend assets:
 
 ```bash
 railway status --json && railway variables --json && railway deployment list --json

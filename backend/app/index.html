@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SIP · ibc group Portfolio</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/i18n.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <img class="brand-logo" src="/ibc-group-lockup.png" alt="ibc group — connecting performance">
+    <span class="product-name">Solution Intelligence Platform</span>
+    <div class="topbar-actions">
+      <span id="user-role-badge" class="role-badge" hidden></span>
+      <label class="language-field">
+        <span class="visually-hidden" data-i18n="topbar.language">Language</span>
+        <select id="language-switcher">
+          <option value="en">EN</option>
+          <option value="nl">NL</option>
+          <option value="de">DE</option>
+        </select>
+      </label>
+      <span class="environment" data-i18n="topbar.environment">Proof of concept</span>
+      <form action="/api/auth/logout" method="post"><button class="logout-button" type="submit" data-i18n="topbar.sign_out">Sign out</button></form>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="SIP modules">
+      <p class="nav-label" data-i18n="nav.workspace">Workspace</p>
+      <nav class="nav-list">
+        <button id="nav-create-context" class="nav-item active" type="button" data-view="conversations" aria-current="page">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.create_context">Create context</span>
+        </button>
+        <button class="nav-item" type="button" data-view="portfolio">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M9 5v14" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.portfolio">ibc group Portfolio</span>
+        </button>
+        <button class="nav-item" type="button" data-view="knowledge">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v12H8l-4 3V5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span data-i18n="nav.knowledge">Ask ibc group</span>
+        </button>
+      </nav>
+
+      <p class="nav-label nav-label-spaced" data-i18n="nav.integrations">Integrations</p>
+      <nav class="nav-list">
+        <button class="nav-item" type="button" data-view="lead">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19v-5m5 5V9m5 10v-8m5 8V5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span data-i18n="nav.lead">Lead intelligence</span>
+        </button>
+        <button class="nav-item" type="button" data-view="marketing">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6h14v12H5zM8 10h8M8 14h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.marketing">Marketing studio</span>
+        </button>
+      </nav>
+
+      <p id="nav-label-administration" class="nav-label nav-label-spaced" data-i18n="nav.administration" hidden>Administration</p>
+      <nav class="nav-list">
+        <button id="nav-team" class="nav-item" type="button" data-view="team" hidden>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 20c0-3 2.7-5 6-5s6 2 6 5M17 11a2.5 2.5 0 1 0 0-5M15 20c0-2.3 1.9-4.2 4.2-4.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.team">Team</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <section id="conversations-view" class="view conversations" aria-labelledby="conversations-title">
+        <header class="view-header">
+          <div>
+            <h1 id="conversations-title" data-i18n="conversations.title">Your conversations</h1>
+            <p data-i18n="conversations.subtitle">Continue a Business Context where you left off, or start a new one.</p>
+          </div>
+          <button id="new-conversation" class="primary-button" type="button" data-i18n="conversations.new">New conversation</button>
+        </header>
+
+        <div class="conversation-columns" aria-hidden="true">
+          <span data-i18n="conversations.col_conversation">Conversation</span><span data-i18n="conversations.col_status">Context status</span><span data-i18n="conversations.col_updated">Updated</span><span></span>
+        </div>
+        <div id="conversation-list" class="conversation-list" aria-live="polite"></div>
+      </section>
+
+      <section id="builder-view" class="view conversation" aria-labelledby="builder-title" hidden>
+        <header class="view-header">
+          <div>
+            <button id="back-to-conversations" class="text-button" type="button" data-i18n="builder.back">← All conversations</button>
+            <h1 id="builder-title" data-i18n="builder.title_default">New conversation</h1>
+            <p data-i18n="builder.subtitle">Your conversation is saved automatically. Continue at any time from Create context.</p>
+          </div>
+          <div class="header-actions">
+            <button id="save-to-portfolio" class="primary-button" type="button" disabled data-i18n="builder.save_to_portfolio">Save to ibc group Portfolio</button>
+          </div>
+        </header>
+
+        <div id="readiness" class="readiness" data-ready="false" role="status">
+          <span class="readiness-dot" aria-hidden="true"></span>
+          <span id="readiness-text" data-i18n="builder.not_ready_default">Keep talking. The Product Strategist will let you know when enough context is available.</span>
+        </div>
+
+        <section class="chat-surface" aria-label="Business Context conversation">
+          <div id="messages" aria-live="polite">
+            <div class="message-row assistant">
+              <span class="avatar" aria-hidden="true">SIP</span>
+              <div class="message-content">
+                <span class="message-author" data-i18n="assistant.name">Product Strategist</span>
+                <p class="message" data-i18n="assistant.first_message">Describe the product or service in your own words. What does it do, and who is it for?</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <form id="chat-form" class="chat-form">
+              <textarea id="message" rows="1" data-i18n-aria-label="composer.message" aria-label="Message" data-i18n-placeholder="composer.placeholder" placeholder="Describe the product or service…" required></textarea>
+              <button id="send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </form>
+            <div class="composer-meta">
+              <p id="chat-status" class="status" role="status"></p>
+              <p class="privacy-note" data-i18n="composer.privacy_note">Do not enter unnecessary personal data.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="review-view" class="view context-review" aria-labelledby="review-title" hidden>
+        <header class="view-header">
+          <div>
+            <button id="back-to-chat" class="text-button" type="button">← Back to conversation</button>
+            <h1 id="review-title" data-i18n="review.title_default">Review Business Context</h1>
+            <p data-i18n="review.subtitle">Check the structured record saved from the conversation before approving it.</p>
+          </div>
+          <span id="review-state" class="state-label" data-i18n="review.state_working">Working context</span>
+        </header>
+
+        <form id="context-form" class="context-form">
+          <section class="form-section" aria-labelledby="overview-heading">
+            <h2 id="overview-heading" data-i18n="review.section.overview">Overview</h2>
+            <div class="form-grid">
+              <label class="field"><span data-i18n="review.field.name">Name</span><input name="name" required></label>
+              <label class="field">
+                <span data-i18n="review.field.type">Type</span>
+                <select name="offering_type" required>
+                  <option value="product" data-i18n="review.field.type_product">Product</option>
+                  <option value="service" data-i18n="review.field.type_service">Service</option>
+                </select>
+              </label>
+              <label class="field full-width"><span data-i18n="review.field.short_summary">Short summary</span><textarea name="short_summary" rows="3"></textarea></label>
+            </div>
+          </section>
+
+          <section class="form-section" aria-labelledby="offering-heading">
+            <h2 id="offering-heading" data-i18n="review.section.offering">Offering</h2>
+            <div class="form-grid">
+              <label class="field"><span data-i18n="review.field.customer_problems">Customer problems addressed</span><textarea name="customer_problems_addressed" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+              <label class="field"><span data-i18n="review.field.core_capabilities">Core capabilities</span><textarea name="core_capabilities" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+              <label class="field full-width"><span data-i18n="review.field.value_proposition">Value proposition</span><textarea name="value_proposition" rows="3"></textarea></label>
+              <label class="field full-width"><span data-i18n="review.field.differentiators">Differentiators</span><textarea name="differentiators" rows="4" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+            </div>
+          </section>
+
+          <section class="form-section" aria-labelledby="people-heading">
+            <h2 id="people-heading" data-i18n="review.section.people">People &amp; ownership</h2>
+            <div class="form-grid">
+              <label class="field full-width"><span data-i18n="review.field.people">People</span><textarea name="people" rows="4" data-list data-i18n-placeholder="review.field.people_placeholder" placeholder="Jane Doe — Product Owner"></textarea><span class="hint" data-i18n="review.field.people_hint">One person per line, e.g. "Jane Doe — Product Owner"</span></label>
+            </div>
+          </section>
+
+          <section class="form-section" aria-labelledby="market-heading">
+            <h2 id="market-heading" data-i18n="review.section.market">Market context</h2>
+            <div class="form-grid">
+              <label class="field"><span data-i18n="review.field.target_organisations">Target organisations</span><textarea name="target_organisations" rows="4" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+              <label class="field"><span data-i18n="review.field.relevant_industries">Relevant industries</span><textarea name="relevant_industries" rows="4" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+              <label class="field"><span data-i18n="review.field.relevant_roles">Roles and decision-makers</span><textarea name="relevant_roles_and_decision_makers" rows="4" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+              <label class="field"><span data-i18n="review.field.geographic_focus">Geographic focus</span><textarea name="geographic_focus" rows="4" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+            </div>
+          </section>
+
+          <section class="form-section" aria-labelledby="evidence-heading">
+            <h2 id="evidence-heading" data-i18n="review.section.evidence">Evidence and communication</h2>
+            <div class="form-grid">
+              <label class="field"><span data-i18n="review.field.evidence_sources">Evidence or knowledge sources</span><textarea name="supporting_evidence_or_knowledge_sources" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+              <label class="field"><span data-i18n="review.field.key_marketing_messages">Key marketing messages</span><textarea name="key_marketing_messages" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.one_per_line">One item per line</span></label>
+            </div>
+          </section>
+
+          <section class="form-section" aria-labelledby="governance-heading">
+            <h2 id="governance-heading" data-i18n="review.section.governance">Review points</h2>
+            <div class="form-grid">
+              <label class="field"><span data-i18n="review.field.assumptions">Assumptions</span><textarea name="assumptions" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.assumptions_hint">Keep separate from confirmed information</span></label>
+              <label class="field"><span data-i18n="review.field.open_questions">Open questions</span><textarea name="open_questions" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.open_questions_hint">Resolve before final approval where possible</span></label>
+            </div>
+          </section>
+
+          <footer class="form-actions">
+            <p id="review-status" class="status" role="status"></p>
+            <button id="save-draft" class="secondary-button" type="button" data-i18n="review.save_draft">Save draft</button>
+            <button id="approve-context" class="primary-button" type="button" data-i18n="review.approve">Approve and save</button>
+          </footer>
+        </form>
+      </section>
+
+      <section id="portfolio-view" class="view portfolio" aria-labelledby="portfolio-title" hidden>
+        <header class="view-header">
+          <div>
+            <h1 id="portfolio-title" data-i18n="portfolio.title">ibc group Portfolio</h1>
+            <p data-i18n="portfolio.subtitle">Find, review and reuse the Business Contexts maintained across the organisation.</p>
+          </div>
+          <button id="portfolio-create" class="primary-button" type="button" data-i18n="portfolio.create">Create context</button>
+        </header>
+
+        <section id="solutions-panel">
+          <div class="portfolio-toolbar">
+            <label class="search-field">
+              <span class="visually-hidden" data-i18n="portfolio.search_solutions">Search Solutions</span>
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              <input id="portfolio-search" type="search" data-i18n-placeholder="portfolio.search_placeholder" placeholder="Search by name or summary">
+            </label>
+            <div class="portfolio-filters">
+              <label class="field"><span class="visually-hidden" data-i18n="portfolio.filter_by_type">Filter by type</span>
+                <select id="portfolio-filter-type">
+                  <option value="" data-i18n="portfolio.filter_type_all">All types</option>
+                  <option value="product" data-i18n="review.field.type_product">Product</option>
+                  <option value="service" data-i18n="review.field.type_service">Service</option>
+                </select>
+              </label>
+              <label class="field"><span class="visually-hidden" data-i18n="portfolio.filter_by_origin">Filter by origin</span>
+                <select id="portfolio-filter-origin">
+                  <option value="" data-i18n="portfolio.filter_origin_all">All origins</option>
+                </select>
+              </label>
+            </div>
+            <span id="portfolio-count" class="portfolio-count"></span>
+          </div>
+
+          <div class="portfolio-columns" aria-hidden="true">
+            <span data-i18n="portfolio.col_name">Name</span><span data-i18n="portfolio.col_status">Status</span><span data-i18n="portfolio.col_origin">Origin</span><span></span>
+          </div>
+          <div id="portfolio-list" class="portfolio-list" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="source-view" class="view source-detail" aria-labelledby="source-title" hidden>
+        <button id="back-to-sources" class="text-button" type="button" data-i18n="source.back">← Back to portfolio</button>
+        <header class="source-detail-header">
+          <div>
+            <p id="source-origin" class="source-origin"></p>
+            <h1 id="source-title">Website source</h1>
+            <p data-i18n="source.subtitle">Review the structured information extracted from the original website page.</p>
+          </div>
+          <div class="header-actions">
+            <span class="state-label" data-i18n="source.website_status">Website source</span>
+            <a id="source-open-original" class="secondary-button button-link" href="#" target="_blank" rel="noopener noreferrer" data-i18n="source.open_original">Open original</a>
+          </div>
+        </header>
+        <article class="context-form source-context-form">
+          <section class="form-section">
+            <h2 data-i18n="review.section.overview">Overview</h2>
+            <div class="form-grid">
+              <div class="field"><span data-i18n="review.field.name">Name</span><div id="source-name" class="read-only-field"></div></div>
+              <div class="field"><span data-i18n="review.field.type">Type</span><div id="source-type" class="read-only-field"></div></div>
+              <div class="field full-width"><span data-i18n="review.field.short_summary">Short summary</span><div id="source-summary" class="read-only-field multiline"></div></div>
+            </div>
+          </section>
+          <section id="source-offering-section" class="form-section">
+            <h2 data-i18n="review.section.offering">Offering</h2>
+            <div class="form-grid">
+              <div id="source-problems-field" class="field"><span data-i18n="review.field.customer_problems">Customer problems addressed</span><div id="source-problems" class="read-only-field multiline"></div></div>
+              <div id="source-capabilities-field" class="field"><span data-i18n="review.field.core_capabilities">Core capabilities</span><div id="source-capabilities" class="read-only-field multiline"></div></div>
+              <div class="field full-width"><span data-i18n="review.field.value_proposition">Value proposition</span><div id="source-value" class="read-only-field multiline"></div></div>
+            </div>
+          </section>
+          <div id="source-content"></div>
+          <section class="form-section source-provenance">
+            <h2 data-i18n="source.provenance">Source</h2>
+            <dl class="source-metadata">
+              <div><dt data-i18n="source.organisation">Organisation</dt><dd id="source-organisation"></dd></div>
+              <div><dt data-i18n="source.language">Language</dt><dd id="source-language"></dd></div>
+              <div><dt data-i18n="source.type">Source type</dt><dd id="source-page-type"></dd></div>
+            </dl>
+          </section>
+        </article>
+      </section>
+
+      <section id="knowledge-view" class="view conversation" aria-labelledby="knowledge-title" hidden>
+        <header class="view-header">
+          <div>
+            <h1 id="knowledge-title" data-i18n="knowledge.title">Ask ibc group</h1>
+            <p data-i18n="knowledge.subtitle">Explore the reviewed knowledge about ETIL, ibc group, services and products.</p>
+          </div>
+          <button id="new-knowledge-chat" class="secondary-button" type="button" data-i18n="knowledge.new_chat">New chat</button>
+        </header>
+        <section class="chat-surface" aria-label="ibc group knowledge conversation">
+          <div id="knowledge-messages" class="knowledge-messages" aria-live="polite"></div>
+          <div class="composer">
+            <form id="knowledge-chat-form" class="chat-form">
+              <textarea id="knowledge-message" rows="1" data-i18n-aria-label="composer.message" aria-label="Message" data-i18n-placeholder="knowledge.placeholder" placeholder="Ask about a service, product or area of expertise…" required></textarea>
+              <button id="knowledge-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </form>
+            <div class="composer-meta">
+              <p id="knowledge-status" class="status" role="status"></p>
+              <p class="privacy-note" data-i18n="composer.privacy_note">Do not enter unnecessary personal data.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="lead-view" class="view under-construction" aria-labelledby="lead-title" hidden>
+        <p class="section-kicker" data-i18n="lead.kicker">Lead intelligence</p>
+        <h1 id="lead-title" data-i18n="lead.title">Under construction</h1>
+        <p data-i18n="lead.copy">This workspace will use approved Business Contexts to identify and evaluate relevant organisations.</p>
+        <button class="secondary-button" type="button" data-return="portfolio" data-i18n="under_construction.view_portfolio">View ibc group Portfolio</button>
+      </section>
+
+      <section id="marketing-view" class="view under-construction" aria-labelledby="marketing-title" hidden>
+        <p class="section-kicker" data-i18n="marketing.kicker">Marketing studio</p>
+        <h1 id="marketing-title" data-i18n="marketing.title">Under construction</h1>
+        <p data-i18n="marketing.copy">This workspace will use approved Business Contexts to prepare consistent marketing material.</p>
+        <button class="secondary-button" type="button" data-return="portfolio" data-i18n="under_construction.view_portfolio">View ibc group Portfolio</button>
+      </section>
+
+      <section id="team-view" class="view team" aria-labelledby="team-title" hidden>
+        <header class="view-header">
+          <div>
+            <h1 id="team-title" data-i18n="team.title">Team</h1>
+            <p data-i18n="team.subtitle">Manage who can sign in and what they can do.</p>
+          </div>
+        </header>
+
+        <form id="create-user-form" class="create-user-form">
+          <label class="field"><span data-i18n="team.field.email">Email</span><input type="email" name="email" required></label>
+          <label class="field"><span data-i18n="team.field.password">Temporary password</span><input type="password" name="password" minlength="8" required></label>
+          <label class="field">
+            <span data-i18n="team.field.role">Role</span>
+            <select name="role" required>
+              <option value="product_owner" data-i18n="role.product_owner">Product Owner</option>
+              <option value="sales" data-i18n="role.sales">Sales</option>
+              <option value="admin" data-i18n="role.admin">Admin</option>
+            </select>
+          </label>
+          <button type="submit" class="primary-button" data-i18n="team.add">Add user</button>
+        </form>
+        <p id="team-status" class="status" role="status"></p>
+
+        <div class="team-columns" aria-hidden="true">
+          <span data-i18n="team.col_email">Email</span><span data-i18n="team.col_role">Role</span><span data-i18n="team.col_created">Added</span><span></span>
+        </div>
+        <div id="team-list" class="team-list" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="delete-dialog" class="confirm-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <form method="dialog">
+      <h2 id="delete-title">Delete item?</h2>
+      <p id="delete-description"></p>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" data-i18n="delete.keep">Keep it</button>
+        <button id="confirm-delete" class="danger-button" type="button">Delete</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
