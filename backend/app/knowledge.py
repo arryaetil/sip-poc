@@ -157,6 +157,26 @@ def _clean_heading(value: str) -> str:
     return value.lstrip("#").strip().rstrip(".")
 
 
+def _impact_statement(title: str, body: str) -> str:
+    """Join one business-impact claim into a sentence, without rewording it.
+
+    The two source sites format these differently. ibc group writes a heading and a
+    lowercase continuation ("Instant access" / "to the right knowledge at the right
+    time"); ETIL writes a heading and a full sentence ("Snellere besluitvorming" /
+    "Minder vertraging door duidelijke governance."). Continuations are joined with
+    a space, sentences with a colon, so neither site reads wrong.
+    """
+    title = title.strip().rstrip(".")
+    body = body.strip()
+    if not body:
+        statement = title
+    elif body[:1].islower():
+        statement = f"{title} {body}"
+    else:
+        statement = f"{title}: {body}"
+    return statement if statement.endswith((".", "!", "?")) else f"{statement}."
+
+
 def _plain_text(value: str) -> str:
     return " ".join(
         line.removeprefix("- ").replace("**", "").strip()
@@ -329,15 +349,18 @@ def create_website_offering_profile(document: KnowledgeDocument) -> WebsiteOffer
         None,
     )
     # The impact block is usually a set of "### claim / body" items with no lead
-    # paragraph, so introduction is often empty. Previously this fell back to
+    # paragraph, so introduction is often empty. It used to fall back to
     # short_summary, which printed the same sentence twice under two headings.
-    # An empty value proposition is the honest answer: the page does not state one.
+    # Instead the impact claims themselves are assembled into one statement: still
+    # verbatim page text, never invented.
+    impact_items = tuple(impact_section.items if impact_section else ())
     value_proposition = (
-        impact_section.introduction if impact_section and impact_section.introduction else ""
+        impact_section.introduction
+        if impact_section and impact_section.introduction
+        else " ".join(_impact_statement(title, body) for title, body in impact_items)
     )
     key_marketing_messages = tuple(
-        f"{title} - {body}" if body else title
-        for title, body in (impact_section.items if impact_section else ())
+        f"{title} - {body}" if body else title for title, body in impact_items
     )
     name = re.sub(
         r"\s*(?:\|\s*ibc group|-\s*Etil)\s*$",

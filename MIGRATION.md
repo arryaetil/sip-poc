@@ -98,7 +98,7 @@ websites and will not survive a website redesign.
 | `offering_type` | 28 | only `service` and `solution` page types |
 | `people` | 27 | the contact card inside the FAQ block |
 | `customer_problems_addressed` | 6 | an explicit "problem" section |
-| `value_proposition` | **0** | see open decision below |
+| `value_proposition` | 38 | assembled from "Your Business Impact" claims |
 | `differentiators`, market context (4 fields) | 0 | not stated on marketing pages |
 | `assumptions`, `open_questions` | 0 | **by policy, see below** |
 
@@ -129,7 +129,7 @@ Context, which is the exact failure the rest of the app is written to prevent �
 
 | # | Decision | Status |
 |---|---|---|
-| 1 | `value_proposition` is empty for all 69 sources. The previous fallback copied `short_summary`, printing the same sentence under two headings. Options: leave empty, derive from the "Business Impact" items, or restore the duplicate. | **Needs a decision** |
+| 1 | `value_proposition` — resolved 15 Sep 2026: assembled from the page's own "Business Impact" claims (`_impact_statement`), never from `short_summary`. Fills 38/69; the rest have no such block and stay empty. Still verbatim page text, so the no-invention policy holds. | **Decided** |
 | 2 | "Information listed on the page" is shown for headings with no body. A live check found ~168 of 220 such headings are correct (logo tiles, contact cards) and only ~22 across 6 files have recoverable text. Fix the renderer, then re-scrape only those files. | **Needs a decision** |
 | 3 | Should `sections` (the raw page prose, currently collapsed under "Original page content") stay visible to Product Owners? It must be retained either way — it is what gets embedded for retrieval. | Kept, collapsed |
 | 4 | Access control model for user-uploaded documents. Must be settled **before** the first Azure AI Search index is created. | Open |
