@@ -1,0 +1,37 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local database / volume contents
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+
+# Railway CLI
+.railway/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Extracted source archive
+sip-poc-src.tar.gz
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
