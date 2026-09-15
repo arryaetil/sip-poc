@@ -28,13 +28,19 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 import json
+import logging
 import math
 import os
 from pathlib import Path
 
 from app.chunking import KnowledgeChunk, chunk_corpus
 from app.embedding import EXPECTED_DIMENSIONS, embed_query, embed_texts
-from app.knowledge import _tokens
+from app.knowledge import (
+    _tokens,
+    create_excerpt,
+    get_knowledge_document,
+    search_knowledge,
+)
 
 # Conventional constant from the Reciprocal Rank Fusion paper. It damps the gap
 # between first and second place, so one list cannot dominate on a single win.
@@ -47,6 +53,11 @@ KEYWORD_SCORE_FLOOR = 0.35
 # If fewer than this fraction of the query's words appear anywhere in the corpus,
 # the keyword half abstains entirely. See keyword_ranking().
 MIN_QUERY_VOCABULARY_COVERAGE = 0.4
+# How many chunks to pull per requested document, so a document can be grounded
+# on several of its passages rather than just the one that ranked highest.
+CHUNKS_PER_DOCUMENT = 4
+
+logger = logging.getLogger(__name__)
 
 
 def vector_store_path() -> Path:
@@ -264,3 +275,63 @@ def hybrid_search(query: str, limit: int = 5) -> list[SearchResult]:
     ]
     results.sort(key=lambda result: (-result.score, result.chunk.chunk_id))
     return results[:limit]
+
+
+def retrieval_mode() -> str:
+    """Which retrieval engine the app should use: 'lexical' (default) or 'hybrid'."""
+    return os.getenv("SIP_RETRIEVAL", "lexical").strip().lower()
+
+
+def retrieve(query: str, limit: int = 3) -> tuple[list, object]:
+    """Return documents for grounding, plus the excerpt function to pair with them.
+
+    The seam. `main.py` asks for documents and gets documents, exactly as it did
+    when retrieval was a single lexical scorer -- the chat endpoints, the [Source N]
+    citations and the prompt construction are untouched. Everything this module
+    added lives behind this call.
+
+    Both halves come from one search rather than two, so the query is embedded once.
+
+    Falls back to lexical scoring if the vector index has not been built. That is
+    not a nicety: the index is a 13 MB file that does not exist on a fresh deploy,
+    and a knowledge assistant that answers slightly worse beats one that returns
+    500s until someone runs a build script.
+    """
+    if retrieval_mode() != "hybrid":
+        return search_knowledge(query, limit=limit), create_excerpt
+
+    try:
+        results = hybrid_search(query, limit=limit * CHUNKS_PER_DOCUMENT)
+    except FileNotFoundError:
+        logger.warning(
+            "SIP_RETRIEVAL=hybrid but no vector index found at %s; "
+            "falling back to lexical retrieval. Build it with build_vector_index().",
+            vector_store_path(),
+        )
+        return search_knowledge(query, limit=limit), create_excerpt
+
+    # Chunks are the retrieval unit, documents are the citation unit. Keep the order
+    # the fusion produced, so the document holding the best chunk is cited first.
+    passages: dict[str, list[str]] = {}
+    for result in results:
+        passages.setdefault(result.chunk.source_id, []).append(result.chunk.text)
+
+    documents = []
+    for source_id in list(passages)[:limit]:
+        document = get_knowledge_document(source_id)
+        if document is not None:
+            documents.append(document)
+
+    def excerpt(document, user_query: str, max_characters: int = 2_000) -> str:
+        """Ground on the passages retrieval actually matched.
+
+        The lexical excerpt picked paragraphs by shared words with the query, which
+        cannot work when the question is in a different language from the document.
+        These passages were chosen by meaning, so use them.
+        """
+        matched = passages.get(document.source_id)
+        if not matched:
+            return create_excerpt(document, user_query, max_characters)
+        return "\n\n".join(matched)[:max_characters].rstrip()
+
+    return documents, excerpt

@@ -482,8 +482,13 @@ def create_excerpt(
 def create_grounded_input(
     user_input: str,
     documents: list[KnowledgeDocument],
+    excerpt=create_excerpt,
 ) -> str:
-    """Combine the user's message with bounded, labelled source excerpts."""
+    """Combine the user's message with bounded, labelled source excerpts.
+
+    `excerpt` is supplied by the caller so the retrieval engine can decide which
+    passages ground the answer. It defaults to the lexical paragraph picker.
+    """
     if not documents:
         return user_input
 
@@ -502,7 +507,7 @@ def create_grounded_input(
                     f"Organisation: {document.organisation}",
                     f"URL: {document.canonical_url}",
                     f"Status: {match_note}",
-                    create_excerpt(document, user_input),
+                    excerpt(document, user_input),
                 ]
             )
         )
@@ -520,6 +525,7 @@ def create_grounded_input(
 def create_knowledge_input(
     user_input: str,
     documents: list[KnowledgeDocument],
+    excerpt=create_excerpt,
 ) -> str:
     """Create a source-only prompt for the general ibc group Knowledge Assistant."""
     if not documents:
@@ -539,7 +545,7 @@ def create_knowledge_input(
                 f"[Source {source_number}] {document.title}",
                 f"Organisation: {document.organisation}",
                 f"URL: {document.canonical_url}",
-                create_excerpt(document, user_input),
+                excerpt(document, user_input),
             ]
         )
         for source_number, document in enumerate(documents, start=1)

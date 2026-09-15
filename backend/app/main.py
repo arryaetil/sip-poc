@@ -52,8 +52,8 @@ from app.knowledge import (
     create_website_offering_profile,
     get_knowledge_document,
     load_knowledge_documents,
-    search_knowledge,
 )
+from app.retrieval import retrieve
 from app.store import ContextStore, EmailAlreadyExists, verify_password
 
 
@@ -402,9 +402,11 @@ def health() -> dict[str, str]:
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
     model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
+    documents, excerpt = retrieve(request.message)
     grounded_input = create_grounded_input(
         request.message,
-        search_knowledge(request.message),
+        documents,
+        excerpt,
     )
     response_args = {
         "model": model_deployment,
@@ -429,8 +431,8 @@ def chat(request: ChatRequest) -> ChatResponse:
 def knowledge_chat(request: ChatRequest) -> KnowledgeChatResponse:
     """Answer one source-grounded question about the reviewed website corpus."""
     model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
-    documents = search_knowledge(request.message)
-    grounded_input = create_knowledge_input(request.message, documents)
+    documents, excerpt = retrieve(request.message)
+    grounded_input = create_knowledge_input(request.message, documents, excerpt)
     response_args = {
         "model": model_deployment,
         "instructions": _knowledge_prompt_for(request.language),
@@ -552,9 +554,11 @@ def add_conversation_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
+    documents, excerpt = retrieve(request.message)
     grounded_input = create_grounded_input(
         request.message,
-        search_knowledge(request.message),
+        documents,
+        excerpt,
     )
     response_args = {
         "model": model_deployment,
@@ -657,7 +661,7 @@ def list_portfolio_sources(
     """List and filter reviewed public website sources."""
     documents = list(load_knowledge_documents())
     if query and query.strip():
-        documents = search_knowledge(query, limit=len(documents))
+        documents, _ = retrieve(query, limit=len(documents))
     if organisation:
         documents = [item for item in documents if item.organisation == organisation]
     if language:

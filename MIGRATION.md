@@ -93,6 +93,24 @@ so it will be retrieved as if it belonged to that offering. Strip or re-attribut
 
 ---
 
+## 3c. Switching retrieval on
+
+`SIP_RETRIEVAL` selects the engine: unset or `lexical` (default) keeps the original
+behaviour exactly; `hybrid` uses chunking + embeddings + rank fusion. Everything new
+sits behind `retrieve()` in `retrieval.py`; the chat endpoints, prompt construction
+and `[Source N]` citations are untouched.
+
+**The index does not exist on a fresh deploy.** It is a 13 MB file built by
+`build_vector_index()` and excluded from git. `retrieve()` therefore falls back to
+lexical scoring with a warning when the file is missing, rather than returning 500s.
+Before turning `hybrid` on in production, either build the index at startup or build
+it once onto the Railway volume (`/data`) via `SIP_VECTOR_PATH`.
+
+**Rebuild the index whenever** the corpus changes, the chunking rules change, or the
+embedding model changes. Nothing detects staleness automatically yet.
+
+---
+
 ## 4. Vector storage — Azure AI Search deliberately deferred
 
 **Decision, 15 September 2026.** The POC will **not** use Azure AI Search. It is a
