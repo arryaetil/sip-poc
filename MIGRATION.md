@@ -51,8 +51,20 @@ leak past this function.**
 **Now (planned).** For development, embeddings may be produced by a model running
 locally, so the pipeline can be built offline with no account and no cost.
 
+**Confirmed 15 Sep 2026.** `text-embedding-3-large` is deployed and working:
+**3072 dimensions**. Write that number down -- it is baked into any vector index
+built from it, so changing model later means re-embedding the corpus *and*
+rebuilding the index.
+
+**Endpoint gotcha.** Chat answers on the project endpoint
+(`.../api/projects/<project>`); the embedding deployment answers on the **resource
+root**. Asking the project path for embeddings returns a bare `404` that looks
+exactly like a missing deployment. `embedding.py` derives the root from the
+configured endpoint; `AZURE_AI_EMBEDDING_ENDPOINT` overrides it.
+
 **Production.** Embeddings must come from the Azure AI Foundry deployment over
-HTTP.
+HTTP. Prefer managed identity over the API key so there is no secret to rotate --
+`get_embedding_client()` already falls back to `DefaultAzureCredential`.
 
 **Why this matters for C#.** A model running inside the Python process does not
 port to C#. An HTTP call does. Any local embedding library must therefore stay
