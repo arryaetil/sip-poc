@@ -93,21 +93,44 @@ so it will be retrieved as if it belonged to that offering. Strip or re-attribut
 
 ---
 
-## 4. Vector storage
+## 4. Vector storage — Azure AI Search deliberately deferred
 
-**Now (planned).** At roughly 1,000–1,500 chunks, brute-force cosine similarity
-over an in-memory array is a few milliseconds. No vector database is needed.
+**Decision, 15 September 2026.** The POC will **not** use Azure AI Search. It is a
+separate billable Azure resource, unlike the embedding model which was a deployment
+inside a resource that already existed. Deferred until there is budget approval and
+a working demo to justify it.
+
+**Now.** 1,104 chunks embedded once and held in memory; brute-force cosine
+similarity is a few milliseconds at this size. No vector database is needed.
 
 **Production.** Azure AI Search. Note that this is bought for **managed ingestion,
 document cracking (PDF/Office) and scale**, not for speed — at the current corpus
 size, search performance is not a problem to be solved.
 
-**Migration risk.** Index fields must be designed before the first indexing run.
-Two in particular are painful to retrofit, because adding them means reindexing
-everything:
-- an **access-control field**, needed the moment users upload documents that not
-  every role may retrieve;
-- a **provenance field** distinguishing curated corpus from user upload.
+### What has to change when Azure AI Search arrives
+
+1. **Define the index schema by hand, as JSON.** Do *not* use the Foundry
+   "Add your data" wizard. It chunks by size, ignores the markdown front matter and
+   produces an index that cannot be filtered by organisation or page type -- it
+   would silently discard the curation this project is built on. A hand-written
+   schema is also the artefact that ports to C# unchanged.
+2. **Vector field: 3072 dimensions**, matching `text-embedding-3-large`.
+3. **Carry the chunk metadata as filterable fields**: `source_id`, `organisation`,
+   `language`, `page_type`, `section`, `heading`, `canonical_url`.
+4. **Add two fields that are painful to retrofit**, because adding them later means
+   reindexing everything:
+   - an **access-control field**, needed the moment users upload documents that not
+     every role may retrieve;
+   - a **provenance field** distinguishing curated corpus from user upload.
+5. **Replace RRF with the built-in fusion.** Sending a text query and a vector query
+   in one request makes Azure do the rank fusion; the hand-written version in
+   `retrieval.py` then comes out.
+6. **Consider the semantic ranker** (paid tier) as a third stage on top.
+7. **Switch ingestion from push to pull**: blob storage plus an indexer, which is
+   what makes user uploads work without a redeploy (see section 1).
+
+**Nothing above changes `search_knowledge()`'s signature.** That is the point of the
+seam.
 
 ---
 
