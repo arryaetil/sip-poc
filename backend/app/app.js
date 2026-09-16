@@ -125,7 +125,6 @@ let knowledgeConversationId = null;
 let pendingDelete = null;
 let currentRole = "admin";
 let currentUserEmail = "";
-let acceptedDocumentProposals = [];
 
 async function api(path, options = {}) {
   const isFormData = options.body instanceof FormData;
@@ -868,50 +867,15 @@ async function uploadDocument(file, kind, conversationId = null) {
   return api("/api/uploads", { method: "POST", body: form });
 }
 
-function renderDocumentProposals(upload, proposals) {
-  if (!proposals.length) return addMessage(t("uploads.no_proposals"), "assistant");
-  const row = addMessage(t("uploads.proposals_intro", { filename: upload.filename }), "assistant");
-  const container = document.createElement("div");
-  container.className = "proposal-list";
-  proposals.forEach((proposal) => {
-    const card = document.createElement("div");
-    card.className = "proposal-card";
-    const provenance = document.createElement("small");
-    provenance.textContent = `${upload.filename}${proposal.page ? ` · p. ${proposal.page}` : ""}: “${proposal.quote}”`;
-    const field = document.createElement("strong");
-    field.textContent = proposal.field_name.replaceAll("_", " ");
-    const value = document.createElement("input");
-    value.value = proposal.value;
-    const actions = document.createElement("div");
-    actions.className = "proposal-actions";
-    const accept = document.createElement("button");
-    accept.type = "button";
-    accept.className = "secondary-button";
-    accept.textContent = t("uploads.accept");
-    const ignore = document.createElement("button");
-    ignore.type = "button";
-    ignore.className = "text-button";
-    ignore.textContent = t("uploads.ignore");
-    accept.addEventListener("click", () => {
-      acceptedDocumentProposals.push({ ...proposal, value: value.value.trim() });
-      card.remove();
-    });
-    ignore.addEventListener("click", () => card.remove());
-    actions.append(accept, ignore);
-    card.append(provenance, field, value, actions);
-    container.append(card);
-  });
-  row.querySelector(".message-content").append(container);
-}
-
 contextUpload.addEventListener("change", async () => {
   const file = contextUpload.files[0];
   if (!file || !currentConversation) return;
   setStatus(chatStatus, t("uploads.processing"), "success");
   try {
     const upload = await uploadDocument(file, "context_evidence", currentConversation.id);
-    const batch = await api(`/api/uploads/${upload.id}/proposals`, { method: "POST" });
-    renderDocumentProposals(upload, batch.proposals);
+    const discussion = await api(`/api/uploads/${upload.id}/discuss`, { method: "POST" });
+    currentConversation = discussion.conversation;
+    renderConversation(currentConversation, true);
     setStatus(chatStatus, t("uploads.private_evidence"), "success");
   } catch (error) {
     setStatus(chatStatus, error.message);
@@ -970,14 +934,6 @@ async function loadKnowledgeHistory() {
     empty.textContent = t("conversations.empty_title");
     knowledgeConversationList.append(empty);
   }
-  acceptedDocumentProposals.forEach(({ field_name, value }) => {
-    const field = contextForm.elements.namedItem(field_name);
-    if (!field || field_name === "assumptions" || field_name === "open_questions") return;
-    if (listFields.has(field_name)) {
-      const values = field.value.split("\n").filter(Boolean);
-      if (!values.includes(value)) field.value = [...values, value].join("\n");
-    } else if (!field.value) field.value = value;
-  });
   knowledgeHistory.value = knowledgeConversationId || "";
 }
 

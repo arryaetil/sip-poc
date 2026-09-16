@@ -15,7 +15,7 @@ Both Create context and Ask ibc group open on a central prompt composer with the
 
 There are two persistent conversation types:
 
-- `context`: guided Business Context intake, document proposals, review and approval.
+- `context`: guided Business Context intake, conversational document analysis, review and approval.
 - `knowledge`: organisation knowledge chat with saved message history and source visibility.
 
 Conversations and draft contexts belong to one user. Other users receive `404` for private object IDs. Approved contexts and explicitly published evidence are organisation-wide; administrators can inspect all records. Legacy rows are assigned to the configured bootstrap account during the idempotent startup migration and are never implicitly public.
@@ -24,7 +24,7 @@ Conversations and draft contexts belong to one user. Other users receive `404` f
 
 PDF and DOCX uploads are supported. Files are limited to 10 MB and PDFs to 200 pages. Workspace documents remain private to their owner. Context evidence also remains private until the related Business Context is approved and the reviewer leaves that document selected for publication.
 
-For context evidence, the model proposes structured field values with document provenance. The user can edit, accept or ignore each proposal; accepted values are merged into the review form and are only saved with the context. Assumptions and open questions are never auto-applied.
+For context evidence, the model reads the uploaded document as untrusted business evidence and brings the relevant knowledge back into the conversation in its own words. It highlights three to five useful insights, connects them to the emerging Business Context, calls out uncertainty and asks at most one useful follow-up question. There are no proposal cards or Accept/Ignore actions. The resulting discussion is saved in the conversation and informs the final review.
 
 The knowledge assistant uses hybrid lexical/vector retrieval when an embedding index is available and falls back to lexical retrieval otherwise. Visibility is filtered before ranking. Reciprocal-rank-fusion results below `SIP_RELEVANCE_THRESHOLD` do not ground an answer; the UI shows the closest matches without offering a separate general-answer mode. Knowledge follow-ups are reconstructed from stored messages instead of relying on provider-side response IDs. Enter sends from every chat composer and start screen; Shift+Enter inserts a new line.
 
@@ -68,7 +68,7 @@ railway.json    Railway build, healthcheck and restart policy
 | Users | `GET/POST /api/users`, `PUT/DELETE /api/users/{id}` |
 | Conversations | `GET/POST /api/conversations`, `GET/DELETE /api/conversations/{id}`, message and portfolio routes |
 | Contexts | `GET/POST /api/contexts`, `GET/PUT/DELETE /api/contexts/{id}`, `POST /api/contexts/prepare` |
-| Uploads | `GET/POST /api/uploads`, `GET/DELETE /api/uploads/{id}`, `POST /api/uploads/{id}/proposals` |
+| Uploads | `GET/POST /api/uploads`, `GET/DELETE /api/uploads/{id}`, `POST /api/uploads/{id}/discuss` |
 | Knowledge | `POST /api/knowledge/chat` |
 | Portfolio | `/api/portfolio/solutions`, `/api/portfolio/sources` and source detail |
 | Operations | public `GET /health` |
@@ -128,8 +128,6 @@ railway up --service sip-poc --detach
 
 - SQLite and the local index require a single application replica.
 - Scanned/image-only PDFs are not OCR'd.
-- Ignored document proposals are not yet persisted across a page reload, so the model may propose them again later.
-- Proposal edits remain client-side until the Business Context is saved.
 - Upload/index mutation is intended for POC traffic; it does not yet use distributed locking.
 - Demo environment credentials and user lifecycle need hardening before customer production use.
 - The public `/health` endpoint returns OK, but the current CLI-uploaded Railway service has no platform healthcheck configured; set it in Railway or connect the GitHub source so `railway.json` is applied.

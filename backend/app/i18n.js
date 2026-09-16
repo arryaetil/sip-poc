@@ -62,10 +62,6 @@ const I18N = {
     "uploads.added": "{filename} was added to this workspace.",
     "uploads.private_evidence": "Private evidence added. Publishing requires explicit approval.",
     "uploads.private_workspace": "Private workspace document added.",
-    "uploads.proposals_intro": "Review the facts proposed from {filename}. Nothing is added until you accept it.",
-    "uploads.no_proposals": "No explicit Business Context facts were found in this document.",
-    "uploads.accept": "Accept",
-    "uploads.ignore": "Ignore",
 
     "review.back": "← Back to conversation",
     "review.back_portfolio": "← Back to portfolio",
@@ -285,10 +281,6 @@ const I18N = {
     "uploads.added": "{filename} is aan deze werkruimte toegevoegd.",
     "uploads.private_evidence": "Privébewijs toegevoegd. Publiceren vereist expliciete goedkeuring.",
     "uploads.private_workspace": "Privédocument aan de werkruimte toegevoegd.",
-    "uploads.proposals_intro": "Controleer de voorgestelde feiten uit {filename}. Er wordt niets toegevoegd totdat je het accepteert.",
-    "uploads.no_proposals": "In dit document zijn geen expliciete Business Context-feiten gevonden.",
-    "uploads.accept": "Accepteren",
-    "uploads.ignore": "Negeren",
 
     "review.back": "← Terug naar gesprek",
     "review.back_portfolio": "← Terug naar portfolio",
@@ -508,10 +500,6 @@ const I18N = {
     "uploads.added": "{filename} wurde diesem Arbeitsbereich hinzugefügt.",
     "uploads.private_evidence": "Privater Nachweis hinzugefügt. Veröffentlichung erfordert ausdrückliche Freigabe.",
     "uploads.private_workspace": "Privates Arbeitsbereichsdokument hinzugefügt.",
-    "uploads.proposals_intro": "Prüfe die vorgeschlagenen Fakten aus {filename}. Nichts wird ohne deine Bestätigung hinzugefügt.",
-    "uploads.no_proposals": "In diesem Dokument wurden keine ausdrücklichen Business-Context-Fakten gefunden.",
-    "uploads.accept": "Übernehmen",
-    "uploads.ignore": "Ignorieren",
 
     "review.back": "← Zurück zur Unterhaltung",
     "review.back_portfolio": "← Zurück zum Portfolio",

@@ -208,20 +208,3 @@ class UploadRecord(BaseModel):
     context_id: str | None = None
     conversation_id: str | None = None
     created_at: str
-
-
-class DocumentProposal(BaseModel):
-    field_name: Literal[
-        "name", "offering_type", "short_summary", "customer_problems_addressed",
-        "core_capabilities", "target_organisations", "relevant_industries",
-        "relevant_roles_and_decision_makers", "geographic_focus", "value_proposition",
-        "differentiators", "people", "supporting_evidence_or_knowledge_sources",
-        "key_marketing_messages",
-    ]
-    value: str
-    quote: str
-    page: int | None = None
-
-
-class DocumentProposalBatch(BaseModel):
-    proposals: list[DocumentProposal] = Field(default_factory=list)
