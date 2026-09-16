@@ -4,7 +4,7 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 
 | | |
 |---|---|
-| Live | https://sip-poc-production.up.railway.app |
+| Live | https://sip-poc-production.up.railway.app — deployment `db6676bc`, running |
 | Stack | Python 3.13, FastAPI, vanilla JavaScript, SQLite, Azure AI Foundry |
 | Languages | English, Nederlands, Deutsch |
 | Hosting | Railway project and service `sip-poc`, persistent volume mounted at `/data` |
@@ -122,7 +122,7 @@ railway link --project e0e06291-87e2-4b51-b83d-392ae919f448
 railway up --service sip-poc --detach
 ```
 
-`railway.json` configures the Dockerfile build, `/health` deployment healthcheck and restart-on-failure policy. The image starts through a JSON-form command so signals reach the Python process correctly.
+`railway.json` declares the Dockerfile build, `/health` deployment healthcheck and restart-on-failure policy for a future source-connected deployment. The current CLI-uploaded service is healthy, but Railway does not apply the file-level healthcheck to this deployment method. The image starts through a JSON-form command so signals reach the Python process correctly.
 
 ## Known limitations
 
@@ -132,5 +132,6 @@ railway up --service sip-poc --detach
 - Proposal edits remain client-side until the Business Context is saved.
 - Upload/index mutation is intended for POC traffic; it does not yet use distributed locking.
 - Demo environment credentials and user lifecycle need hardening before customer production use.
+- The public `/health` endpoint returns OK, but the current CLI-uploaded Railway service has no platform healthcheck configured; set it in Railway or connect the GitHub source so `railway.json` is applied.
 
 Last documentation review: **16 September 2026**.
