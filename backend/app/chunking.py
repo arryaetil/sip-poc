@@ -70,6 +70,9 @@ class KnowledgeChunk:
     section: str
     heading: str
     text: str
+    visibility: str = "org"
+    owner_id: str | None = None
+    upload_id: str | None = None
 
     @property
     def embedding_text(self) -> str:
@@ -114,9 +117,21 @@ def _split_oversized(paragraphs: list[str]) -> list[str]:
     return passages
 
 
-def chunk_document(document: KnowledgeDocument) -> tuple[KnowledgeChunk, ...]:
-    """Split one document on its headings, skipping anything unretrievable."""
-    blocks = [block.strip() for block in BLOCK_SPLIT.split(document.content) if block.strip()]
+def chunk_text_document(
+    *,
+    source_id: str,
+    title: str,
+    content: str,
+    organisation: str = "Uploaded document",
+    language: str = "unknown",
+    page_type: str = "upload",
+    canonical_url: str = "",
+    visibility: str = "org",
+    owner_id: str | None = None,
+    upload_id: str | None = None,
+) -> tuple[KnowledgeChunk, ...]:
+    """Split any text source while preserving retrieval visibility metadata."""
+    blocks = [block.strip() for block in BLOCK_SPLIT.split(content) if block.strip()]
 
     chunks: list[KnowledgeChunk] = []
     section = ""
@@ -138,16 +153,19 @@ def chunk_document(document: KnowledgeDocument) -> tuple[KnowledgeChunk, ...]:
                 continue
             chunks.append(
                 KnowledgeChunk(
-                    chunk_id=f"{document.source_id}#{len(chunks):03d}",
-                    source_id=document.source_id,
-                    document_title=document.title,
-                    organisation=document.organisation,
-                    language=document.language,
-                    page_type=document.page_type,
-                    canonical_url=document.canonical_url,
+                    chunk_id=f"{source_id}#{len(chunks):03d}",
+                    source_id=source_id,
+                    document_title=title,
+                    organisation=organisation,
+                    language=language,
+                    page_type=page_type,
+                    canonical_url=canonical_url,
                     section=section,
                     heading=heading,
                     text=passage,
+                    visibility=visibility,
+                    owner_id=owner_id,
+                    upload_id=upload_id,
                 )
             )
 
@@ -166,6 +184,19 @@ def chunk_document(document: KnowledgeDocument) -> tuple[KnowledgeChunk, ...]:
             heading = _clean(block)
     flush()
     return tuple(chunks)
+
+
+def chunk_document(document: KnowledgeDocument) -> tuple[KnowledgeChunk, ...]:
+    """Split one reviewed website document into organisation-wide chunks."""
+    return chunk_text_document(
+        source_id=document.source_id,
+        title=document.title,
+        content=document.content,
+        organisation=document.organisation,
+        language=document.language,
+        page_type=document.page_type,
+        canonical_url=document.canonical_url,
+    )
 
 
 def chunk_corpus() -> tuple[KnowledgeChunk, ...]:

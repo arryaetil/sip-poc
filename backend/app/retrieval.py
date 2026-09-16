@@ -33,7 +33,7 @@ import math
 import os
 from pathlib import Path
 
-from app.chunking import KnowledgeChunk, chunk_corpus
+from app.chunking import KnowledgeChunk, chunk_corpus, chunk_text_document
 from app.embedding import EXPECTED_DIMENSIONS, embed_query, embed_texts
 from app.knowledge import (
     _tokens,
@@ -77,6 +77,24 @@ class SearchResult:
     vector_rank: int | None
 
 
+@dataclass(frozen=True)
+class RetrievalNearMiss:
+    title: str
+    url: str
+    score: float
+
+
+@dataclass(frozen=True)
+class RetrievedUploadDocument:
+    source_id: str
+    title: str
+    organisation: str
+    language: str
+    page_type: str
+    canonical_url: str
+    content: str
+
+
 def build_vector_index(progress: bool = True) -> int:
     """Embed every chunk once and write the vectors to disk.
 
@@ -118,6 +136,9 @@ def build_vector_index(progress: bool = True) -> int:
                 "section": c.section,
                 "heading": c.heading,
                 "text": c.text,
+                "visibility": c.visibility,
+                "owner_id": c.owner_id,
+                "upload_id": c.upload_id,
             }
             for c in chunks
         ],
@@ -126,6 +147,68 @@ def build_vector_index(progress: bool = True) -> int:
     if progress:
         print(f"wrote {len(chunks)} vectors to {path} ({path.stat().st_size // 1024} KB)")
     return len(chunks)
+
+
+def _write_index(chunks: list[KnowledgeChunk], vectors: list[array]) -> None:
+    path = vector_store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packed = array("f")
+    for vector in vectors:
+        packed.extend(vector)
+    path.write_bytes(packed.tobytes())
+    metadata = {
+        "dimensions": len(vectors[0]) if vectors else EXPECTED_DIMENSIONS,
+        "count": len(chunks),
+        "chunks": [chunk.__dict__ for chunk in chunks],
+    }
+    path.with_suffix(".json").write_text(json.dumps(metadata), encoding="utf-8")
+    load_vector_index.cache_clear()
+
+
+def index_uploaded_document(
+    *, upload_id: str, owner_id: str, filename: str, content: str, visibility: str
+) -> int:
+    """Embed only the new upload and append it to the existing index."""
+    try:
+        existing_chunks, existing_vectors = load_vector_index()
+    except FileNotFoundError:
+        build_vector_index(progress=False)
+        existing_chunks, existing_vectors = load_vector_index()
+    chunks = chunk_text_document(
+        source_id=f"upload:{upload_id}",
+        title=filename,
+        content=content,
+        canonical_url=f"/api/uploads/{upload_id}",
+        visibility=visibility,
+        owner_id=owner_id if visibility == "private" else None,
+        upload_id=upload_id,
+    )
+    vectors = [array("f", vector) for vector in embed_texts([chunk.embedding_text for chunk in chunks])]
+    _write_index([*existing_chunks, *chunks], [*existing_vectors, *vectors])
+    return len(chunks)
+
+
+def set_upload_visibility(upload_id: str, visibility: str, owner_id: str) -> None:
+    chunks, vectors = load_vector_index()
+    updated = [
+        KnowledgeChunk(
+            **{
+                **chunk.__dict__,
+                "visibility": visibility,
+                "owner_id": owner_id if visibility == "private" else None,
+            }
+        )
+        if chunk.upload_id == upload_id
+        else chunk
+        for chunk in chunks
+    ]
+    _write_index(updated, list(vectors))
+
+
+def remove_upload_from_index(upload_id: str) -> None:
+    chunks, vectors = load_vector_index()
+    kept = [(chunk, vector) for chunk, vector in zip(chunks, vectors) if chunk.upload_id != upload_id]
+    _write_index([item[0] for item in kept], [item[1] for item in kept])
 
 
 @lru_cache(maxsize=1)
@@ -158,20 +241,23 @@ def _cosine(query: list[float], stored: array, query_magnitude: float) -> float:
     return dot / (query_magnitude * magnitude) if magnitude else 0.0
 
 
-@lru_cache(maxsize=1)
-def _keyword_statistics() -> tuple[tuple[Counter[str], ...], Counter[str], int]:
-    """Tokenise every chunk once and count how many chunks each word appears in."""
-    chunks, _ = load_vector_index()
-    tokenised = tuple(
-        Counter(_tokens(f"{chunk.heading} {chunk.section} {chunk.text}")) for chunk in chunks
-    )
+def _keyword_statistics(
+    chunks: tuple[KnowledgeChunk, ...], candidate_indices: list[int]
+) -> tuple[dict[int, Counter[str]], Counter[str], int]:
+    """Build statistics only from chunks the caller is allowed to retrieve."""
+    tokenised = {
+        index: Counter(_tokens(f"{chunks[index].heading} {chunks[index].section} {chunks[index].text}"))
+        for index in candidate_indices
+    }
     document_frequency: Counter[str] = Counter()
-    for counts in tokenised:
+    for counts in tokenised.values():
         document_frequency.update(counts.keys())
-    return tokenised, document_frequency, len(tokenised)
+    return tokenised, document_frequency, len(candidate_indices)
 
 
-def keyword_ranking(query: str, chunks: tuple[KnowledgeChunk, ...]) -> list[int]:
+def keyword_ranking(
+    query: str, chunks: tuple[KnowledgeChunk, ...], candidate_indices: list[int] | None = None
+) -> list[int]:
     """Rank chunks by word overlap, weighting each word by how rare it is.
 
     Without this weighting the scorer treated every matched word alike, so a Dutch
@@ -189,7 +275,8 @@ def keyword_ranking(query: str, chunks: tuple[KnowledgeChunk, ...]) -> list[int]
     if not query_tokens:
         return []
 
-    tokenised, document_frequency, total = _keyword_statistics()
+    candidate_indices = candidate_indices if candidate_indices is not None else list(range(len(chunks)))
+    tokenised, document_frequency, total = _keyword_statistics(chunks, candidate_indices)
     idf = {
         token: math.log(
             (total - document_frequency[token] + 0.5) / (document_frequency[token] + 0.5) + 1
@@ -213,7 +300,7 @@ def keyword_ranking(query: str, chunks: tuple[KnowledgeChunk, ...]) -> list[int]
         return []
 
     scored: list[tuple[float, int]] = []
-    for index, counts in enumerate(tokenised):
+    for index, counts in tokenised.items():
         length = sum(counts.values())
         if not length:
             continue
@@ -236,25 +323,34 @@ def keyword_ranking(query: str, chunks: tuple[KnowledgeChunk, ...]) -> list[int]
     return [index for score, index in scored[:CANDIDATES_PER_METHOD] if score >= floor]
 
 
-def vector_ranking(query: str, vectors: tuple[array, ...]) -> list[int]:
+def vector_ranking(
+    query: str, vectors: tuple[array, ...], candidate_indices: list[int] | None = None
+) -> list[int]:
     """Rank chunks by closeness in meaning."""
     query_vector = embed_query(query)
     query_magnitude = sum(a * a for a in query_vector) ** 0.5
     if not query_magnitude:
         return []
+    candidate_indices = candidate_indices if candidate_indices is not None else list(range(len(vectors)))
     scored = [
         (_cosine(query_vector, stored, query_magnitude), index)
-        for index, stored in enumerate(vectors)
+        for index in candidate_indices
+        for stored in (vectors[index],)
     ]
     scored.sort(key=lambda item: (-item[0], item[1]))
     return [index for _, index in scored[:CANDIDATES_PER_METHOD]]
 
 
-def hybrid_search(query: str, limit: int = 5) -> list[SearchResult]:
-    """Run both searches and fuse them by rank."""
+def hybrid_search(query: str, limit: int = 5, owner_id: str | None = None) -> list[SearchResult]:
+    """Filter by access before ranking, then fuse keyword and vector search."""
     chunks, vectors = load_vector_index()
-    keyword = keyword_ranking(query, chunks)
-    semantic = vector_ranking(query, vectors)
+    candidate_indices = [
+        index
+        for index, chunk in enumerate(chunks)
+        if chunk.visibility == "org" or (owner_id is not None and chunk.owner_id == owner_id)
+    ]
+    keyword = keyword_ranking(query, chunks, candidate_indices)
+    semantic = vector_ranking(query, vectors, candidate_indices)
 
     positions: dict[int, dict[str, int]] = {}
     for rank, index in enumerate(keyword, start=1):
@@ -282,7 +378,19 @@ def retrieval_mode() -> str:
     return os.getenv("SIP_RETRIEVAL", "lexical").strip().lower()
 
 
-def retrieve(query: str, limit: int = 3) -> tuple[list, object]:
+def _relevance_threshold() -> float:
+    """Minimum RRF score accepted as evidence.
+
+    0.017 is deliberately just above a single rank-one vote (1/61 = 0.01639),
+    requiring agreement between keyword and vector search or multiple meaningful
+    votes. Deployments should override this after running the calibration set.
+    """
+    return float(os.getenv("SIP_RELEVANCE_THRESHOLD", "0.017"))
+
+
+def retrieve_with_diagnostics(
+    query: str, limit: int = 3, owner_id: str | None = None
+) -> tuple[list, object, list[RetrievalNearMiss]]:
     """Return documents for grounding, plus the excerpt function to pair with them.
 
     The seam. `main.py` asks for documents and gets documents, exactly as it did
@@ -298,17 +406,35 @@ def retrieve(query: str, limit: int = 3) -> tuple[list, object]:
     500s until someone runs a build script.
     """
     if retrieval_mode() != "hybrid":
-        return search_knowledge(query, limit=limit), create_excerpt
+        return search_knowledge(query, limit=limit), create_excerpt, []
 
     try:
-        results = hybrid_search(query, limit=limit * CHUNKS_PER_DOCUMENT)
+        results = hybrid_search(query, limit=limit * CHUNKS_PER_DOCUMENT, owner_id=owner_id)
     except FileNotFoundError:
         logger.warning(
             "SIP_RETRIEVAL=hybrid but no vector index found at %s; "
             "falling back to lexical retrieval. Build it with build_vector_index().",
             vector_store_path(),
         )
-        return search_knowledge(query, limit=limit), create_excerpt
+        return search_knowledge(query, limit=limit), create_excerpt, []
+
+    if not results or results[0].score < _relevance_threshold():
+        near_misses: list[RetrievalNearMiss] = []
+        seen: set[str] = set()
+        for result in results:
+            if result.chunk.source_id in seen:
+                continue
+            seen.add(result.chunk.source_id)
+            near_misses.append(
+                RetrievalNearMiss(
+                    title=result.chunk.document_title,
+                    url=result.chunk.canonical_url,
+                    score=round(result.score, 6),
+                )
+            )
+            if len(near_misses) == limit:
+                break
+        return [], create_excerpt, near_misses
 
     # Chunks are the retrieval unit, documents are the citation unit. Keep the order
     # the fusion produced, so the document holding the best chunk is cited first.
@@ -321,6 +447,20 @@ def retrieve(query: str, limit: int = 3) -> tuple[list, object]:
         document = get_knowledge_document(source_id)
         if document is not None:
             documents.append(document)
+            continue
+        chunk = next((item.chunk for item in results if item.chunk.source_id == source_id), None)
+        if chunk is not None:
+            documents.append(
+                RetrievedUploadDocument(
+                    source_id=chunk.source_id,
+                    title=chunk.document_title,
+                    organisation=chunk.organisation,
+                    language=chunk.language,
+                    page_type=chunk.page_type,
+                    canonical_url=chunk.canonical_url,
+                    content="\n\n".join(passages[source_id]),
+                )
+            )
 
     def excerpt(document, user_query: str, max_characters: int = 2_000) -> str:
         """Ground on the passages retrieval actually matched.
@@ -334,4 +474,10 @@ def retrieve(query: str, limit: int = 3) -> tuple[list, object]:
             return create_excerpt(document, user_query, max_characters)
         return "\n\n".join(matched)[:max_characters].rstrip()
 
+    return documents, excerpt, []
+
+
+def retrieve(query: str, limit: int = 3) -> tuple[list, object]:
+    """Stable retrieval seam used by the rest of the application."""
+    documents, excerpt, _ = retrieve_with_diagnostics(query, limit)
     return documents, excerpt

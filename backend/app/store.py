@@ -16,6 +16,7 @@ from app.models import (
     ConversationMessage,
     ConversationSummary,
     StoredBusinessContext,
+    UploadRecord,
     UserRecord,
 )
 
@@ -107,12 +108,76 @@ class ContextStore:
                 )
             except sqlite3.OperationalError:
                 pass  # column already exists on databases created before this change
+            for statement in (
+                "ALTER TABLE business_contexts ADD COLUMN owner_id TEXT",
+                "ALTER TABLE conversations ADD COLUMN owner_id TEXT",
+                "ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'context'",
+            ):
+                try:
+                    connection.execute(statement)
+                except sqlite3.OperationalError:
+                    pass
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_business_contexts_owner_status ON business_contexts(owner_id, status)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_owner_kind ON conversations(owner_id, kind, updated_at)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS uploads (
+                    id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('context_evidence', 'workspace')),
+                    filename TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    storage_path TEXT NOT NULL,
+                    page_count INTEGER,
+                    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('org', 'private')),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS upload_links (
+                    upload_id TEXT PRIMARY KEY,
+                    conversation_id TEXT,
+                    context_id TEXT,
+                    FOREIGN KEY (upload_id) REFERENCES uploads(id)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_uploads_owner_kind ON uploads(owner_id, kind, created_at)"
+            )
 
-    def list(self) -> list[ContextSummary]:
+    def backfill_owner(self, owner_id: str) -> None:
+        """Claim legacy rows for the bootstrap account; NULL must never mean public."""
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM business_contexts ORDER BY updated_at DESC"
-            ).fetchall()
+            connection.execute(
+                "UPDATE business_contexts SET owner_id = ? WHERE owner_id IS NULL", (owner_id,)
+            )
+            connection.execute(
+                "UPDATE conversations SET owner_id = ? WHERE owner_id IS NULL", (owner_id,)
+            )
+
+    def list(self, owner_id: str, is_admin: bool = False, approved_only: bool = False) -> list[ContextSummary]:
+        with self._connect() as connection:
+            if approved_only:
+                rows = connection.execute(
+                    "SELECT * FROM business_contexts WHERE status = 'approved' ORDER BY updated_at DESC"
+                ).fetchall()
+            elif is_admin:
+                rows = connection.execute(
+                    "SELECT * FROM business_contexts ORDER BY updated_at DESC"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM business_contexts WHERE owner_id = ? OR status = 'approved' ORDER BY updated_at DESC",
+                    (owner_id,),
+                ).fetchall()
 
         summaries = []
         for row in rows:
@@ -131,39 +196,49 @@ class ContextStore:
             )
         return summaries
 
-    def get(self, context_id: str) -> StoredBusinessContext | None:
+    def get(self, context_id: str, owner_id: str, is_admin: bool = False) -> StoredBusinessContext | None:
         with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM business_contexts WHERE id = ?", (context_id,)
-            ).fetchone()
+            if is_admin:
+                row = connection.execute("SELECT * FROM business_contexts WHERE id = ?", (context_id,)).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT * FROM business_contexts WHERE id = ? AND (owner_id = ? OR status = 'approved')",
+                    (context_id, owner_id),
+                ).fetchone()
 
         return self._to_context(row) if row else None
 
-    def create(self, context: BusinessContext, status: str) -> StoredBusinessContext:
+    def create(self, context: BusinessContext, status: str, owner_id: str) -> StoredBusinessContext:
         context_id = str(uuid4())
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO business_contexts (id, status, content) VALUES (?, ?, ?)",
-                (context_id, status, context.model_dump_json()),
+                "INSERT INTO business_contexts (id, status, content, owner_id) VALUES (?, ?, ?, ?)",
+                (context_id, status, context.model_dump_json(), owner_id),
             )
-        return self.get(context_id)  # type: ignore[return-value]
+        return self.get(context_id, owner_id)  # type: ignore[return-value]
 
     def update(
-        self, context_id: str, context: BusinessContext, status: str
+        self, context_id: str, context: BusinessContext, status: str, owner_id: str, is_admin: bool = False
     ) -> StoredBusinessContext | None:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE business_contexts
                 SET status = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE id = ? AND (? OR owner_id = ?)
                 """,
-                (status, context.model_dump_json(), context_id),
+                (status, context.model_dump_json(), context_id, int(is_admin), owner_id),
             )
-        return self.get(context_id) if cursor.rowcount else None
+        return self.get(context_id, owner_id, is_admin) if cursor.rowcount else None
 
-    def delete_context(self, context_id: str) -> bool:
+    def delete_context(self, context_id: str, owner_id: str, is_admin: bool = False) -> bool:
         with self._connect() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM business_contexts WHERE id = ? AND (? OR owner_id = ?)",
+                (context_id, int(is_admin), owner_id),
+            ).fetchone()
+            if exists is None:
+                return False
             connection.execute(
                 """
                 UPDATE conversations
@@ -172,24 +247,23 @@ class ContextStore:
                 """,
                 (context_id,),
             )
-            cursor = connection.execute(
-                "DELETE FROM business_contexts WHERE id = ?", (context_id,)
-            )
-        return bool(cursor.rowcount)
+            connection.execute("DELETE FROM business_contexts WHERE id = ?", (context_id,))
+        return True
 
-    def create_conversation(self, language: str = "en") -> ConversationDetail:
+    def create_conversation(self, owner_id: str, language: str = "en", kind: str = "context") -> ConversationDetail:
         conversation_id = str(uuid4())
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO conversations (id, language) VALUES (?, ?)",
-                (conversation_id, language),
+                "INSERT INTO conversations (id, language, owner_id, kind) VALUES (?, ?, ?, ?)",
+                (conversation_id, language, owner_id, kind),
             )
-        return self.get_conversation(conversation_id)  # type: ignore[return-value]
+        return self.get_conversation(conversation_id, owner_id)  # type: ignore[return-value]
 
-    def delete_conversation(self, conversation_id: str) -> bool:
+    def delete_conversation(self, conversation_id: str, owner_id: str, is_admin: bool = False) -> bool:
         with self._connect() as connection:
             exists = connection.execute(
-                "SELECT 1 FROM conversations WHERE id = ?", (conversation_id,)
+                "SELECT 1 FROM conversations WHERE id = ? AND (? OR owner_id = ?)",
+                (conversation_id, int(is_admin), owner_id),
             ).fetchone()
             if exists is None:
                 return False
@@ -202,15 +276,24 @@ class ContextStore:
             )
         return True
 
-    def list_conversations(self) -> list[ConversationSummary]:
+    def list_conversations(self, owner_id: str, is_admin: bool = False, kind: str | None = None) -> list[ConversationSummary]:
         with self._connect() as connection:
-            rows = connection.execute(self._conversation_query()).fetchall()
+            clauses, params = [], []
+            if not is_admin:
+                clauses.append("c.owner_id = ?")
+                params.append(owner_id)
+            if kind:
+                clauses.append("c.kind = ?")
+                params.append(kind)
+            where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            rows = connection.execute(self._conversation_query(where), params).fetchall()
         return [self._to_conversation_summary(row) for row in rows]
 
-    def get_conversation(self, conversation_id: str) -> ConversationDetail | None:
+    def get_conversation(self, conversation_id: str, owner_id: str, is_admin: bool = False) -> ConversationDetail | None:
         with self._connect() as connection:
             row = connection.execute(
-                self._conversation_query("WHERE c.id = ?"), (conversation_id,)
+                self._conversation_query("WHERE c.id = ? AND (? OR c.owner_id = ?)"),
+                (conversation_id, int(is_admin), owner_id),
             ).fetchone()
             if row is None:
                 return None
@@ -237,11 +320,14 @@ class ContextStore:
         assistant_message: str,
         is_ready_to_save: bool,
         readiness_reason: str,
+        owner_id: str,
+        is_admin: bool = False,
     ) -> ConversationDetail | None:
         title = self._conversation_title(user_message)
         with self._connect() as connection:
             exists = connection.execute(
-                "SELECT title FROM conversations WHERE id = ?", (conversation_id,)
+                "SELECT title FROM conversations WHERE id = ? AND (? OR owner_id = ?)",
+                (conversation_id, int(is_admin), owner_id),
             ).fetchone()
             if exists is None:
                 return None
@@ -275,21 +361,26 @@ class ContextStore:
                     conversation_id,
                 ),
             )
-        return self.get_conversation(conversation_id)
+        return self.get_conversation(conversation_id, owner_id, is_admin)
 
     def link_conversation_to_context(
-        self, conversation_id: str, context_id: str
+        self, conversation_id: str, context_id: str, owner_id: str, is_admin: bool = False
     ) -> ConversationDetail | None:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE conversations
                 SET portfolio_context_id = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE id = ? AND (? OR owner_id = ?)
                 """,
-                (context_id, conversation_id),
+                (context_id, conversation_id, int(is_admin), owner_id),
             )
-        return self.get_conversation(conversation_id) if cursor.rowcount else None
+            if cursor.rowcount:
+                connection.execute(
+                    "UPDATE upload_links SET context_id = ? WHERE conversation_id = ?",
+                    (context_id, conversation_id),
+                )
+        return self.get_conversation(conversation_id, owner_id, is_admin) if cursor.rowcount else None
 
     @staticmethod
     def _to_context(row: sqlite3.Row) -> StoredBusinessContext:
@@ -332,6 +423,7 @@ class ContextStore:
             title=row["title"],
             preview=row["preview"],
             language=row["language"] if row["language"] in ("en", "nl", "de") else "en",
+            kind=row["kind"] if row["kind"] in ("context", "knowledge") else "context",
             is_ready_to_save=bool(row["is_ready_to_save"]),
             readiness_reason=row["readiness_reason"],
             portfolio_context_id=row["portfolio_context_id"],
@@ -405,6 +497,99 @@ class ContextStore:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
         return bool(cursor.rowcount)
+
+    def create_upload(
+        self,
+        *,
+        owner_id: str,
+        kind: str,
+        filename: str,
+        media_type: str,
+        size_bytes: int,
+        storage_path: str,
+        page_count: int | None,
+        conversation_id: str | None = None,
+        context_id: str | None = None,
+        upload_id: str | None = None,
+    ) -> UploadRecord:
+        upload_id = upload_id or str(uuid4())
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO uploads
+                    (id, owner_id, kind, filename, media_type, size_bytes, storage_path, page_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (upload_id, owner_id, kind, filename, media_type, size_bytes, storage_path, page_count),
+            )
+            connection.execute(
+                "INSERT INTO upload_links (upload_id, conversation_id, context_id) VALUES (?, ?, ?)",
+                (upload_id, conversation_id, context_id),
+            )
+        return self.get_upload(upload_id, owner_id)  # type: ignore[return-value]
+
+    def get_upload(self, upload_id: str, owner_id: str, is_admin: bool = False) -> UploadRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT u.*, l.conversation_id, l.context_id
+                FROM uploads u LEFT JOIN upload_links l ON l.upload_id = u.id
+                WHERE u.id = ? AND (? OR u.owner_id = ? OR u.visibility = 'org')
+                """,
+                (upload_id, int(is_admin), owner_id),
+            ).fetchone()
+        return self._to_upload(row) if row else None
+
+    def get_upload_storage_path(self, upload_id: str, owner_id: str, is_admin: bool = False) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT storage_path FROM uploads WHERE id = ? AND (? OR owner_id = ? OR visibility = 'org')",
+                (upload_id, int(is_admin), owner_id),
+            ).fetchone()
+        return row["storage_path"] if row else None
+
+    def list_uploads(self, owner_id: str, is_admin: bool = False) -> list[UploadRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT u.*, l.conversation_id, l.context_id
+                FROM uploads u LEFT JOIN upload_links l ON l.upload_id = u.id
+                WHERE ? OR u.owner_id = ? OR u.visibility = 'org'
+                ORDER BY u.created_at DESC
+                """,
+                (int(is_admin), owner_id),
+            ).fetchall()
+        return [self._to_upload(row) for row in rows]
+
+    def set_upload_visibility(self, upload_id: str, owner_id: str, visibility: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE uploads SET visibility = ? WHERE id = ? AND owner_id = ?",
+                (visibility, upload_id, owner_id),
+            )
+        return bool(cursor.rowcount)
+
+    def delete_upload(self, upload_id: str, owner_id: str, is_admin: bool = False) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT storage_path FROM uploads WHERE id = ? AND (? OR owner_id = ?)",
+                (upload_id, int(is_admin), owner_id),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute("DELETE FROM upload_links WHERE upload_id = ?", (upload_id,))
+            connection.execute("DELETE FROM uploads WHERE id = ?", (upload_id,))
+        return row["storage_path"]
+
+    @staticmethod
+    def _to_upload(row: sqlite3.Row) -> UploadRecord:
+        return UploadRecord(
+            id=row["id"], kind=row["kind"], filename=row["filename"],
+            media_type=row["media_type"], size_bytes=row["size_bytes"],
+            page_count=row["page_count"], visibility=row["visibility"],
+            context_id=row["context_id"], conversation_id=row["conversation_id"],
+            created_at=row["created_at"],
+        )
 
     @staticmethod
     def _to_user_record(row: sqlite3.Row) -> UserRecord:

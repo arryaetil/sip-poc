@@ -17,6 +17,10 @@ data/
 
 # Python
 __pycache__/
+.test-data/
+.test-tmp/
+.pytest_cache/
+pytest-cache-files-*/
 *.py[cod]
 .venv/
 venv/

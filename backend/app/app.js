@@ -24,6 +24,8 @@ const contextForm = document.querySelector("#context-form");
 const reviewStatus = document.querySelector("#review-status");
 const reviewState = document.querySelector("#review-state");
 const reviewTitle = document.querySelector("#review-title");
+const approvalDocumentsSection = document.querySelector("#approval-documents-section");
+const approvalDocumentsList = document.querySelector("#approval-documents-list");
 const backFromReview = document.querySelector("#back-to-chat");
 const portfolioList = document.querySelector("#portfolio-list");
 const portfolioCount = document.querySelector("#portfolio-count");
@@ -62,8 +64,14 @@ const knowledgeInput = document.querySelector("#knowledge-message");
 const knowledgeMessages = document.querySelector("#knowledge-messages");
 const knowledgeSend = document.querySelector("#knowledge-send");
 const knowledgeStatus = document.querySelector("#knowledge-status");
+const contextUpload = document.querySelector("#context-upload");
+const knowledgeUpload = document.querySelector("#knowledge-upload");
 const newKnowledgeChat = document.querySelector("#new-knowledge-chat");
+const knowledgeHistory = document.querySelector("#knowledge-history");
 const newConversationButton = document.querySelector("#new-conversation");
+const conversationStartForm = document.querySelector("#conversation-start-form");
+const conversationStartMessage = document.querySelector("#conversation-start-message");
+const conversationStartSend = document.querySelector("#conversation-start-send");
 const navCreateContext = document.querySelector("#nav-create-context");
 const deleteDialog = document.querySelector("#delete-dialog");
 const deleteTitle = document.querySelector("#delete-title");
@@ -107,15 +115,17 @@ let currentContextId = null;
 let reviewOrigin = "portfolio";
 let portfolioContexts = [];
 let portfolioSources = [];
-let knowledgePreviousResponseId = null;
+let knowledgeConversationId = null;
 let pendingDelete = null;
 let currentRole = "admin";
 let currentUserEmail = "";
+let acceptedDocumentProposals = [];
 
 async function api(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
   });
   if (response.status === 204) return null;
   const data = await response.json();
@@ -185,6 +195,7 @@ function showView(name) {
   Object.entries(views).forEach(([viewName, element]) => {
     element.hidden = viewName !== name;
   });
+  document.body.classList.toggle("chat-open", name === "builder" || name === "knowledge");
   const navigationView = name === "builder" || (name === "review" && reviewOrigin === "builder")
     ? "conversations"
     : name === "review" || name === "source" ? "portfolio" : name;
@@ -275,6 +286,31 @@ async function createConversation() {
     conversationList.textContent = error.message;
   }
 }
+
+conversationStartForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = conversationStartMessage.value.trim();
+  if (!message) return;
+  conversationStartSend.disabled = true;
+  try {
+    const conversation = await api("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify({ language: getLanguage(), kind: "context" }),
+    });
+    const turn = await api(`/api/conversations/${conversation.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+    conversationStartMessage.value = "";
+    renderConversation(turn.conversation);
+    showView("builder");
+    input.focus();
+  } catch (error) {
+    conversationList.textContent = error.message;
+  } finally {
+    conversationStartSend.disabled = false;
+  }
+});
 
 async function openConversation(conversationId) {
   try {
@@ -374,6 +410,35 @@ function fillContextForm(context, status = "draft") {
   reviewState.classList.toggle("approved", status === "approved");
   reviewTitle.textContent = context.name ? t("review.title_named", { name: context.name }) : t("review.title_default");
   setStatus(reviewStatus, "");
+  loadApprovalDocuments();
+}
+
+async function loadApprovalDocuments() {
+  approvalDocumentsList.replaceChildren();
+  if (!currentContextId) {
+    approvalDocumentsSection.hidden = true;
+    return;
+  }
+  try {
+    const uploads = (await api("/api/uploads")).filter(
+      (upload) => upload.kind === "context_evidence" && upload.context_id === currentContextId,
+    );
+    approvalDocumentsSection.hidden = !uploads.length;
+    uploads.forEach((upload) => {
+      const label = document.createElement("label");
+      label.className = "approval-document";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = upload.id;
+      checkbox.checked = upload.visibility === "org" || upload.visibility === "private";
+      const copy = document.createElement("span");
+      copy.textContent = upload.filename;
+      label.append(checkbox, copy);
+      approvalDocumentsList.append(label);
+    });
+  } catch (error) {
+    approvalDocumentsSection.hidden = true;
+  }
 }
 
 function readContextForm() {
@@ -416,9 +481,12 @@ async function saveContext(status) {
   setStatus(reviewStatus, status === "approved" ? t("review.approving") : t("review.saving"), "success");
   try {
     const path = currentContextId ? `/api/contexts/${currentContextId}` : "/api/contexts";
+    const publishUploadIds = status === "approved"
+      ? [...approvalDocumentsList.querySelectorAll('input[type="checkbox"]:checked')].map((item) => item.value)
+      : [];
     const saved = await api(path, {
       method: currentContextId ? "PUT" : "POST",
-      body: JSON.stringify({ context: readContextForm(), status }),
+      body: JSON.stringify({ context: readContextForm(), status, publish_upload_ids: publishUploadIds }),
     });
     currentContextId = saved.id;
     fillContextForm(saved, saved.status);
@@ -679,7 +747,7 @@ async function openSource(sourceId) {
   }
 }
 
-function appendKnowledgeMessage(text, role, sources = []) {
+function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], onGeneral = null) {
   const row = appendMessage(knowledgeMessages, text, role, t("knowledge.assistant_name"));
   if (role === "assistant" && sources.length) {
     const links = document.createElement("div");
@@ -694,17 +762,141 @@ function appendKnowledgeMessage(text, role, sources = []) {
     });
     row.querySelector(".message-content").append(links);
   }
+  if (role === "assistant" && nearMisses.length) {
+    const block = document.createElement("div");
+    block.className = "near-misses";
+    const label = document.createElement("strong");
+    label.textContent = t("knowledge.near_misses");
+    block.append(label);
+    nearMisses.forEach((source) => {
+      const link = document.createElement("a");
+      link.href = source.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = `${source.title} (${source.score.toFixed(4)})`;
+      block.append(link);
+    });
+    row.querySelector(".message-content").append(block);
+  }
+  if (role === "assistant" && onGeneral) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button general-answer";
+    button.textContent = t("knowledge.answer_generally");
+    button.addEventListener("click", onGeneral, { once: true });
+    row.querySelector(".message-content").append(button);
+  }
   return row;
 }
 
 function resetKnowledgeChat() {
-  knowledgePreviousResponseId = null;
+  knowledgeConversationId = null;
   knowledgeMessages.replaceChildren();
   appendKnowledgeMessage(t("knowledge.first_message"), "assistant");
   setStatus(knowledgeStatus, "");
   knowledgeInput.value = "";
   resizeTextArea(knowledgeInput);
 }
+
+async function uploadDocument(file, kind, conversationId = null) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  if (conversationId) form.append("conversation_id", conversationId);
+  return api("/api/uploads", { method: "POST", body: form });
+}
+
+function renderDocumentProposals(upload, proposals) {
+  if (!proposals.length) return addMessage(t("uploads.no_proposals"), "assistant");
+  const row = addMessage(t("uploads.proposals_intro", { filename: upload.filename }), "assistant");
+  const container = document.createElement("div");
+  container.className = "proposal-list";
+  proposals.forEach((proposal) => {
+    const card = document.createElement("div");
+    card.className = "proposal-card";
+    const provenance = document.createElement("small");
+    provenance.textContent = `${upload.filename}${proposal.page ? ` · p. ${proposal.page}` : ""}: “${proposal.quote}”`;
+    const field = document.createElement("strong");
+    field.textContent = proposal.field_name.replaceAll("_", " ");
+    const value = document.createElement("input");
+    value.value = proposal.value;
+    const actions = document.createElement("div");
+    actions.className = "proposal-actions";
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.className = "secondary-button";
+    accept.textContent = t("uploads.accept");
+    const ignore = document.createElement("button");
+    ignore.type = "button";
+    ignore.className = "text-button";
+    ignore.textContent = t("uploads.ignore");
+    accept.addEventListener("click", () => {
+      acceptedDocumentProposals.push({ ...proposal, value: value.value.trim() });
+      card.remove();
+    });
+    ignore.addEventListener("click", () => card.remove());
+    actions.append(accept, ignore);
+    card.append(provenance, field, value, actions);
+    container.append(card);
+  });
+  row.querySelector(".message-content").append(container);
+}
+
+contextUpload.addEventListener("change", async () => {
+  const file = contextUpload.files[0];
+  if (!file || !currentConversation) return;
+  setStatus(chatStatus, t("uploads.processing"), "success");
+  try {
+    const upload = await uploadDocument(file, "context_evidence", currentConversation.id);
+    const batch = await api(`/api/uploads/${upload.id}/proposals`, { method: "POST" });
+    renderDocumentProposals(upload, batch.proposals);
+    setStatus(chatStatus, t("uploads.private_evidence"), "success");
+  } catch (error) {
+    setStatus(chatStatus, error.message);
+  } finally {
+    contextUpload.value = "";
+  }
+});
+
+knowledgeUpload.addEventListener("change", async () => {
+  const file = knowledgeUpload.files[0];
+  if (!file) return;
+  setStatus(knowledgeStatus, t("uploads.processing"), "success");
+  try {
+    const upload = await uploadDocument(file, "workspace");
+    appendKnowledgeMessage(t("uploads.added", { filename: upload.filename }), "assistant");
+    setStatus(knowledgeStatus, t("uploads.private_workspace"), "success");
+  } catch (error) {
+    setStatus(knowledgeStatus, error.message);
+  } finally {
+    knowledgeUpload.value = "";
+  }
+});
+
+async function loadKnowledgeHistory() {
+  const conversations = await api("/api/conversations?kind=knowledge");
+  knowledgeHistory.replaceChildren(new Option(t("knowledge.history"), ""));
+  conversations.forEach((conversation) => {
+    knowledgeHistory.add(new Option(conversation.title, conversation.id));
+  });
+  acceptedDocumentProposals.forEach(({ field_name, value }) => {
+    const field = contextForm.elements.namedItem(field_name);
+    if (!field || field_name === "assumptions" || field_name === "open_questions") return;
+    if (listFields.has(field_name)) {
+      const values = field.value.split("\n").filter(Boolean);
+      if (!values.includes(value)) field.value = [...values, value].join("\n");
+    } else if (!field.value) field.value = value;
+  });
+  knowledgeHistory.value = knowledgeConversationId || "";
+}
+
+knowledgeHistory.addEventListener("change", async () => {
+  if (!knowledgeHistory.value) return resetKnowledgeChat();
+  const conversation = await api(`/api/conversations/${knowledgeHistory.value}`);
+  knowledgeConversationId = conversation.id;
+  knowledgeMessages.replaceChildren();
+  conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
+});
 
 function renderTeam(users) {
   teamList.replaceChildren();
@@ -868,12 +1060,25 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({
         message,
-        previous_response_id: knowledgePreviousResponseId,
+        conversation_id: knowledgeConversationId,
         language: getLanguage(),
       }),
     });
-    knowledgePreviousResponseId = data.response_id;
-    appendKnowledgeMessage(data.message, "assistant", data.sources);
+    knowledgeConversationId = data.conversation_id;
+    appendKnowledgeMessage(
+      data.message,
+      "assistant",
+      data.sources,
+      data.near_misses,
+      data.general_answer_available ? async () => {
+        const general = await api("/api/knowledge/chat", {
+          method: "POST",
+          body: JSON.stringify({ message, conversation_id: knowledgeConversationId, language: getLanguage(), answer_generally: true }),
+        });
+        appendKnowledgeMessage(general.message, "assistant");
+      } : null,
+    );
+    await loadKnowledgeHistory();
     setStatus(knowledgeStatus, "");
   } catch (error) {
     userRow.remove();
@@ -905,7 +1110,7 @@ languageSwitcher.addEventListener("change", () => {
   if (!views.portfolio.hidden) {
     renderPortfolio();
   }
-  if (!views.knowledge.hidden && !knowledgePreviousResponseId) resetKnowledgeChat();
+  if (!views.knowledge.hidden && !knowledgeConversationId) resetKnowledgeChat();
 });
 
 document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
@@ -914,7 +1119,10 @@ document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     if (item.dataset.view === "portfolio") await loadPortfolio();
     if (item.dataset.view === "team") await loadTeam();
     showView(item.dataset.view);
-    if (item.dataset.view === "knowledge") knowledgeInput.focus();
+    if (item.dataset.view === "knowledge") {
+      await loadKnowledgeHistory();
+      knowledgeInput.focus();
+    }
   });
 });
 

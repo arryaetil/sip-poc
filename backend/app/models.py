@@ -35,14 +35,22 @@ class KnowledgeChatSource(BaseModel):
     url: str
 
 
+class KnowledgeNearMiss(KnowledgeChatSource):
+    score: float
+
+
 class KnowledgeChatResponse(BaseModel):
     message: str
-    response_id: str
+    response_id: str | None = None
     sources: list[KnowledgeChatSource]
+    near_misses: list[KnowledgeNearMiss] = Field(default_factory=list)
+    conversation_id: str
+    general_answer_available: bool = False
 
 
 class ConversationCreateRequest(BaseModel):
     language: Literal["en", "nl", "de"] = "en"
+    kind: Literal["context", "knowledge"] = "context"
 
 
 class UserInfo(BaseModel):
@@ -87,6 +95,7 @@ class ConversationSummary(BaseModel):
     title: str
     preview: str
     language: Literal["en", "nl", "de"]
+    kind: Literal["context", "knowledge"] = "context"
     is_ready_to_save: bool
     readiness_reason: str
     portfolio_context_id: str | None
@@ -107,6 +116,7 @@ class ConversationTurnResponse(BaseModel):
 class SaveContextRequest(BaseModel):
     context: BusinessContext
     status: Literal["draft", "approved"]
+    publish_upload_ids: list[str] = Field(default_factory=list)
 
 
 class StoredBusinessContext(BusinessContext):
@@ -185,3 +195,33 @@ class PortfolioSourceDetail(PortfolioSourceSummary):
 class PortfolioSourceCollection(BaseModel):
     total: int
     items: list[PortfolioSourceSummary]
+
+
+class UploadRecord(BaseModel):
+    id: str
+    kind: Literal["context_evidence", "workspace"]
+    filename: str
+    media_type: str
+    size_bytes: int
+    page_count: int | None
+    visibility: Literal["org", "private"]
+    context_id: str | None = None
+    conversation_id: str | None = None
+    created_at: str
+
+
+class DocumentProposal(BaseModel):
+    field_name: Literal[
+        "name", "offering_type", "short_summary", "customer_problems_addressed",
+        "core_capabilities", "target_organisations", "relevant_industries",
+        "relevant_roles_and_decision_makers", "geographic_focus", "value_proposition",
+        "differentiators", "people", "supporting_evidence_or_knowledge_sources",
+        "key_marketing_messages",
+    ]
+    value: str
+    quote: str
+    page: int | None = None
+
+
+class DocumentProposalBatch(BaseModel):
+    proposals: list[DocumentProposal] = Field(default_factory=list)

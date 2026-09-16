@@ -10,4 +10,4 @@ COPY knowledge ./knowledge
 
 WORKDIR /workspace/backend
 
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["python", "-m", "app.start"]

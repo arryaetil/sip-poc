@@ -68,12 +68,26 @@
 
     <main class="workspace">
       <section id="conversations-view" class="view conversations" aria-labelledby="conversations-title">
-        <header class="view-header">
+        <section class="conversation-launcher">
+          <p class="launcher-kicker" data-i18n="conversations.kicker">Create a Business Context</p>
+          <h1 id="conversations-title" data-i18n="conversations.prompt_title">What would you like to work on?</h1>
+          <form id="conversation-start-form" class="launcher-form">
+            <textarea id="conversation-start-message" rows="2" data-i18n-placeholder="conversations.prompt_placeholder" placeholder="Describe a product, service or idea…" required></textarea>
+            <div class="launcher-actions">
+              <span data-i18n="conversations.prompt_hint">Start in your own words</span>
+              <button id="conversation-start-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <header class="history-header">
           <div>
-            <h1 id="conversations-title" data-i18n="conversations.title">Your conversations</h1>
+            <h2 data-i18n="conversations.title">Your conversations</h2>
             <p data-i18n="conversations.subtitle">Continue a Business Context where you left off, or start a new one.</p>
           </div>
-          <button id="new-conversation" class="primary-button" type="button" data-i18n="conversations.new">New conversation</button>
+          <button id="new-conversation" class="secondary-button" type="button" data-i18n="conversations.new">New conversation</button>
         </header>
 
         <div class="conversation-columns" aria-hidden="true">
@@ -118,6 +132,7 @@
               </button>
             </form>
             <div class="composer-meta">
+              <label class="upload-control"><input id="context-upload" type="file" accept=".pdf,.docx" hidden><span data-i18n="uploads.add_evidence">＋ Add evidence</span></label>
               <p id="chat-status" class="status" role="status"></p>
               <p class="privacy-note" data-i18n="composer.privacy_note">Do not enter unnecessary personal data.</p>
             </div>
@@ -192,6 +207,12 @@
               <label class="field"><span data-i18n="review.field.assumptions">Assumptions</span><textarea name="assumptions" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.assumptions_hint">Keep separate from confirmed information</span></label>
               <label class="field"><span data-i18n="review.field.open_questions">Open questions</span><textarea name="open_questions" rows="5" data-list></textarea><span class="hint" data-i18n="review.field.open_questions_hint">Resolve before final approval where possible</span></label>
             </div>
+          </section>
+
+          <section id="approval-documents-section" class="form-section approval-documents" hidden>
+            <h2 data-i18n="review.documents_title">Documents shared on approval</h2>
+            <p data-i18n="review.documents_warning">Approving this context makes the selected documents searchable by everyone in the organisation. Clear a document to keep it private.</p>
+            <div id="approval-documents-list"></div>
           </section>
 
           <footer class="form-actions">
@@ -323,7 +344,11 @@
             <h1 id="knowledge-title" data-i18n="knowledge.title">Ask ibc group</h1>
             <p data-i18n="knowledge.subtitle">Explore the reviewed knowledge about ETIL, ibc group, services and products.</p>
           </div>
-          <button id="new-knowledge-chat" class="secondary-button" type="button" data-i18n="knowledge.new_chat">New chat</button>
+          <div class="toolbar-actions">
+            <label class="sr-only" for="knowledge-history" data-i18n="knowledge.history">Chat history</label>
+            <select id="knowledge-history" aria-label="Chat history"></select>
+            <button id="new-knowledge-chat" class="secondary-button" type="button" data-i18n="knowledge.new_chat">New chat</button>
+          </div>
         </header>
         <section class="chat-surface" aria-label="ibc group knowledge conversation">
           <div id="knowledge-messages" class="knowledge-messages" aria-live="polite"></div>
@@ -335,6 +360,7 @@
               </button>
             </form>
             <div class="composer-meta">
+              <label class="upload-control"><input id="knowledge-upload" type="file" accept=".pdf,.docx" hidden><span data-i18n="uploads.add_workspace">＋ Add document</span></label>
               <p id="knowledge-status" class="status" role="status"></p>
               <p class="privacy-note" data-i18n="composer.privacy_note">Do not enter unnecessary personal data.</p>
             </div>
