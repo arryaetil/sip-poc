@@ -68,6 +68,12 @@ const contextUpload = document.querySelector("#context-upload");
 const knowledgeUpload = document.querySelector("#knowledge-upload");
 const newKnowledgeChat = document.querySelector("#new-knowledge-chat");
 const knowledgeHistory = document.querySelector("#knowledge-history");
+const knowledgeHome = document.querySelector("#knowledge-home");
+const knowledgeChat = document.querySelector("#knowledge-chat");
+const knowledgeConversationList = document.querySelector("#knowledge-conversation-list");
+const knowledgeStartForm = document.querySelector("#knowledge-start-form");
+const knowledgeStartMessage = document.querySelector("#knowledge-start-message");
+const knowledgeStartSend = document.querySelector("#knowledge-start-send");
 const newConversationButton = document.querySelector("#new-conversation");
 const conversationStartForm = document.querySelector("#conversation-start-form");
 const conversationStartMessage = document.querySelector("#conversation-start-message");
@@ -195,7 +201,7 @@ function showView(name) {
   Object.entries(views).forEach(([viewName, element]) => {
     element.hidden = viewName !== name;
   });
-  document.body.classList.toggle("chat-open", name === "builder" || name === "knowledge");
+  document.body.classList.toggle("chat-open", name === "builder" || (name === "knowledge" && !knowledgeChat.hidden));
   const navigationView = name === "builder" || (name === "review" && reviewOrigin === "builder")
     ? "conversations"
     : name === "review" || name === "source" ? "portfolio" : name;
@@ -798,6 +804,32 @@ function resetKnowledgeChat() {
   resizeTextArea(knowledgeInput);
 }
 
+function showKnowledgeHome() {
+  knowledgeConversationId = null;
+  knowledgeHome.hidden = false;
+  knowledgeChat.hidden = true;
+  document.body.classList.remove("chat-open");
+  knowledgeStartMessage.value = "";
+  knowledgeStartMessage.focus();
+}
+
+function showKnowledgeConversation() {
+  knowledgeHome.hidden = true;
+  knowledgeChat.hidden = false;
+  document.body.classList.add("chat-open");
+}
+
+async function openKnowledgeConversation(conversationId) {
+  const conversation = await api(`/api/conversations/${conversationId}`);
+  knowledgeConversationId = conversation.id;
+  knowledgeMessages.replaceChildren();
+  if (!conversation.messages.length) appendKnowledgeMessage(t("knowledge.first_message"), "assistant");
+  else conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
+  knowledgeHistory.value = conversation.id;
+  showKnowledgeConversation();
+  knowledgeInput.focus();
+}
+
 async function uploadDocument(file, kind, conversationId = null) {
   const form = new FormData();
   form.append("file", file);
@@ -876,9 +908,38 @@ knowledgeUpload.addEventListener("change", async () => {
 async function loadKnowledgeHistory() {
   const conversations = await api("/api/conversations?kind=knowledge");
   knowledgeHistory.replaceChildren(new Option(t("knowledge.history"), ""));
+  knowledgeConversationList.replaceChildren();
   conversations.forEach((conversation) => {
     knowledgeHistory.add(new Option(conversation.title, conversation.id));
+    const row = document.createElement("div");
+    row.className = "conversation-row";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "row-open";
+    open.addEventListener("click", () => openKnowledgeConversation(conversation.id));
+    const description = document.createElement("span");
+    const title = document.createElement("span");
+    title.className = "conversation-title";
+    title.textContent = conversation.title;
+    const preview = document.createElement("span");
+    preview.className = "conversation-preview";
+    preview.textContent = conversation.preview || t("conversations.no_messages");
+    description.append(title, preview);
+    const spacer = document.createElement("span");
+    const updated = document.createElement("span");
+    updated.className = "conversation-date";
+    updated.textContent = formatDate(conversation.updated_at);
+    open.append(description, spacer, updated);
+    row.append(open, deleteButton(t("conversations.delete_aria", { title: conversation.title }), () =>
+      requestDelete("conversation", conversation.id, conversation.title)));
+    knowledgeConversationList.append(row);
   });
+  if (!conversations.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = t("conversations.empty_title");
+    knowledgeConversationList.append(empty);
+  }
   acceptedDocumentProposals.forEach(({ field_name, value }) => {
     const field = contextForm.elements.namedItem(field_name);
     if (!field || field_name === "assumptions" || field_name === "open_questions") return;
@@ -892,10 +953,19 @@ async function loadKnowledgeHistory() {
 
 knowledgeHistory.addEventListener("change", async () => {
   if (!knowledgeHistory.value) return resetKnowledgeChat();
-  const conversation = await api(`/api/conversations/${knowledgeHistory.value}`);
-  knowledgeConversationId = conversation.id;
-  knowledgeMessages.replaceChildren();
-  conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
+  await openKnowledgeConversation(knowledgeHistory.value);
+});
+
+knowledgeStartForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const message = knowledgeStartMessage.value.trim();
+  if (!message) return;
+  knowledgeStartSend.disabled = true;
+  resetKnowledgeChat();
+  knowledgeInput.value = message;
+  showKnowledgeConversation();
+  knowledgeChatForm.requestSubmit();
+  knowledgeStartSend.disabled = false;
 });
 
 function renderTeam(users) {
@@ -1099,8 +1169,8 @@ knowledgeInput.addEventListener("keydown", (event) => {
 });
 knowledgeInput.addEventListener("input", () => resizeTextArea(knowledgeInput));
 newKnowledgeChat.addEventListener("click", () => {
-  resetKnowledgeChat();
-  knowledgeInput.focus();
+  showKnowledgeHome();
+  loadKnowledgeHistory();
 });
 
 languageSwitcher.addEventListener("change", () => {
@@ -1121,7 +1191,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     showView(item.dataset.view);
     if (item.dataset.view === "knowledge") {
       await loadKnowledgeHistory();
-      knowledgeInput.focus();
+      showKnowledgeHome();
     }
   });
 });
@@ -1167,7 +1237,10 @@ confirmDelete.addEventListener("click", async () => {
     });
     deleteDialog.close();
     pendingDelete = null;
-    if (kind === "conversation") await loadConversations();
+    if (kind === "conversation") {
+      await loadConversations();
+      if (!views.knowledge.hidden) await loadKnowledgeHistory();
+    }
     else await loadPortfolio();
   } catch (error) {
     deleteDescription.textContent = error.message;

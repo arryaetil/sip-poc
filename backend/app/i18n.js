@@ -18,7 +18,7 @@ const I18N = {
 
     "conversations.title": "Your conversations",
     "conversations.kicker": "Create a Business Context",
-    "conversations.prompt_title": "What would you like to work on?",
+    "conversations.prompt_title": "What Business Context would you like to create?",
     "conversations.prompt_placeholder": "Describe a product, service or idea…",
     "conversations.prompt_hint": "Start in your own words",
     "conversations.subtitle": "Continue a Business Context where you left off, or start a new one.",
@@ -174,6 +174,9 @@ const I18N = {
     "status.website": "website",
 
     "knowledge.title": "Ask ibc group",
+    "knowledge.prompt_title": "What would you like to work on?",
+    "knowledge.history_title": "Your conversations",
+    "knowledge.history_subtitle": "Continue an earlier conversation or start a new one.",
     "knowledge.subtitle": "Ask questions about ibc group and ETIL products, services, expertise and published cases.",
     "knowledge.new_chat": "New chat",
     "knowledge.placeholder": "Ask about ibc group or ETIL…",
@@ -238,7 +241,7 @@ const I18N = {
 
     "conversations.title": "Jouw gesprekken",
     "conversations.kicker": "Business Context aanmaken",
-    "conversations.prompt_title": "Waar wil je aan werken?",
+    "conversations.prompt_title": "Welke Business Context wil je aanmaken?",
     "conversations.prompt_placeholder": "Beschrijf een product, dienst of idee…",
     "conversations.prompt_hint": "Begin in je eigen woorden",
     "conversations.subtitle": "Ga verder waar je gebleven was, of start een nieuw gesprek.",
@@ -394,6 +397,9 @@ const I18N = {
     "status.website": "website",
 
     "knowledge.title": "Vraag ibc group",
+    "knowledge.prompt_title": "Waar wil je aan werken?",
+    "knowledge.history_title": "Jouw gesprekken",
+    "knowledge.history_subtitle": "Ga verder met een eerder gesprek of begin een nieuw gesprek.",
     "knowledge.subtitle": "Stel vragen over producten, diensten, expertise en gepubliceerde cases van ibc group en ETIL.",
     "knowledge.new_chat": "Nieuwe chat",
     "knowledge.placeholder": "Vraag iets over ibc group of ETIL…",
@@ -458,7 +464,7 @@ const I18N = {
 
     "conversations.title": "Deine Unterhaltungen",
     "conversations.kicker": "Business Context erstellen",
-    "conversations.prompt_title": "Woran möchtest du arbeiten?",
+    "conversations.prompt_title": "Welchen Business Context möchtest du erstellen?",
     "conversations.prompt_placeholder": "Beschreibe ein Produkt, eine Dienstleistung oder Idee…",
     "conversations.prompt_hint": "Beginne mit deinen eigenen Worten",
     "conversations.subtitle": "Setze einen Business Context fort oder beginne einen neuen.",
@@ -614,6 +620,9 @@ const I18N = {
     "status.website": "Website",
 
     "knowledge.title": "ibc group fragen",
+    "knowledge.prompt_title": "Woran möchtest du arbeiten?",
+    "knowledge.history_title": "Deine Unterhaltungen",
+    "knowledge.history_subtitle": "Setze eine frühere Unterhaltung fort oder beginne eine neue.",
     "knowledge.subtitle": "Stelle Fragen zu Produkten, Dienstleistungen, Fachwissen und veröffentlichten Fällen der ibc group und ETIL.",
     "knowledge.new_chat": "Neuer Chat",
     "knowledge.placeholder": "Frage etwas über ibc group oder ETIL…",

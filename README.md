@@ -11,7 +11,7 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 
 ## Current experience
 
-The home screen presents a central prompt composer with conversation history directly underneath. Starting or opening a conversation switches to a full-workspace chat while retaining the product navigation. Translucent “Liquid Glass” materials are used selectively on the launcher and chat controls, with high-contrast and reduced-motion fallbacks.
+Both Create context and Ask ibc group open on a central prompt composer with their own conversation history directly underneath. Create context asks which Business Context the user wants to create; Ask ibc group asks what the user wants to work on. Starting or opening either type switches to a full-workspace chat while retaining the product navigation. Translucent “Liquid Glass” materials are used selectively on the launcher and chat controls, with high-contrast and reduced-motion fallbacks.
 
 There are two persistent conversation types:
 

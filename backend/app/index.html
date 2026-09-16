@@ -70,7 +70,7 @@
       <section id="conversations-view" class="view conversations" aria-labelledby="conversations-title">
         <section class="conversation-launcher">
           <p class="launcher-kicker" data-i18n="conversations.kicker">Create a Business Context</p>
-          <h1 id="conversations-title" data-i18n="conversations.prompt_title">What would you like to work on?</h1>
+          <h1 id="conversations-title" data-i18n="conversations.prompt_title">What Business Context would you like to create?</h1>
           <form id="conversation-start-form" class="launcher-form">
             <textarea id="conversation-start-message" rows="2" data-i18n-placeholder="conversations.prompt_placeholder" placeholder="Describe a product, service or idea…" required></textarea>
             <div class="launcher-actions">
@@ -338,10 +338,36 @@
         </article>
       </section>
 
-      <section id="knowledge-view" class="view conversation" aria-labelledby="knowledge-title" hidden>
+      <section id="knowledge-view" class="view conversations" aria-labelledby="knowledge-title" hidden>
+        <div id="knowledge-home">
+          <section class="conversation-launcher">
+            <p class="launcher-kicker" data-i18n="knowledge.title">Ask ibc group</p>
+            <h1 id="knowledge-title" data-i18n="knowledge.prompt_title">What would you like to work on?</h1>
+            <form id="knowledge-start-form" class="launcher-form">
+              <textarea id="knowledge-start-message" rows="2" data-i18n-placeholder="knowledge.placeholder" placeholder="Ask about ibc group or ETIL…" required></textarea>
+              <div class="launcher-actions">
+                <span data-i18n="conversations.prompt_hint">Start in your own words</span>
+                <button id="knowledge-start-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </form>
+          </section>
+          <header class="history-header">
+            <div>
+              <h2 data-i18n="knowledge.history_title">Your conversations</h2>
+              <p data-i18n="knowledge.history_subtitle">Continue an earlier conversation or start a new one.</p>
+            </div>
+          </header>
+          <div class="conversation-columns" aria-hidden="true">
+            <span data-i18n="conversations.col_conversation">Conversation</span><span></span><span data-i18n="conversations.col_updated">Updated</span><span></span>
+          </div>
+          <div id="knowledge-conversation-list" class="conversation-list" aria-live="polite"></div>
+        </div>
+        <div id="knowledge-chat" class="conversation" hidden>
         <header class="view-header">
           <div>
-            <h1 id="knowledge-title" data-i18n="knowledge.title">Ask ibc group</h1>
+            <h1 id="knowledge-chat-title" data-i18n="knowledge.title">Ask ibc group</h1>
             <p data-i18n="knowledge.subtitle">Explore the reviewed knowledge about ETIL, ibc group, services and products.</p>
           </div>
           <div class="toolbar-actions">
@@ -366,6 +392,7 @@
             </div>
           </div>
         </section>
+        </div>
       </section>
 
       <section id="lead-view" class="view under-construction" aria-labelledby="lead-title" hidden>

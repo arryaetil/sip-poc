@@ -249,6 +249,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 
 body.chat-open .workspace { height: calc(100vh - 100px); padding: 18px 28px; overflow: hidden; }
 body.chat-open #builder-view, body.chat-open #knowledge-view { width: 100%; max-width: 1180px; height: 100%; display: flex; flex-direction: column; }
+body.chat-open #knowledge-chat { width: 100%; height: 100%; display: flex; flex-direction: column; }
 body.chat-open #builder-view .view-header, body.chat-open #knowledge-view .view-header { margin-bottom: 12px; }
 body.chat-open #builder-view .view-header h1, body.chat-open #knowledge-view .view-header h1 { font-size: 24px; }
 body.chat-open .readiness { flex: none; }
