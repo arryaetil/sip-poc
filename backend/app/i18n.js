@@ -186,7 +186,6 @@ const I18N = {
     "knowledge.thinking": "Searching the ibc group knowledge base…",
     "knowledge.history": "Chat history",
     "knowledge.near_misses": "Closest matches, but not an answer",
-    "knowledge.answer_generally": "Answer this generally",
 
         "nav.administration": "Administration",
     "nav.team": "Team",
@@ -410,7 +409,6 @@ const I18N = {
     "knowledge.thinking": "De ibc group-kennisbank wordt doorzocht…",
     "knowledge.history": "Chatgeschiedenis",
     "knowledge.near_misses": "Dichtstbijzijnde resultaten, maar geen antwoord",
-    "knowledge.answer_generally": "Beantwoord dit algemeen",
 
         "nav.administration": "Beheer",
     "nav.team": "Team",
@@ -634,7 +632,6 @@ const I18N = {
     "knowledge.thinking": "Die Wissensbasis der ibc group wird durchsucht…",
     "knowledge.history": "Chatverlauf",
     "knowledge.near_misses": "Ähnlichste Treffer, aber keine Antwort",
-    "knowledge.answer_generally": "Allgemein beantworten",
 
         "nav.administration": "Verwaltung",
     "nav.team": "Team",

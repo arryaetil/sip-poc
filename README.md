@@ -26,7 +26,7 @@ PDF and DOCX uploads are supported. Files are limited to 10 MB and PDFs to 200 p
 
 For context evidence, the model proposes structured field values with document provenance. The user can edit, accept or ignore each proposal; accepted values are merged into the review form and are only saved with the context. Assumptions and open questions are never auto-applied.
 
-The knowledge assistant uses hybrid lexical/vector retrieval when an embedding index is available and falls back to lexical retrieval otherwise. Visibility is filtered before ranking. Reciprocal-rank-fusion results below `SIP_RELEVANCE_THRESHOLD` do not ground an answer. In that case the UI shows near matches and lets the user explicitly request a general, uncited answer. Knowledge follow-ups are reconstructed from stored messages instead of relying on provider-side response IDs.
+The knowledge assistant uses hybrid lexical/vector retrieval when an embedding index is available and falls back to lexical retrieval otherwise. Visibility is filtered before ranking. Reciprocal-rank-fusion results below `SIP_RELEVANCE_THRESHOLD` do not ground an answer; the UI shows the closest matches without offering a separate general-answer mode. Knowledge follow-ups are reconstructed from stored messages instead of relying on provider-side response IDs. Enter sends from every chat composer and start screen; Shift+Enter inserts a new line.
 
 The bundled `knowledge/markdown` corpus is a reviewed snapshot of public ETIL and ibc group pages. Uploads are indexed incrementally and removed from the index when deleted.
 

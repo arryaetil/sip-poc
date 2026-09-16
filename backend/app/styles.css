@@ -163,7 +163,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 #messages, .knowledge-messages { height: min(56vh, 570px); min-height: 390px; padding: 30px 4px; overflow-y: auto; scroll-behavior: smooth; }
 .near-misses { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 6px; opacity: .82; }
 .near-misses a { color: inherit; }
-.general-answer { margin-top: 12px; }
 .message-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
 .message-row.user { justify-content: flex-end; }
 .avatar {

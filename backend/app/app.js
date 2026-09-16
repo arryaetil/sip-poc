@@ -766,7 +766,7 @@ async function openSource(sourceId) {
   }
 }
 
-function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], onGeneral = null) {
+function appendKnowledgeMessage(text, role, sources = [], nearMisses = []) {
   const row = appendMessage(knowledgeMessages, text, role, t("knowledge.assistant_name"));
   if (role === "assistant" && sources.length) {
     const links = document.createElement("div");
@@ -796,14 +796,6 @@ function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], onGen
       block.append(link);
     });
     row.querySelector(".message-content").append(block);
-  }
-  if (role === "assistant" && onGeneral) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "secondary-button general-answer";
-    button.textContent = t("knowledge.answer_generally");
-    button.addEventListener("click", onGeneral, { once: true });
-    row.querySelector(".message-content").append(button);
   }
   return row;
 }
@@ -981,6 +973,20 @@ knowledgeStartForm.addEventListener("submit", (event) => {
   knowledgeStartSend.disabled = false;
 });
 
+conversationStartMessage.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    conversationStartForm.requestSubmit();
+  }
+});
+
+knowledgeStartMessage.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    knowledgeStartForm.requestSubmit();
+  }
+});
+
 function renderTeam(users) {
   teamList.replaceChildren();
   if (!users.length) {
@@ -1153,13 +1159,6 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
       "assistant",
       data.sources,
       data.near_misses,
-      data.general_answer_available ? async () => {
-        const general = await api("/api/knowledge/chat", {
-          method: "POST",
-          body: JSON.stringify({ message, conversation_id: knowledgeConversationId, language: getLanguage(), answer_generally: true }),
-        });
-        appendKnowledgeMessage(general.message, "assistant");
-      } : null,
     );
     await loadKnowledgeHistory();
     setStatus(knowledgeStatus, "");
