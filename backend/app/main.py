@@ -51,7 +51,6 @@ from app.models import (
     UserRecord,
 )
 from app.knowledge import (
-    create_grounded_input,
     create_knowledge_input,
     create_website_offering_profile,
     get_knowledge_document,
@@ -565,16 +564,10 @@ def delete_upload(upload_id: str, request: Request) -> Response:
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
     model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
-    documents, excerpt = retrieve(request.message)
-    grounded_input = create_grounded_input(
-        request.message,
-        documents,
-        excerpt,
-    )
     response_args = {
         "model": model_deployment,
         "instructions": _system_prompt_for(request.language),
-        "input": grounded_input,
+        "input": request.message,
     }
     if request.previous_response_id:
         response_args["previous_response_id"] = request.previous_response_id
@@ -628,7 +621,7 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
                 {"role": message.role, "content": message.content}
                 for message in conversation.messages
             ),
-            {"role": "user", "content": grounded_input},
+            {"role": "user", "content": request.message},
         ],
     }
 
@@ -768,12 +761,6 @@ def add_conversation_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
-    documents, excerpt = retrieve(request.message)
-    grounded_input = create_grounded_input(
-        request.message,
-        documents,
-        excerpt,
-    )
     response_args = {
         "model": model_deployment,
         "instructions": _system_prompt_for(conversation.language),
@@ -782,7 +769,7 @@ def add_conversation_message(
                 {"role": message.role, "content": message.content}
                 for message in conversation.messages
             ),
-            {"role": "user", "content": grounded_input},
+            {"role": "user", "content": request.message},
         ],
         "text_format": ProductStrategistTurn,
     }

@@ -111,6 +111,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 
 .workspace { flex: 1; min-width: 0; padding: 42px clamp(24px, 5vw, 72px); background: var(--surface); }
 .view { width: min(1040px, 100%); margin: 0 auto; }
+.view:not([hidden]) { animation: view-enter 180ms cubic-bezier(.23,1,.32,1) both; }
+@keyframes view-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .conversation { width: min(900px, 100%); }
 .conversations { width: min(1040px, 100%); }
 .view-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
@@ -259,6 +261,7 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 
 @media (prefers-reduced-motion: reduce) {
   .launcher-form, .primary-button, .secondary-button, .danger-button, .send-button { transition-duration: 0ms; transform: none !important; }
+  .view:not([hidden]) { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .launcher-form, .chat-form { background: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; }

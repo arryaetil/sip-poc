@@ -262,6 +262,7 @@ function renderConversation(conversation) {
   }
 
   const isSaved = Boolean(conversation.portfolio_context_id);
+  readiness.hidden = !conversation.is_ready_to_save && !isSaved;
   readiness.dataset.ready = String(conversation.is_ready_to_save && !isSaved);
   if (isSaved) {
     readinessText.textContent = t("builder.saved_note");
@@ -298,6 +299,14 @@ conversationStartForm.addEventListener("submit", async (event) => {
   const message = conversationStartMessage.value.trim();
   if (!message) return;
   conversationStartSend.disabled = true;
+  conversationStartMessage.value = "";
+  currentConversation = null;
+  builderTitle.textContent = message.length > 64 ? `${message.slice(0, 61)}…` : message;
+  messages.replaceChildren();
+  addMessage(message, "user");
+  readiness.hidden = true;
+  showView("builder");
+  setStatus(chatStatus, t("builder.thinking"), "success");
   try {
     const conversation = await api("/api/conversations", {
       method: "POST",
@@ -307,24 +316,28 @@ conversationStartForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({ message }),
     });
-    conversationStartMessage.value = "";
     renderConversation(turn.conversation);
-    showView("builder");
     input.focus();
   } catch (error) {
-    conversationList.textContent = error.message;
+    addMessage(error instanceof TypeError ? t("builder.unreachable") : error.message, "assistant");
+    setStatus(chatStatus, "");
   } finally {
     conversationStartSend.disabled = false;
   }
 });
 
 async function openConversation(conversationId) {
+  showView("builder");
+  messages.replaceChildren();
+  builderTitle.textContent = t("builder.title_default");
+  readiness.hidden = true;
+  setStatus(chatStatus, t("builder.loading"), "success");
   try {
     renderConversation(await api(`/api/conversations/${conversationId}`));
-    showView("builder");
     input.focus();
   } catch (error) {
-    conversationList.textContent = error.message;
+    addMessage(error.message, "assistant");
+    setStatus(chatStatus, "");
   }
 }
 
