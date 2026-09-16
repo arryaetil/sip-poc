@@ -301,6 +301,7 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
   line-height: 1.45;
 }
 .readiness-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #9ea3aa; }
+.readiness #save-to-portfolio { margin-left: auto; flex: none; }
 .readiness[data-ready="true"] { border-color: #9ab8a4; background: #edf5ef; color: #245934; }
 .readiness[data-ready="true"] .readiness-dot { background: var(--success); }
 .context-form { border-top: 1px solid var(--border); }

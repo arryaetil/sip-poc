@@ -97,20 +97,18 @@
       </section>
 
       <section id="builder-view" class="view conversation" aria-labelledby="builder-title" hidden>
-        <header class="view-header">
+        <header class="view-header" hidden>
           <div>
             <button id="back-to-conversations" class="text-button" type="button" data-i18n="builder.back">← All conversations</button>
             <h1 id="builder-title" data-i18n="builder.title_default">New conversation</h1>
             <p data-i18n="builder.subtitle">Your conversation is saved automatically. Continue at any time from Create context.</p>
-          </div>
-          <div class="header-actions">
-            <button id="save-to-portfolio" class="primary-button" type="button" disabled data-i18n="builder.save_to_portfolio">Save to ibc group Portfolio</button>
           </div>
         </header>
 
         <div id="readiness" class="readiness" data-ready="false" role="status">
           <span class="readiness-dot" aria-hidden="true"></span>
           <span id="readiness-text" data-i18n="builder.not_ready_default">Keep talking. The Product Strategist will let you know when enough context is available.</span>
+          <button id="save-to-portfolio" class="primary-button" type="button" disabled data-i18n="builder.save_to_portfolio">Save to ibc group Portfolio</button>
         </div>
 
         <section class="chat-surface" aria-label="Business Context conversation">
