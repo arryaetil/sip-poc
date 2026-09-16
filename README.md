@@ -4,7 +4,7 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 
 | | |
 |---|---|
-| Live | https://sip-poc-production.up.railway.app — deployment `db6676bc`, running |
+| Live | https://sip-poc-production.up.railway.app — deployment `913039a5`, running |
 | Stack | Python 3.13, FastAPI, vanilla JavaScript, SQLite, Azure AI Foundry |
 | Languages | English, Nederlands, Deutsch |
 | Hosting | Railway project and service `sip-poc`, persistent volume mounted at `/data` |
