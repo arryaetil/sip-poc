@@ -178,6 +178,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   font-weight: 500;
 }
 .message-content { max-width: min(680px, 80%); }
+.message.typing::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: currentColor; vertical-align: -.12em; animation: typing-caret 760ms step-end infinite; }
+@keyframes typing-caret { 50% { opacity: 0; } }
 .message-author { display: block; margin: 0 0 5px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .message { margin: 0; white-space: pre-wrap; line-height: 1.6; text-wrap: pretty; }
 .user .message-content { padding: 11px 14px; border-radius: 4px; background: var(--seasal); }
@@ -261,6 +263,7 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 @media (prefers-reduced-motion: reduce) {
   .launcher-form, .primary-button, .secondary-button, .danger-button, .send-button { transition-duration: 0ms; transform: none !important; }
   .view:not([hidden]) { animation: none; }
+  .message.typing::after { display: none; animation: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .launcher-form, .chat-form { background: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; }

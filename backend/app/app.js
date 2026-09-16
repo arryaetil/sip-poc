@@ -219,7 +219,27 @@ function resizeTextArea(textarea) {
   textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
 }
 
-function appendMessage(container, text, role, assistantName) {
+function revealMessage(message, text, container) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    message.textContent = text;
+    return;
+  }
+  const tokens = text.match(/\S+\s*/g) || [text];
+  const batchSize = Math.max(1, Math.ceil(tokens.length / 120));
+  let index = 0;
+  message.textContent = "";
+  message.classList.add("typing");
+  const step = () => {
+    message.textContent += tokens.slice(index, index + batchSize).join("");
+    index += batchSize;
+    container.scrollTop = container.scrollHeight;
+    if (index < tokens.length) window.setTimeout(step, 22);
+    else message.classList.remove("typing");
+  };
+  window.setTimeout(step, 80);
+}
+
+function appendMessage(container, text, role, assistantName, animate = false) {
   const row = document.createElement("div");
   row.className = `message-row ${role}`;
   if (role === "assistant") {
@@ -239,7 +259,8 @@ function appendMessage(container, text, role, assistantName) {
   }
   const message = document.createElement("p");
   message.className = "message";
-  message.textContent = text;
+  if (animate && role === "assistant") revealMessage(message, text, container);
+  else message.textContent = text;
   content.append(message);
   row.append(content);
   container.append(row);
@@ -247,18 +268,22 @@ function appendMessage(container, text, role, assistantName) {
   return row;
 }
 
-function addMessage(text, role) {
-  return appendMessage(messages, text, role, t("assistant.name"));
+function addMessage(text, role, animate = false) {
+  return appendMessage(messages, text, role, t("assistant.name"), animate);
 }
 
-function renderConversation(conversation) {
+function renderConversation(conversation, animateLatest = false) {
   currentConversation = conversation;
   builderTitle.textContent = conversation.title;
   messages.replaceChildren();
   if (!conversation.messages.length) {
     addMessage(t("assistant.first_message"), "assistant");
   } else {
-    conversation.messages.forEach((message) => addMessage(message.content, message.role));
+    conversation.messages.forEach((message, index) => addMessage(
+      message.content,
+      message.role,
+      animateLatest && index === conversation.messages.length - 1 && message.role === "assistant",
+    ));
   }
 
   const isSaved = Boolean(conversation.portfolio_context_id);
@@ -316,7 +341,7 @@ conversationStartForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({ message }),
     });
-    renderConversation(turn.conversation);
+    renderConversation(turn.conversation, true);
     input.focus();
   } catch (error) {
     addMessage(error instanceof TypeError ? t("builder.unreachable") : error.message, "assistant");
@@ -766,8 +791,8 @@ async function openSource(sourceId) {
   }
 }
 
-function appendKnowledgeMessage(text, role, sources = [], nearMisses = []) {
-  const row = appendMessage(knowledgeMessages, text, role, t("knowledge.assistant_name"));
+function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], animate = false) {
+  const row = appendMessage(knowledgeMessages, text, role, t("knowledge.assistant_name"), animate);
   if (role === "assistant" && sources.length) {
     const links = document.createElement("div");
     links.className = "message-sources";
@@ -1099,7 +1124,7 @@ chatForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ message }),
     });
     currentConversation = data.conversation;
-    renderConversation(currentConversation);
+    renderConversation(currentConversation, true);
   } catch (error) {
     userRow.remove();
     input.value = message;
@@ -1159,6 +1184,7 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
       "assistant",
       data.sources,
       data.near_misses,
+      true,
     );
     await loadKnowledgeHistory();
     setStatus(knowledgeStatus, "");
