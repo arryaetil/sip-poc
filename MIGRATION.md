@@ -7,7 +7,28 @@ records every one of those shortcuts, why it was taken, and what replaces it.
 Keep this file updated as you build. A decision that is not written down here will
 be rediscovered the hard way during the Azure migration or the C# port.
 
-Last updated: 15 September 2026.
+Last updated: 21 September 2026.
+
+## Target decision: Foundry IQ
+
+**Decision, 21 September 2026.** SIP will use **Microsoft Foundry IQ** as its
+production knowledge layer. The custom lexical/vector index in this repository is
+only a Railway POC mechanism. It must not become a second production knowledge
+platform.
+
+Foundry IQ still uses Azure AI Search underneath. The change is therefore not
+"indexing versus no indexing"; it is **self-managed indexing inside SIP versus a
+managed Foundry IQ knowledge base**. Foundry IQ will provide the reusable knowledge
+base and agentic retrieval surface, while Azure AI Search supplies the underlying
+indexed retrieval infrastructure.
+
+Until the migration is implemented:
+
+- keep the current retrieval path working for demonstrations;
+- do not add new custom vector-store infrastructure or deepen the local index;
+- preserve the `retrieve()` boundary so the implementation can be replaced cleanly;
+- validate Foundry IQ feature availability, identity, permissions, region and cost
+  before treating the target architecture as production-ready.
 
 ---
 
@@ -17,9 +38,10 @@ Last updated: 15 September 2026.
 part of the image. Adding or changing a document requires a rebuild and redeploy.
 Users cannot add anything.
 
-**Production.** The corpus has to become data, not code: files live in Azure Blob
-Storage, and an Azure AI Search **indexer** picks up new and changed files on a
-schedule. That is also what makes user uploads possible at all.
+**Production.** The corpus becomes data, not code. Files live in an approved
+knowledge source such as Azure Blob Storage and are connected to a Foundry IQ
+knowledge base. Its indexed knowledge-source pipeline uses Azure AI Search to
+handle ingestion and incremental refresh instead of SIP maintaining its own index.
 
 **Migration risk.** The markdown front matter (`source_url`, `page_type`,
 `source_organisation`, `index`) is hand-curated and is not something an indexer
@@ -35,14 +57,16 @@ a title boost and `1 + log(term frequency)`. There is no IDF and no length
 normalisation. Cross-language matching relies on a hand-written nine-entry alias
 table (`TOKEN_ALIASES`) and a manual stopword list covering EN, NL and DE.
 
-**Production.** Azure AI Search with embeddings and hybrid (keyword + vector)
-search. The lexical scoring is not thrown away — it becomes the keyword half.
+**Production.** The application queries a Foundry IQ knowledge base. Foundry IQ's
+agentic retrieval selects and queries the configured knowledge sources and can use
+keyword, vector and hybrid retrieval through Azure AI Search. SIP no longer owns
+the ranking implementation.
 
 **Keep the seam.** `main.py` calls `search_knowledge(query)` and gets documents
 back. Everything upstream — grounding, `[Source N]` citations, the chat endpoints —
 depends only on that signature. As long as the seam holds, the retrieval engine can
-be swapped without touching the rest of the app. **Do not let Azure-specific types
-leak past this function.**
+be swapped without touching the rest of the app. **Do not let Foundry IQ or Azure
+AI Search-specific types leak past this function.**
 
 ---
 
@@ -62,9 +86,10 @@ root**. Asking the project path for embeddings returns a bare `404` that looks
 exactly like a missing deployment. `embedding.py` derives the root from the
 configured endpoint; `AZURE_AI_EMBEDDING_ENDPOINT` overrides it.
 
-**Production.** Embeddings must come from the Azure AI Foundry deployment over
-HTTP. Prefer managed identity over the API key so there is no secret to rotate --
-`get_embedding_client()` already falls back to `DefaultAzureCredential`.
+**Production.** Embedding generation for indexed knowledge moves into the Foundry
+IQ knowledge-source configuration. The application's direct embedding client is a
+POC implementation and should not remain the owner of corpus vectorisation.
+Managed identity is preferred over API keys for Azure service-to-service access.
 
 **Why this matters for C#.** A model running inside the Python process does not
 port to C#. An HTTP call does. Any local embedding library must therefore stay
@@ -80,9 +105,10 @@ headings with no body, drops layout artifacts ("FAQ", "01"), and caps passages a
 1,200 **characters**, splitting only at paragraph boundaries. Produces 1,104 chunks
 from 69 documents; median embedded length 213 characters.
 
-**Production.** Azure AI Search performs the equivalent split server-side with its
-Split skill. Sizes there are measured in **tokens**, not characters -- the POC
-avoids a tokeniser dependency, so the budget must be re-expressed on migration.
+**Production.** Foundry IQ indexed knowledge sources automate document chunking
+through the underlying Azure AI Search ingestion pipeline. The current chunk shape
+and metadata still need to be validated during migration so important provenance
+and filtering information is not lost.
 
 **Known residue.** About 12 chunks are navigation text the scraper captured as body
 ("Oplossingen", "About us"). ~1% of the index; filter if it shows up in results.
@@ -111,41 +137,45 @@ embedding model changes. Nothing detects staleness automatically yet.
 
 ---
 
-## 4. Vector storage — Azure AI Search deliberately deferred
+## 4. Knowledge layer — Foundry IQ deliberately deferred for the POC
 
-**Decision, 15 September 2026.** The POC will **not** use Azure AI Search. It is a
-separate billable Azure resource, unlike the embedding model which was a deployment
-inside a resource that already existed. Deferred until there is budget approval and
-a working demo to justify it.
+**Decision, updated 21 September 2026.** The Railway POC keeps the local index so
+the current demo remains inexpensive and operational. The production direction is
+now Foundry IQ, backed by Azure AI Search. Provisioning it is deferred until the
+Azure migration so identity, data residency, permissions, availability and cost can
+be reviewed together.
 
 **Now.** 1,104 chunks embedded once and held in memory; brute-force cosine
 similarity is a few milliseconds at this size. No vector database is needed.
 
-**Production.** Azure AI Search. Note that this is bought for **managed ingestion,
-document cracking (PDF/Office) and scale**, not for speed — at the current corpus
-size, search performance is not a problem to be solved.
+**Production.** Foundry IQ supplies the managed and reusable knowledge layer. The
+reason for switching is governance, managed ingestion, permission-aware retrieval,
+citations and reuse across agents—not raw search speed at the current corpus size.
 
-### What has to change when Azure AI Search arrives
+### What has to change when Foundry IQ arrives
 
-1. **Define the index schema by hand, as JSON.** Do *not* use the Foundry
-   "Add your data" wizard. It chunks by size, ignores the markdown front matter and
-   produces an index that cannot be filtered by organisation or page type -- it
-   would silently discard the curation this project is built on. A hand-written
-   schema is also the artefact that ports to C# unchanged.
-2. **Vector field: 3072 dimensions**, matching `text-embedding-3-large`.
-3. **Carry the chunk metadata as filterable fields**: `source_id`, `organisation`,
+1. **Create a Foundry IQ knowledge base and approved knowledge sources.** Start
+   with the reviewed website corpus and private document storage; do not connect
+   unreviewed organisational sources by default.
+2. **Preserve metadata and provenance.** Carry `source_id`, `organisation`,
    `language`, `page_type`, `section`, `heading`, `canonical_url`.
-4. **Add two fields that are painful to retrofit**, because adding them later means
-   reindexing everything:
+3. **Design access control before ingestion.** Keep fields or source permissions
+   that distinguish:
    - an **access-control field**, needed the moment users upload documents that not
      every role may retrieve;
    - a **provenance field** distinguishing curated corpus from user upload.
-5. **Replace RRF with the built-in fusion.** Sending a text query and a vector query
-   in one request makes Azure do the rank fusion; the hand-written version in
-   `retrieval.py` then comes out.
-6. **Consider the semantic ranker** (paid tier) as a third stage on top.
-7. **Switch ingestion from push to pull**: blob storage plus an indexer, which is
-   what makes user uploads work without a redeploy (see section 1).
+4. **Validate ingestion quality.** Confirm that managed chunking and metadata
+   extraction retain the curated front matter and citation URLs used by SIP.
+5. **Replace local ranking and vector storage.** Remove the hand-written RRF,
+   brute-force vector comparison and `vectors.bin` lifecycle after Foundry IQ meets
+   the agreed retrieval evaluation criteria.
+6. **Use Entra identities and managed identity.** Validate document-level access
+   and organisation-wide versus private content with real SIP roles.
+7. **Return citations through the existing application contract.** Map Foundry IQ
+   results to SIP's current source shape rather than leaking provider-specific
+   response types through the application.
+8. **Run a controlled cutover.** Compare local and Foundry IQ retrieval on the same
+   evaluation set before switching the production retrieval path.
 
 **Nothing above changes `search_knowledge()`'s signature.** That is the point of the
 seam.
@@ -205,7 +235,7 @@ Context, which is the exact failure the rest of the app is written to prevent �
 | 1 | `value_proposition` — resolved 15 Sep 2026: assembled from the page's own "Business Impact" claims (`_impact_statement`), never from `short_summary`. Fills 38/69; the rest have no such block and stay empty. Still verbatim page text, so the no-invention policy holds. | **Decided** |
 | 2 | Missing descriptions — resolved 15 Sep 2026: 22 recoverable items across 6 files restored verbatim from the live pages. The remaining empty headings are **correct** (logo tiles, contact cards) and now render as a plain label list rather than the "Information listed on the page" placeholder — 173 items across 42 documents. | **Decided** |
 | 3 | Should `sections` (the raw page prose, currently collapsed under "Original page content") stay visible to Product Owners? It must be retained either way — it is what gets embedded for retrieval. | Kept, collapsed |
-| 4 | Access control model for user-uploaded documents. Must be settled **before** the first Azure AI Search index is created. | Open |
+| 4 | Foundry IQ access-control model for private uploads and organisation-wide approved evidence. Must be settled before the first production knowledge source is ingested. | Open |
 
 ---
 

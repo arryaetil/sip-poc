@@ -9,6 +9,15 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 | Languages | English, Nederlands, Deutsch |
 | Hosting | Railway project and service `sip-poc`, persistent volume mounted at `/data` |
 
+> [!IMPORTANT]
+> **Target knowledge architecture: Microsoft Foundry IQ.** The local lexical/vector
+> index in this repository is a temporary POC implementation, not the intended
+> production architecture. SIP will migrate to a Foundry IQ knowledge base for
+> managed, reusable and permission-aware retrieval. Foundry IQ is backed by Azure
+> AI Search, so indexing still exists, but SIP will no longer build, store or query
+> its own vector index. Do not extend the custom index beyond what is needed to keep
+> the POC working. See [MIGRATION.md](MIGRATION.md).
+
 ## Current experience
 
 Both Create context and Ask ibc group open on a central prompt composer with their own conversation history directly underneath. Create context asks which Business Context the user wants to create; Ask ibc group asks what the user wants to work on. Starting or opening either type switches immediately to a full-workspace chat while the response loads. The context chat omits the redundant page header, subtitle and disabled save action; Save to portfolio only appears with the readiness state once the context can actually be prepared. New assistant answers reveal progressively with a short typing cursor; restored history renders immediately and reduced-motion disables the effect. Context intake handles greetings and corrections naturally, does not expose missing-field pressure until the context is ready, and never treats the bundled website corpus as user-uploaded evidence. Translucent “Liquid Glass” materials are used selectively on the launcher and chat controls, with high-contrast and reduced-motion fallbacks.
@@ -26,7 +35,7 @@ PDF and DOCX uploads are supported. Files are limited to 10 MB and PDFs to 200 p
 
 For context evidence, the model reads the uploaded document as untrusted business evidence and brings the relevant knowledge back into the conversation in its own words. It highlights three to five useful insights, connects them to the emerging Business Context, calls out uncertainty and asks at most one useful follow-up question. There are no proposal cards or Accept/Ignore actions. The resulting discussion is saved in the conversation and informs the final review.
 
-The knowledge assistant uses hybrid lexical/vector retrieval when an embedding index is available and falls back to lexical retrieval otherwise. Visibility is filtered before ranking. Reciprocal-rank-fusion results below `SIP_RELEVANCE_THRESHOLD` do not ground an answer; the UI shows the closest matches without offering a separate general-answer mode. Knowledge follow-ups are reconstructed from stored messages instead of relying on provider-side response IDs. Enter sends from every chat composer and start screen; Shift+Enter inserts a new line.
+The current POC knowledge assistant uses hybrid lexical/vector retrieval when a local embedding index is available and falls back to lexical retrieval otherwise. Visibility is filtered before ranking. Reciprocal-rank-fusion results below `SIP_RELEVANCE_THRESHOLD` do not ground an answer; the UI shows the closest matches without offering a separate general-answer mode. Knowledge follow-ups are reconstructed from stored messages instead of relying on provider-side response IDs. Enter sends from every chat composer and start screen; Shift+Enter inserts a new line.
 
 The bundled `knowledge/markdown` corpus is a reviewed snapshot of public ETIL and ibc group pages. Uploads are indexed incrementally and removed from the index when deleted.
 
@@ -43,6 +52,25 @@ flowchart LR
 ```
 
 The frontend is plain JavaScript and CSS with no build step. FastAPI serves the UI, API and public `/health` endpoint. SQLite, uploads and the vector index live on the same persistent volume, so production must remain a single replica until storage is moved to shared services.
+
+### Target Azure knowledge architecture
+
+```mermaid
+flowchart LR
+    B[Browser] --> A[SIP application]
+    A --> G[Foundry agent or application orchestration]
+    G --> IQ[Foundry IQ knowledge base]
+    IQ --> KS[Managed knowledge sources]
+    KS --> BL[Azure Blob Storage]
+    KS --> WK[Approved organisational knowledge]
+    IQ --> AS[Azure AI Search agentic retrieval]
+```
+
+Foundry IQ becomes the reusable knowledge layer for SIP. It owns knowledge-source
+ingestion and retrieval through Azure AI Search. The application continues to own
+the Business Context workflow, approvals and presentation. The existing
+`retrieve()` boundary should be preserved until the Foundry IQ integration is
+validated, so the POC can migrate without rewriting the chat workflows.
 
 ## Repository
 
@@ -126,6 +154,7 @@ railway up --service sip-poc --detach
 
 ## Known limitations
 
+- The current retrieval implementation is transitional and will be replaced by a Foundry IQ knowledge base before production.
 - SQLite and the local index require a single application replica.
 - Scanned/image-only PDFs are not OCR'd.
 - Upload/index mutation is intended for POC traffic; it does not yet use distributed locking.
