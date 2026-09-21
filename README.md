@@ -20,6 +20,31 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 > [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md). For the technical
 > review, use the concise [minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md).
 
+## Engineering status
+
+SIP is a functional proof of concept, not yet a production-ready system. The
+current architecture is intentionally small: one FastAPI application, one
+browser client, SQLite, local files and a local retrieval index. This keeps the
+product understandable while the workflows are validated.
+
+The engineering review of 21 September 2026 identified three blockers that must
+be resolved before the Azure production migration:
+
+1. **Ground the Knowledge Assistant correctly.** Retrieval currently selects
+   sources and constructs a grounded input, but the model call still receives
+   the original question instead of that grounded input. Citations must only be
+   returned for evidence that was actually supplied to the model.
+2. **Complete the evidence lifecycle.** Approved evidence can become
+   organisation-wide, but returning a context to draft, deselecting evidence or
+   deleting the context does not yet make that evidence private or remove it.
+3. **Fail closed outside local development.** When `SIP_SESSION_SECRET` is
+   absent, authentication is disabled and requests receive local-admin access.
+   A hosted environment must refuse to start with incomplete authentication
+   configuration.
+
+The next implementation work should fix these boundaries and add regression
+tests before introducing new infrastructure or rewriting application code.
+
 ## Current experience
 
 Both Create context and Ask ibc group open on a central prompt composer with their own conversation history directly underneath. Create context asks which Business Context the user wants to create; Ask ibc group asks what the user wants to work on. Starting or opening either type switches immediately to a full-workspace chat while the response loads. The context chat omits the redundant page header, subtitle and disabled save action; Save to portfolio only appears with the readiness state once the context can actually be prepared. New assistant answers reveal progressively with a short typing cursor; restored history renders immediately and reduced-motion disables the effect. Context intake handles greetings and corrections naturally, does not expose missing-field pressure until the context is ready, and never treats the bundled website corpus as user-uploaded evidence. Translucent “Liquid Glass” materials are used selectively on the launcher and chat controls, with high-contrast and reduced-motion fallbacks.
@@ -38,6 +63,11 @@ PDF and DOCX uploads are supported. Files are limited to 10 MB and PDFs to 200 p
 For context evidence, the model reads the uploaded document as untrusted business evidence and brings the relevant knowledge back into the conversation in its own words. It highlights three to five useful insights, connects them to the emerging Business Context, calls out uncertainty and asks at most one useful follow-up question. There are no proposal cards or Accept/Ignore actions. The resulting discussion is saved in the conversation and informs the final review.
 
 The current POC knowledge assistant uses hybrid lexical/vector retrieval when a local embedding index is available and falls back to lexical retrieval otherwise. Visibility is filtered before ranking. Reciprocal-rank-fusion results below `SIP_RELEVANCE_THRESHOLD` do not ground an answer; the UI shows the closest matches without offering a separate general-answer mode. Knowledge follow-ups are reconstructed from stored messages instead of relying on provider-side response IDs. Enter sends from every chat composer and start screen; Shift+Enter inserts a new line.
+
+The retrieval-to-model connection still has the grounding defect recorded in
+[Engineering status](#engineering-status). Until that is fixed and covered by a
+boundary test, visible source links must not be treated as proof that an answer
+was generated from those sources.
 
 The bundled `knowledge/markdown` corpus is a reviewed snapshot of public ETIL and ibc group pages. Uploads are indexed incrementally and removed from the index when deleted.
 
@@ -86,6 +116,7 @@ backend/app/
   styles.css    responsive UI and glass materials
 knowledge/      bundled source corpus
 tests/          ownership/workspace regression tests
+docs/           Azure target architecture and minimum-resource checklist
 Dockerfile      production image
 railway.json    Railway build, healthcheck and restart policy
 ```
@@ -156,11 +187,42 @@ railway up --service sip-poc --detach
 
 ## Known limitations
 
+- Knowledge retrieval and citation selection are present, but the constructed
+  grounded input is not yet passed into the Knowledge Assistant model call.
+- Publishing evidence is currently one-way; draft, deselection and deletion
+  flows do not yet withdraw organisation-wide visibility.
+- Authentication is bypassed when `SIP_SESSION_SECRET` is missing. This is only
+  acceptable for explicit local development and must become fail-closed before
+  another hosted environment is created.
+- SQLite foreign-key enforcement is not enabled, so lifecycle consistency is
+  currently enforced only by application code.
+- The automated suite contains only three persistence/ownership tests. Critical
+  auth, retrieval, upload, approval and deletion flows still need coverage.
 - The current retrieval implementation is transitional and will be replaced by a Foundry IQ knowledge base before production.
 - SQLite and the local index require a single application replica.
 - Scanned/image-only PDFs are not OCR'd.
 - Upload/index mutation is intended for POC traffic; it does not yet use distributed locking.
+- Full conversation history is sent to the model on every turn; there is no
+  summarisation or context-budget policy yet.
 - Demo environment credentials and user lifecycle need hardening before customer production use.
 - The public `/health` endpoint returns OK, but the current CLI-uploaded Railway service has no platform healthcheck configured; set it in Railway or connect the GitHub source so `railway.json` is applied.
 
-Last documentation review: **16 September 2026**.
+## Recommended implementation order
+
+1. Fix and test Knowledge Assistant grounding and citations.
+2. Define and implement evidence withdrawal, deletion and ownership rules.
+3. Make hosted authentication fail closed.
+4. Add integration tests for auth roles, uploads, approval and deletion.
+5. Stabilise the Railway reference implementation.
+6. Deploy the unchanged application container to an Azure development
+   environment.
+7. Replace SQLite and local uploads with PostgreSQL and Blob Storage.
+8. Replace demo authentication with Microsoft Entra ID.
+9. Replace the local retrieval implementation with Foundry IQ.
+10. Consider C# only for stable capabilities with a clear team owner.
+
+Do not combine the Azure migration with a full C# or frontend rewrite. Keeping
+the existing application as the behavioural reference makes each migration
+step testable and keeps the system understandable for its accountable owner.
+
+Last documentation review: **21 September 2026**.
