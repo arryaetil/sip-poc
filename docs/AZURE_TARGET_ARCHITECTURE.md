@@ -17,6 +17,9 @@ C#/.NET remains a valid target for stable business capabilities, but SIP will no
 start with a full rewrite. Components move only when the replacement has a clear
 owner, a stable contract and automated tests.
 
+Use [AZURE_MINIMUM_RESOURCES.md](AZURE_MINIMUM_RESOURCES.md) as the short checklist
+for the technical review before provisioning starts.
+
 ## Target architecture
 
 ```mermaid

@@ -17,7 +17,8 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 > AI Search, so indexing still exists, but SIP will no longer build, store or query
 > its own vector index. Do not extend the custom index beyond what is needed to keep
 > the POC working. See [MIGRATION.md](MIGRATION.md) and the
-> [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md).
+> [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md). For the technical
+> review, use the concise [minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md).
 
 ## Current experience
 
