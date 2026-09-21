@@ -16,7 +16,8 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 > managed, reusable and permission-aware retrieval. Foundry IQ is backed by Azure
 > AI Search, so indexing still exists, but SIP will no longer build, store or query
 > its own vector index. Do not extend the custom index beyond what is needed to keep
-> the POC working. See [MIGRATION.md](MIGRATION.md).
+> the POC working. See [MIGRATION.md](MIGRATION.md) and the
+> [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md).
 
 ## Current experience
 

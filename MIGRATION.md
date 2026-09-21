@@ -30,6 +30,9 @@ Until the migration is implemented:
 - validate Foundry IQ feature availability, identity, permissions, region and cost
   before treating the target architecture as production-ready.
 
+The phased service migration and optional C#/.NET path are defined in
+[docs/AZURE_TARGET_ARCHITECTURE.md](docs/AZURE_TARGET_ARCHITECTURE.md).
+
 ---
 
 ## 1. Knowledge base is baked into the container image
