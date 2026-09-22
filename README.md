@@ -18,16 +18,18 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 > AI Search, so indexing still exists, but SIP will no longer build, store or query
 > its own vector index. Do not extend the custom index beyond what is needed to keep
 > the POC working. See [MIGRATION.md](MIGRATION.md) and the
-> [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md). For the technical
-> review, use the concise [minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md).
+> [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md). For what was
+> decided and how the environment is created, see [Agreed direction](#agreed-direction)
+> and the [Azure provisioning runbook](docs/AZURE_PROVISIONING.md).
 
 ## Agreed direction
 
 Decisions taken with the senior developer on **22 September 2026**. Where this
-section conflicts with [MIGRATION.md](MIGRATION.md) or the
-[minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md), this
-section leads: those documents describe the options that were weighed, not the
-outcome. The development environment is created by following the
+section conflicts with [MIGRATION.md](MIGRATION.md), this section leads: that
+document describes the options that were weighed, not the outcome. The earlier
+[minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md) is
+superseded in full and kept only as a record of the review. The development
+environment is created by following the
 [Azure provisioning runbook](docs/AZURE_PROVISIONING.md).
 
 | Topic | Decision |

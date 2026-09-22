@@ -13,12 +13,19 @@ The target knowledge layer is Microsoft Foundry IQ. The local lexical/vector ind
 is temporary POC code and will be removed after the Foundry IQ knowledge base has
 passed the retrieval evaluation.
 
+> [!NOTE]
+> The paragraph below predates the review of 22 September 2026, which decided on
+> a full C#/ASP.NET Core rewrite. See
+> [Agreed direction](../README.md#agreed-direction).
+
 C#/.NET remains a valid target for stable business capabilities, but SIP will not
 start with a full rewrite. Components move only when the replacement has a clear
 owner, a stable contract and automated tests.
 
-Use [AZURE_MINIMUM_RESOURCES.md](AZURE_MINIMUM_RESOURCES.md) as the short checklist
-for the technical review before provisioning starts.
+The environment is created by following the
+[Azure provisioning runbook](AZURE_PROVISIONING.md). The older
+[minimum Azure resources checklist](AZURE_MINIMUM_RESOURCES.md) is superseded and
+kept only as a record of the review.
 
 ## Target architecture
 

@@ -1,11 +1,27 @@
 # Minimum Azure resources for SIP
 
-Status: discussion checklist  
-Last updated: 21 September 2026
+> [!CAUTION]
+> **Superseded on 22 September 2026. This document is no longer leading.**
+>
+> It was written to prepare the technical review and still assumes PostgreSQL,
+> Azure Container Apps, a container image built from GitHub, and a C# rewrite
+> deferred until later. Every one of those was decided differently in the review
+> itself. Following this checklist now produces the wrong environment.
+>
+> - What was decided: [Agreed direction](../README.md#agreed-direction)
+> - How to create the environment: [Azure provisioning runbook](AZURE_PROVISIONING.md)
+>
+> The text below is kept as the record of what was weighed and which questions
+> were open going into the review. Read it as history, not as instruction.
 
-This is the minimum Azure setup needed to move the current SIP proof of concept
-from Railway to Azure and replace the local retrieval index with Foundry IQ. Review
-this list with the senior developer before resources are provisioned.
+Status: superseded — historical record  
+Written: 21 September 2026  
+Superseded: 22 September 2026
+
+This was the minimum Azure setup proposed for moving the SIP proof of concept
+from Railway to Azure and replacing the local retrieval index with Foundry IQ,
+written to be reviewed with the senior developer before any resources were
+provisioned.
 
 ## Minimum required resources
 
