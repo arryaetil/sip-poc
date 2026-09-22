@@ -8,7 +8,7 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 | Stack | Python 3.13, FastAPI, vanilla JavaScript, SQLite, Azure AI Foundry |
 | Languages | English, Nederlands, Deutsch |
 | Hosting | Railway project and service `sip-poc`, persistent volume mounted at `/data` |
-| Target | C#/ASP.NET Core on Azure Container Apps, Azure SQL, Foundry IQ — see [Agreed direction](#agreed-direction) |
+| Target | C#/ASP.NET Core on Azure App Service, Azure SQL, Foundry IQ — see [Agreed direction](#agreed-direction) |
 
 > [!IMPORTANT]
 > **Target knowledge architecture: Microsoft Foundry IQ.** The local lexical/vector
@@ -34,7 +34,7 @@ outcome. The development environment is created by following the
 |---|---|
 | Application | Rewrite in C#/ASP.NET Core. The Python POC stays the behavioural reference and is tagged `poc-python-final`. |
 | Source control and CI/CD | Azure DevOps — Azure Repos and Azure Pipelines — replacing GitHub. |
-| Hosting | Azure Container Apps, running images built by the pipeline and stored in Azure Container Registry. |
+| Hosting | Azure App Service on Linux, publishing compiled .NET output from the pipeline. No container image, so no Dockerfile or container registry. |
 | Region | West Europe for every resource. It supports agentic retrieval and the semantic ranker on the AI Search free tier; North Europe is closed to new search services. |
 | Database | Azure SQL with EF Core and a Unit of Work layer. |
 | Schema migrations | Run in the deploy stage of the pipeline, never on application startup. |
@@ -76,21 +76,26 @@ Neither is `db_owner`.
 
 ### Schema changes
 
-Because migrations run during deployment, a rollback is no longer free: traffic
-is shifted back to the previous Container Apps revision, and that older code has
-to work against the newer schema. Schema changes therefore follow expand and
-contract — add the new column, deploy the code that uses it, and remove the old
-one only in a later deploy. Nothing is dropped or renamed in the same deploy as
-the code change that makes it obsolete.
+Because migrations run during deployment, a rollback is no longer free: it means
+redeploying the previous build, and that older code has to work against the newer
+schema. Schema changes therefore follow expand and contract — add the new column,
+deploy the code that uses it, and remove the old one only in a later deploy.
+Nothing is dropped or renamed in the same deploy as the code change that makes it
+obsolete.
+
+Development runs on a B1 plan, where rolling back is a redeploy. Production runs
+on a Premium plan so that a staging slot is available: deploy there, verify, and
+swap. Deployment slots require Standard or higher, and Linux plans no longer
+offer Standard, so that capability starts at Premium.
 
 ### Resource naming
 
-Pattern `<type>-sip-<environment>-weu`. Storage accounts and the container
-registry omit the hyphens because Azure does not allow them there.
+Pattern `<type>-sip-<environment>-weu`. Storage account names omit the hyphens
+because Azure does not allow them there.
 
 `rg-sip-dev-weu`, `id-sip-dev-weu`, `log-sip-dev-weu`, `appi-sip-dev-weu`,
-`stsipdevweu`, `kv-sip-dev-weu`, `srch-sip-dev-weu`, `crsipdevweu`,
-`cae-sip-dev-weu`, `ca-sip-dev-weu`.
+`stsipdevweu`, `kv-sip-dev-weu`, `srch-sip-dev-weu`, `plan-sip-dev-weu`,
+`app-sip-dev-weu`.
 
 ### Where the application is tested
 
@@ -297,8 +302,7 @@ railway up --service sip-poc --detach
    on each resource as that resource is created, so no separate RBAC pass is
    left over.
 3. Put a walking skeleton through the whole chain — Azure Repos, pipeline,
-   container registry, Container Apps, managed identity — before writing any
-   feature code.
+   App Service, managed identity — before writing any feature code.
 4. Bring up the assistant against Foundry using the managed identity, which
    retires the API key and the client secret.
 5. Move documents to Blob Storage and persistence to Azure SQL, with migrations

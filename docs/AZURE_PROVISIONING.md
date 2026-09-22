@@ -8,8 +8,8 @@ The order matters: the managed identity is created first so that every resource
 can be granted its role at the moment it is created, leaving no separate RBAC
 pass at the end.
 
-This runbook stops short of the Container App, Azure SQL and the DevOps service
-connection. Those belong to later phases and are listed under
+This runbook stops short of Azure SQL and the DevOps service connection. Those
+belong to later phases and are listed under
 [What this does not create](#what-this-does-not-create).
 
 See [Agreed direction](../README.md#agreed-direction) for the decisions behind
@@ -27,9 +27,9 @@ Four things block this runbook if they are not in place.
 | Nobody else holds the free AI Search service | Only one free search service exists per subscription. |
 
 Two properties cannot be changed after creation: **region** and **name**.
-Everything goes in **West Europe**. Storage account and container registry names
-must be globally unique across all of Azure and allow only lowercase letters and
-digits — if a name is taken, append `etil`.
+Everything goes in **West Europe**. The storage account and web app names must be
+globally unique across all of Azure; the storage account allows only lowercase
+letters and digits — if a name is taken, append `etil`.
 
 Add these tags on every resource, from the Tags tab of each Create page:
 
@@ -44,7 +44,7 @@ in Cost Management.
 
 ## How to assign a role
 
-Steps 5 through 9 each end with a role assignment. The procedure is identical
+Steps 5 through 8 each end with a role assignment. The procedure is identical
 every time:
 
 1. Open the resource
@@ -84,14 +84,16 @@ Search **Managed Identities** → **+ Create**.
 
 This comes before every other resource because a user-assigned identity is a
 standalone resource. A system-assigned identity would only exist once the
-Container App existed, which would push all role assignments to the end of the
-migration.
+web app existed, which would push all role assignments to the end of the
+migration. It also survives recreating the app, and the same identity can be
+attached to a staging slot later, so each role is granted once rather than per
+slot.
 
 **Open the identity and record two values from its Overview page:**
 
 | Value | Needed for |
 |---|---|
-| Client ID | the `AZURE_CLIENT_ID` setting on the Container App |
+| Client ID | the `AZURE_CLIENT_ID` setting on the web app |
 | Object (principal) ID | verifying role assignments |
 
 `DefaultAzureCredential` cannot guess which user-assigned identity to use. Without
@@ -217,32 +219,62 @@ usage is billed.
 and `Azure AI Developer` among others; which applies depends on how the project
 was created. Pick the one available on this resource.
 
-### 9. Container Registry
+### 9. App Service plan
 
-Search **Container registries** → **+ Create**.
-
-| Field | Value |
-|---|---|
-| Name | `crsipdevweu` |
-| Region | West Europe |
-| SKU | Basic |
-
-**Role:** `AcrPull` — so the application pulls its own image with the managed
-identity. The registry's admin account stays disabled.
-
-### 10. Container Apps environment
-
-Search **Container Apps** → **+ Create** → create the environment.
+Search **App Service plans** → **+ Create**.
 
 | Field | Value |
 |---|---|
-| Environment name | `cae-sip-dev-weu` |
+| Name | `plan-sip-dev-weu` |
 | Region | West Europe |
-| Log Analytics workspace | `log-sip-dev-weu` |
+| Operating system | Linux |
+| Pricing plan | **B1 Basic** |
 
-The environment is the shared surroundings — networking, logging, certificates.
-The Container App itself is created in the next phase, when there is an image to
-run.
+The plan is the machine; the web app is what runs on it. B1 costs €11.28 per
+month in West Europe and is enough for development.
+
+Deployment slots require Standard, Premium or Isolated, and Linux plans no longer
+offer Standard — the cheapest tier with slots is Premium v4 (P0v4) at €65.19 per
+month. That is not worth it for a development environment, where rolling back
+means redeploying the previous build from the pipeline. Production gets a Premium
+plan, where a staging slot and swap earn their cost.
+
+### 10. Web App
+
+Search **App Services** → **+ Create** → **Web App**.
+
+| Field | Value |
+|---|---|
+| Name | `app-sip-dev-weu` — globally unique; becomes `app-sip-dev-weu.azurewebsites.net` |
+| Publish | Code |
+| Runtime stack | the .NET version the project targets |
+| Operating system | Linux |
+| Region | West Europe |
+| App Service plan | `plan-sip-dev-weu` |
+
+No container image is involved: the pipeline publishes compiled .NET output
+directly, which is why this environment needs no Dockerfile and no container
+registry.
+
+Then configure the app:
+
+**Settings → Identity → User assigned** → add `id-sip-dev-weu`. Every role it
+needs was granted in the steps above, so the application has its access from the
+moment it first starts.
+
+**Settings → Environment variables** → add:
+
+| Name | Value |
+|---|---|
+| `AZURE_CLIENT_ID` | the identity's Client ID from step 2 |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | the value from step 4 |
+
+`AZURE_CLIENT_ID` is not optional. A user-assigned identity has to be named
+explicitly, or `DefaultAzureCredential` cannot tell which identity to present and
+authentication fails without explaining why.
+
+Record the application URL. Microsoft Entra ID needs it later as the redirect
+URI, and it is the address where the first deployment is verified.
 
 ## Verify before moving on
 
@@ -256,17 +288,17 @@ that exists, which is hard to recognise for what it is.
 | `srch-sip-dev-weu` | Search Service Contributor |
 | `srch-sip-dev-weu` | Search Index Data Contributor |
 | Foundry project | inference role |
-| `crsipdevweu` | AcrPull |
 
 Per resource: **Access control (IAM) → Role assignments**, filtered on the
-identity.
+identity. Also confirm on the web app, under **Identity → User assigned**, that
+`id-sip-dev-weu` is attached.
 
-Then record these five values; the application and the pipeline both need them.
+Then record these values; the application and the pipeline both need them.
 
 - Blob endpoint — `https://stsipdevweu.blob.core.windows.net`
 - Key Vault URI — `https://kv-sip-dev-weu.vault.azure.net`
 - Search endpoint — `https://srch-sip-dev-weu.search.windows.net`
-- Registry login server — `crsipdevweu.azurecr.io`
+- Application URL — `https://app-sip-dev-weu.azurewebsites.net`
 - Application Insights connection string
 - The identity's Client ID
 
@@ -274,15 +306,19 @@ Then record these five values; the application and the pipeline both need them.
 
 | Resource | When | Why not now |
 |---|---|---|
-| Container App | next phase | needs an image to run |
 | DevOps project and service connection | next phase | belongs with the pipeline |
-| Azure SQL | when the data layer is written | the first real fixed monthly cost; create it when work on it starts |
-| Production environment | last | only after backup, restore, retrieval permissions and data residency are approved |
+| Azure SQL | when the data layer is written | the first substantial fixed cost; create it when work on it starts |
+| Production environment | last | only after backup, restore, retrieval permissions and data residency are approved. Its App Service plan is Premium, so that a staging slot and swap are available. |
 
 ## Cost after this runbook
 
-Close to nothing. AI Search is on the free tier, the Foundry project has no
-standing cost, the managed identity and resource group are free, and storage,
-Key Vault and monitoring bill by usage at cents per month. The container registry
-carries a small fixed charge. The first substantial fixed cost arrives with
-Azure SQL, and the second when AI Search moves to Basic for production.
+The App Service plan is the only meaningful line: **B1 at €11.28 per month**.
+AI Search is on the free tier, the Foundry project has no standing cost, the
+managed identity and resource group are free, and storage, Key Vault and
+monitoring bill by usage at cents per month.
+
+The next fixed cost arrives with Azure SQL, and the two after that in production:
+a Premium App Service plan and AI Search on Basic.
+
+Prices are list prices excluding VAT for West Europe, checked on 22 September
+2026. Verify them before quoting them in a budget.
