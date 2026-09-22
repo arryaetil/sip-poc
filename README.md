@@ -27,7 +27,8 @@ Decisions taken with the senior developer on **22 September 2026**. Where this
 section conflicts with [MIGRATION.md](MIGRATION.md) or the
 [minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md), this
 section leads: those documents describe the options that were weighed, not the
-outcome.
+outcome. The development environment is created by following the
+[Azure provisioning runbook](docs/AZURE_PROVISIONING.md).
 
 | Topic | Decision |
 |---|---|
