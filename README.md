@@ -39,7 +39,7 @@ outcome. The development environment is created by following the
 | Database | Azure SQL with EF Core and a Unit of Work layer. |
 | Schema migrations | Run in the deploy stage of the pipeline, never on application startup. |
 | Retrieval | Foundry IQ on Azure AI Search — free tier for development, Basic before production. |
-| Identity | One user-assigned managed identity, `id-sip-dev-weu`. No API keys, no client secrets, no passwords in connection strings. |
+| Identity | A system-assigned managed identity per web app, so each environment has its own. No API keys, no client secrets, no passwords in connection strings. |
 | Deploy cadence | At most two deploys per day, behind a manual approval on the `sip-dev` environment. |
 
 ### Branching model
@@ -60,14 +60,28 @@ Three identities, none of which stores a password or key:
 
 | Identity | Used for | Mechanism |
 |---|---|---|
-| `id-sip-dev-weu` | the running application | user-assigned managed identity |
+| `app-sip-<env>-weu` | the running application | system-assigned managed identity |
 | Pipeline service connection | building and deploying | workload identity federation |
 | The developer's own account | inspecting and debugging | Entra sign-in |
 
+Each web app has its own system-assigned identity, which is also what separates
+the environments. A managed identity carries no permissions; every resource keeps
+its own list of who may do what. The development identity is never on a
+production resource's list, so a call from development to production is refused
+with `403`. Nothing has to be blocked, because nothing was ever allowed — and
+that is why an endpoint address in the wrong configuration file is a mistake
+rather than an incident.
+
+A user-assigned identity would be preferable once more than one component needs
+the same rights, such as a background worker or a staging slot. With one web app
+per environment there is nothing to share, and a system-assigned identity avoids
+both the extra resource and the client ID that would have to be configured.
+
 Roles are assigned on the resource itself rather than on the resource group, so
-each grant stays as narrow as it needs to be. Application and pipeline have
-deliberately separate rights: the pipeline may deploy but reaches no data, and
-the application reaches data but cannot deploy.
+each grant stays as narrow as it needs to be, and one resource group per
+environment keeps a careless assignment from crossing the boundary. Application
+and pipeline have deliberately separate rights: the pipeline may deploy but
+reaches no data, and the application reaches data but cannot deploy.
 
 Azure SQL has no RBAC roles for data, so both identities become contained
 database users — `db_datareader` and `db_datawriter` for the application, and
@@ -83,19 +97,24 @@ deploy the code that uses it, and remove the old one only in a later deploy.
 Nothing is dropped or renamed in the same deploy as the code change that makes it
 obsolete.
 
-Development runs on a B1 plan, where rolling back is a redeploy. Production runs
-on a Premium plan so that a staging slot is available: deploy there, verify, and
-swap. Deployment slots require Standard or higher, and Linux plans no longer
-offer Standard, so that capability starts at Premium.
+Development runs on a B1 plan, where rolling back means redeploying the previous
+build. Production gets its own plan, sized for its load rather than for staging
+slots: slots require Standard or higher and Linux plans no longer offer Standard,
+so swap-based deployment starts at Premium and is a later decision, not a
+prerequisite.
 
 ### Resource naming
 
 Pattern `<type>-sip-<environment>-weu`. Storage account names omit the hyphens
 because Azure does not allow them there.
 
-`rg-sip-dev-weu`, `id-sip-dev-weu`, `log-sip-dev-weu`, `appi-sip-dev-weu`,
-`stsipdevweu`, `kv-sip-dev-weu`, `srch-sip-dev-weu`, `plan-sip-dev-weu`,
-`app-sip-dev-weu`.
+`rg-sip-dev-weu`, `log-sip-dev-weu`, `appi-sip-dev-weu`, `stsipdevweu`,
+`kv-sip-dev-weu`, `srch-sip-dev-weu`, `plan-sip-dev-weu`, `app-sip-dev-weu`.
+
+Production repeats the set with `prod`, in its own resource group. Development
+and production each keep their own database, storage account, key vault and
+identity; a later test environment may share the development App Service plan
+and Log Analytics workspace, but never a database or a storage account.
 
 ### Where the application is tested
 
