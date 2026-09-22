@@ -8,6 +8,7 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 | Stack | Python 3.13, FastAPI, vanilla JavaScript, SQLite, Azure AI Foundry |
 | Languages | English, Nederlands, Deutsch |
 | Hosting | Railway project and service `sip-poc`, persistent volume mounted at `/data` |
+| Target | C#/ASP.NET Core on Azure Container Apps, Azure SQL, Foundry IQ — see [Agreed direction](#agreed-direction) |
 
 > [!IMPORTANT]
 > **Target knowledge architecture: Microsoft Foundry IQ.** The local lexical/vector
@@ -19,6 +20,85 @@ SIP is a multilingual proof of concept for ibc group / ETIL. Sales and product u
 > the POC working. See [MIGRATION.md](MIGRATION.md) and the
 > [Azure target architecture](docs/AZURE_TARGET_ARCHITECTURE.md). For the technical
 > review, use the concise [minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md).
+
+## Agreed direction
+
+Decisions taken with the senior developer on **22 September 2026**. Where this
+section conflicts with [MIGRATION.md](MIGRATION.md) or the
+[minimum Azure resources checklist](docs/AZURE_MINIMUM_RESOURCES.md), this
+section leads: those documents describe the options that were weighed, not the
+outcome.
+
+| Topic | Decision |
+|---|---|
+| Application | Rewrite in C#/ASP.NET Core. The Python POC stays the behavioural reference and is tagged `poc-python-final`. |
+| Source control and CI/CD | Azure DevOps — Azure Repos and Azure Pipelines — replacing GitHub. |
+| Hosting | Azure Container Apps, running images built by the pipeline and stored in Azure Container Registry. |
+| Region | West Europe for every resource. It supports agentic retrieval and the semantic ranker on the AI Search free tier; North Europe is closed to new search services. |
+| Database | Azure SQL with EF Core and a Unit of Work layer. |
+| Schema migrations | Run in the deploy stage of the pipeline, never on application startup. |
+| Retrieval | Foundry IQ on Azure AI Search — free tier for development, Basic before production. |
+| Identity | One user-assigned managed identity, `id-sip-dev-weu`. No API keys, no client secrets, no passwords in connection strings. |
+| Deploy cadence | At most two deploys per day, behind a manual approval on the `sip-dev` environment. |
+
+### Branching model
+
+`main` is the starting point of every branch and the only source that is
+deployed; nothing is committed to it directly. Each feature gets its own
+`feature/<name>` branch. When several features are ready they are first merged
+into `integration/<date>`, where conflicts are resolved, and that branch reaches
+main as a single merge. The integration branch is recreated from main for every
+batch and discarded afterwards, so it cannot drift away from main.
+
+That single merge is also the deploy moment, which is how several features fit
+inside the two-deploy budget.
+
+### Identity model
+
+Three identities, none of which stores a password or key:
+
+| Identity | Used for | Mechanism |
+|---|---|---|
+| `id-sip-dev-weu` | the running application | user-assigned managed identity |
+| Pipeline service connection | building and deploying | workload identity federation |
+| The developer's own account | inspecting and debugging | Entra sign-in |
+
+Roles are assigned on the resource itself rather than on the resource group, so
+each grant stays as narrow as it needs to be. Application and pipeline have
+deliberately separate rights: the pipeline may deploy but reaches no data, and
+the application reaches data but cannot deploy.
+
+Azure SQL has no RBAC roles for data, so both identities become contained
+database users — `db_datareader` and `db_datawriter` for the application, and
+additionally `db_ddladmin` for the pipeline identity that runs migrations.
+Neither is `db_owner`.
+
+### Schema changes
+
+Because migrations run during deployment, a rollback is no longer free: traffic
+is shifted back to the previous Container Apps revision, and that older code has
+to work against the newer schema. Schema changes therefore follow expand and
+contract — add the new column, deploy the code that uses it, and remove the old
+one only in a later deploy. Nothing is dropped or renamed in the same deploy as
+the code change that makes it obsolete.
+
+### Resource naming
+
+Pattern `<type>-sip-<environment>-weu`. Storage accounts and the container
+registry omit the hyphens because Azure does not allow them there.
+
+`rg-sip-dev-weu`, `id-sip-dev-weu`, `log-sip-dev-weu`, `appi-sip-dev-weu`,
+`stsipdevweu`, `kv-sip-dev-weu`, `srch-sip-dev-weu`, `crsipdevweu`,
+`cae-sip-dev-weu`, `ca-sip-dev-weu`.
+
+### Where the application is tested
+
+Azure is the test environment. Compilation and unit tests run locally; anything
+that talks to Foundry, AI Search, Blob Storage or the database is verified in
+Azure. Azurite and a local database exist to keep work possible offline, not to
+substitute for that verification. Debugging happens through Application Insights
+rather than a debugger, so structured logging — in particular of what is
+actually sent to the model — is a requirement rather than a nicety.
 
 ## Engineering status
 
@@ -207,22 +287,34 @@ railway up --service sip-poc --detach
 - Demo environment credentials and user lifecycle need hardening before customer production use.
 - The public `/health` endpoint returns OK, but the current CLI-uploaded Railway service has no platform healthcheck configured; set it in Railway or connect the GitHub source so `railway.json` is applied.
 
-## Recommended implementation order
+## Implementation order
 
-1. Fix and test Knowledge Assistant grounding and citations.
-2. Define and implement evidence withdrawal, deletion and ownership rules.
-3. Make hosted authentication fail closed.
-4. Add integration tests for auth roles, uploads, approval and deletion.
-5. Stabilise the Railway reference implementation.
-6. Deploy the unchanged application container to an Azure development
-   environment.
-7. Replace SQLite and local uploads with PostgreSQL and Blob Storage.
+1. Confirm subscription, tenant, region, naming, and the right to assign roles.
+   Contributor alone cannot assign roles; that needs Role Based Access Control
+   Administrator or Owner.
+2. Create the development landing zone, assigning the managed identity its role
+   on each resource as that resource is created, so no separate RBAC pass is
+   left over.
+3. Put a walking skeleton through the whole chain — Azure Repos, pipeline,
+   container registry, Container Apps, managed identity — before writing any
+   feature code.
+4. Bring up the assistant against Foundry using the managed identity, which
+   retires the API key and the client secret.
+5. Move documents to Blob Storage and persistence to Azure SQL, with migrations
+   running in the pipeline.
+6. Close the three blockers above and add regression tests for them.
+7. Replace the local retrieval implementation with Foundry IQ.
 8. Replace demo authentication with Microsoft Entra ID.
-9. Replace the local retrieval implementation with Foundry IQ.
-10. Consider C# only for stable capabilities with a clear team owner.
+9. Create the production environment once backup, restore, retrieval
+   permissions and data residency have been approved.
 
-Do not combine the Azure migration with a full C# or frontend rewrite. Keeping
-the existing application as the behavioural reference makes each migration
-step testable and keeps the system understandable for its accountable owner.
+The pipeline is built before the features, not after. The first deployment is
+where configuration, identity and start-up behaviour fail, and that is cheapest
+to discover with an application that does nothing yet.
 
-Last documentation review: **21 September 2026**.
+The rewrite does not start from a blank page: this repository — its
+documentation, `docs/specs/` and the three blockers above — is the behavioural
+specification for the C# implementation. The Python POC stays available under
+the `poc-python-final` tag for any behaviour that needs checking.
+
+Last documentation review: **22 September 2026**.
