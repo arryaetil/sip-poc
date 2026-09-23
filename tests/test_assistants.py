@@ -212,3 +212,14 @@ def test_long_history_drops_the_oldest_messages():
     assert len(text) < 10_000
     assert text.startswith(assistants.OMITTED)
     assert "m199 " in text and "m0 " not in text
+
+
+def test_rate_limit_becomes_a_clear_unavailable_error(dify, monkeypatch):
+    assistant, _, _ = dify
+
+    def limited(request):
+        return httpx.Response(400, json={"message": "Run failed: you have reached the knowledge base request rate limit"})
+
+    assistant.http = httpx.Client(transport=httpx.MockTransport(limited))
+    with pytest.raises(AssistantUnavailable, match="Try again in a minute"):
+        assistant.knowledge_answer([], "Hoi", "nl", "alice", False)
