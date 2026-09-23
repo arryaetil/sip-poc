@@ -209,8 +209,10 @@ workflow:
         - id: rewrite-system
           role: system
           text: You turn the latest user message into one standalone search query for a knowledge base
-            about ETIL and the ibc group. Resolve pronouns and references using the conversation. Keep
-            the language of the latest message. Output only the query, nothing else. If the message is
+            about ETIL and the ibc group. Resolve pronouns and references using the conversation. The
+            knowledge base is written in Dutch, so write the query in Dutch whatever language the user
+            writes in; keep product names and acronyms such as RPA as they are and spell out an acronym
+            once in brackets when you know it. Output only the query, nothing else. If the message is
             a greeting or small talk, output it unchanged.
         - id: rewrite-user
           role: user

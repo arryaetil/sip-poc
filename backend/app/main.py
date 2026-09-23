@@ -413,13 +413,13 @@ def index() -> str:
 
 
 @app.get("/ibc-group-lockup.png", response_class=FileResponse)
-def ibc_group_lockup() -> Path:
-    return APP_DIR / "ibc-group-lockup.png"
+def ibc_group_lockup() -> FileResponse:
+    return FileResponse(APP_DIR / "ibc-group-lockup.png", headers=REVALIDATE)
 
 
 @app.get("/login-hero.jpg", response_class=FileResponse)
-def login_hero() -> Path:
-    return APP_DIR / "login-hero.jpg"
+def login_hero() -> FileResponse:
+    return FileResponse(APP_DIR / "login-hero.jpg", headers=REVALIDATE)
 
 
 @app.get("/styles.css", response_class=FileResponse)
