@@ -257,18 +257,17 @@ RATE_LIMIT_WAIT = 65
 
 def _context_text(context: StoredBusinessContext) -> str:
     """A Business Context as a readable document for retrieval."""
-    lines = [f"# {context.name}", "", f"Business Context ({context.offering_type}, {context.status}).", ""]
-    fields = context.model_dump(exclude={"id", "name", "status", "created_at", "updated_at"})
+    # Dify splits on blank lines, so each field becomes one chunk. The context name
+    # leads every chunk: a lone "Core capabilities" heading would match nothing useful.
+    paragraphs = [f"{context.name}: Business Context for a {context.offering_type} ({context.status})."]
+    fields = context.model_dump(exclude={"id", "name", "status", "created_at", "updated_at", "offering_type"})
     for name, value in fields.items():
         if not value:
             continue
-        lines.append(f"## {name.replace('_', ' ').capitalize()}")
-        if isinstance(value, list):
-            lines.extend(f"- {item}" for item in value)
-        else:
-            lines.append(str(value))
-        lines.append("")
-    return "\n".join(lines).strip()
+        label = f"{context.name} — {name.replace('_', ' ')}"
+        body = "\n".join(f"- {item}" for item in value) if isinstance(value, list) else str(value)
+        paragraphs.append(f"{label}:\n{body}")
+    return "\n\n".join(paragraphs)
 
 
 class DifyKnowledgeBase:
