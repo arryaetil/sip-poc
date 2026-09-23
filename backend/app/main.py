@@ -52,11 +52,7 @@ from app.knowledge import (
     get_knowledge_document,
     load_knowledge_documents,
 )
-from app.retrieval import (
-    remove_upload_from_index,
-    retrieve,
-    set_upload_visibility,
-)
+from app.retrieval import retrieve
 from app.store import ContextStore, EmailAlreadyExists, verify_password
 from app.uploads import MAX_FILE_BYTES, extract_text, safe_filename
 
@@ -407,6 +403,10 @@ def _upload_root() -> Path:
     return database_path.parent / "uploads"
 
 
+# Browsers otherwise keep an old app.js after a deploy; revalidate against the ETag.
+REVALIDATE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (APP_DIR / "index.html").read_text(encoding="utf-8")
@@ -423,18 +423,18 @@ def login_hero() -> Path:
 
 
 @app.get("/styles.css", response_class=FileResponse)
-def styles() -> Path:
-    return APP_DIR / "styles.css"
+def styles() -> FileResponse:
+    return FileResponse(APP_DIR / "styles.css", headers=REVALIDATE)
 
 
 @app.get("/app.js", response_class=FileResponse)
-def frontend_script() -> Path:
-    return APP_DIR / "app.js"
+def frontend_script() -> FileResponse:
+    return FileResponse(APP_DIR / "app.js", headers=REVALIDATE)
 
 
 @app.get("/i18n.js", response_class=FileResponse)
-def frontend_i18n() -> Path:
-    return APP_DIR / "i18n.js"
+def frontend_i18n() -> FileResponse:
+    return FileResponse(APP_DIR / "i18n.js", headers=REVALIDATE)
 
 
 @app.get("/health")
@@ -577,7 +577,10 @@ def delete_upload(upload_id: str, request: Request) -> Response:
     path = get_context_store().delete_upload(upload_id, owner_id, is_admin)
     if path is None:
         raise HTTPException(status_code=404, detail="Upload not found")
-    remove_upload_from_index(upload_id)
+    try:
+        get_assistant().remove_upload(upload_id)
+    except Exception:
+        logger.error("Removing upload %s from the knowledge index failed:\n%s", upload_id, traceback.format_exc())
     Path(path).unlink(missing_ok=True)
     Path(f"{path}.txt").unlink(missing_ok=True)
     return Response(status_code=204)
@@ -785,6 +788,7 @@ def save_conversation_to_portfolio(conversation_id: str, request: Request) -> St
         _prepare_business_context_from_conversation(conversation, owner_id), status="draft", owner_id=owner_id
     )
     store.link_conversation_to_context(conversation_id, context.id, owner_id, is_admin)
+    _sync_context_knowledge(context)
     return context
 
 
@@ -907,6 +911,7 @@ def create_context(request: SaveContextRequest, http_request: Request) -> Stored
     saved = get_context_store().create(request.context, request.status, owner_id)
     if request.status == "approved":
         _publish_selected_evidence(saved.id, owner_id, request.publish_upload_ids)
+    _sync_context_knowledge(saved)
     return saved
 
 
@@ -918,7 +923,23 @@ def update_context(context_id: str, request: SaveContextRequest, http_request: R
         raise HTTPException(status_code=404, detail="Business Context not found")
     if request.status == "approved":
         _publish_selected_evidence(context_id, owner_id, request.publish_upload_ids)
+    _sync_context_knowledge(context)
     return context
+
+
+def _sync_context_knowledge(context: StoredBusinessContext) -> None:
+    """Let the knowledge assistant find a saved Business Context.
+
+    SIP stays the source of truth, so a failure here is logged, not raised: the
+    context is saved either way and the next save retries the sync.
+    """
+    owner_id = get_context_store().context_owner(context.id)
+    if owner_id is None:
+        return
+    try:
+        get_assistant().index_context(context, owner_id)
+    except Exception:
+        logger.error("Indexing Business Context %s failed:\n%s", context.id, traceback.format_exc())
 
 
 def _publish_selected_evidence(context_id: str, owner_id: str, upload_ids: list[str]) -> None:
@@ -928,11 +949,18 @@ def _publish_selected_evidence(context_id: str, owner_id: str, upload_ids: list[
         if record is None or record.kind != "context_evidence" or record.context_id != context_id:
             continue
         if store.set_upload_visibility(upload_id, owner_id, "org"):
-            set_upload_visibility(upload_id, "org", owner_id)
+            try:
+                get_assistant().set_upload_visibility(upload_id, "org", owner_id)
+            except Exception:
+                logger.error("Publishing upload %s in the knowledge index failed:\n%s", upload_id, traceback.format_exc())
 
 
 @app.delete("/api/contexts/{context_id}", status_code=204)
 def delete_context(context_id: str, request: Request) -> Response:
     if not get_context_store().delete_context(context_id, *_actor(request)):
         raise HTTPException(status_code=404, detail="Business Context not found")
+    try:
+        get_assistant().remove_context(context_id)
+    except Exception:
+        logger.error("Removing Business Context %s from the knowledge index failed:\n%s", context_id, traceback.format_exc())
     return Response(status_code=204)

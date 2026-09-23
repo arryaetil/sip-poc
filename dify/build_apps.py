@@ -31,6 +31,7 @@ PROVIDER = "langgenius/openai/openai"
 # uses gpt-5-mini. Reasoning effort trades depth for latency per app.
 MODEL = "gpt-5-mini"
 KNOWLEDGE_DATASET_ID = "cc833d3d-e595-41c7-a7ca-1bc1c5b7decd"
+OWNER_FIELD_ID = "4db261db-d0f7-4c92-a5fe-15cb3e02ee70"  # created by setup_knowledge_metadata.py
 EMBEDDING_MODEL = "text-embedding-3-large"
 
 DEPENDENCIES = [
@@ -287,6 +288,29 @@ def knowledge() -> dict:
                 },
             },
             "query_variable_selector": ["rewrite", "text"],
+            # Dify has no per-user permissions in a knowledge base. SIP labels every
+            # document with an owner (see dify/setup_knowledge_metadata.py) and the
+            # app only retrieves public documents and those of the asking user.
+            "metadata_filtering_mode": "manual",
+            "metadata_filtering_conditions": {
+                "logical_operator": "or",
+                "conditions": [
+                    {
+                        "id": "owner-public",
+                        "metadata_id": OWNER_FIELD_ID,
+                        "name": "owner",
+                        "comparison_operator": "is",
+                        "value": "public",
+                    },
+                    {
+                        "id": "owner-self",
+                        "metadata_id": OWNER_FIELD_ID,
+                        "name": "owner",
+                        "comparison_operator": "is",
+                        "value": "{{#start.owner#}}",
+                    },
+                ],
+            },
             "query_attachment_selector": [],
         },
     )
@@ -315,7 +339,14 @@ def knowledge() -> dict:
         },
     )
     nodes = [
-        start_node([text_input("language", 32), text_input("history", 100_000), text_input("general", 8)]),
+        start_node(
+            [
+                text_input("language", 32),
+                text_input("history", 100_000),
+                text_input("general", 8),
+                text_input("owner", 32, required=True),
+            ]
+        ),
         branch,
         llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", y=420),
         retrieval,

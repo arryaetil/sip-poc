@@ -21,6 +21,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 from typing import Protocol
 
 import httpx
@@ -33,6 +34,7 @@ from app.models import (
     KnowledgeChatSource,
     KnowledgeNearMiss,
     ProductStrategistTurn,
+    StoredBusinessContext,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,6 +90,14 @@ class Assistant(Protocol):
     def index_upload(
         self, *, upload_id: str, owner_id: str, filename: str, content: str, visibility: str
     ) -> None: ...
+
+    def set_upload_visibility(self, upload_id: str, visibility: str, owner_id: str) -> None: ...
+
+    def remove_upload(self, upload_id: str) -> None: ...
+
+    def index_context(self, context: StoredBusinessContext, owner_id: str) -> None: ...
+
+    def remove_context(self, context_id: str) -> None: ...
 
 
 # --------------------------------------------------------------------------- Foundry
@@ -180,6 +190,28 @@ class FoundryAssistant:
             upload_id=upload_id, owner_id=owner_id, filename=filename, content=content, visibility=visibility
         )
 
+    def set_upload_visibility(self, upload_id, visibility, owner_id):
+        from app.retrieval import set_upload_visibility
+
+        try:
+            set_upload_visibility(upload_id, visibility, owner_id)
+        except FileNotFoundError:
+            pass  # No vector index yet, so nothing to update.
+
+    def remove_upload(self, upload_id):
+        from app.retrieval import remove_upload_from_index
+
+        try:
+            remove_upload_from_index(upload_id)
+        except FileNotFoundError:
+            pass
+
+    def index_context(self, context, owner_id):
+        pass  # The Foundry path retrieves from the website corpus and uploads only.
+
+    def remove_context(self, context_id):
+        pass
+
 
 # --------------------------------------------------------------------------- Dify
 
@@ -214,6 +246,133 @@ def _parse_json(model: type[BaseModel], text: str) -> BaseModel:
         raise ValueError(f"The model did not return a valid {model.__name__}") from exc
 
 
+def _owner_label(owner_id: str) -> str:
+    """A stable pseudonym: Dify sees this, never SIP's user id."""
+    return hashlib.sha256(owner_id.encode()).hexdigest()[:24]
+
+
+PUBLIC = "public"
+
+
+def _context_text(context: StoredBusinessContext) -> str:
+    """A Business Context as a readable document for retrieval."""
+    lines = [f"# {context.name}", "", f"Business Context ({context.offering_type}, {context.status}).", ""]
+    fields = context.model_dump(exclude={"id", "name", "status", "created_at", "updated_at"})
+    for name, value in fields.items():
+        if not value:
+            continue
+        lines.append(f"## {name.replace('_', ' ').capitalize()}")
+        if isinstance(value, list):
+            lines.extend(f"- {item}" for item in value)
+        else:
+            lines.append(str(value))
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+class DifyKnowledgeBase:
+    """SIP-owned documents in the Dify knowledge base, labelled by owner.
+
+    Dify has no per-user permissions inside a knowledge base, so every document
+    carries an `owner` metadata value (`public` or a user pseudonym) and the
+    knowledge app filters on it. Document names start with `upload:<id>:` or
+    `context:<id>:` so SIP can find them again without storing Dify ids.
+    """
+
+    PROCESS_RULE = {
+        "mode": "custom",
+        "rules": {
+            "pre_processing_rules": [
+                {"id": "remove_extra_spaces", "enabled": True},
+                {"id": "remove_urls_emails", "enabled": False},
+            ],
+            "segmentation": {"separator": "\n\n", "max_tokens": 300},
+        },
+    }
+
+    def __init__(self, base_url: str, key: str, dataset_id: str) -> None:
+        self.dataset = f"/datasets/{dataset_id}"
+        self.http = httpx.Client(base_url=base_url, headers={"Authorization": f"Bearer {key}"}, timeout=60)
+        self._owner_field: str | None = None
+
+    def _call(self, method: str, path: str, **kwargs) -> dict:
+        for attempt in range(3):
+            response = self.http.request(method, self.dataset + path, **kwargs)
+            if response.status_code in (403, 429) and "rate limit" in response.text and attempt < 2:
+                time.sleep(10)  # Sandbox plan: roughly 10 knowledge requests per minute.
+                continue
+            if response.status_code >= 400:
+                logger.error("Dify knowledge base %s %s -> %s: %s", method, path, response.status_code, response.text[:500])
+                raise RuntimeError(f"Dify knowledge base returned {response.status_code}: {response.text[:200]}")
+            return response.json() if response.content else {}
+        raise RuntimeError("Dify knowledge base rate limit")
+
+    def _owner_field_id(self) -> str:
+        if self._owner_field is None:
+            fields = self._call("GET", "/metadata")["doc_metadata"]
+            field = next((item for item in fields if item["name"] == "owner"), None)
+            if field is None:
+                raise RuntimeError("Dify knowledge base has no owner field; run dify/setup_knowledge_metadata.py")
+            self._owner_field = field["id"]
+        return self._owner_field
+
+    def _find(self, prefix: str) -> list[dict]:
+        listing = self._call("GET", "/documents", params={"keyword": prefix, "page": 1, "limit": 100})
+        return [item for item in listing.get("data", []) if item["name"].startswith(prefix)]
+
+    def upsert(self, prefix: str, name: str, text: str, owner: str) -> None:
+        body = {
+            "name": f"{prefix}{name}"[:200],
+            "text": text,
+            "indexing_technique": "high_quality",
+            "doc_form": "text_model",
+            "doc_language": "Dutch",
+            "process_rule": self.PROCESS_RULE,
+        }
+        existing = self._find(prefix)
+        if existing:
+            document_id = existing[0]["id"]
+            self._call("POST", f"/documents/{document_id}/update-by-text", json=body)
+        else:
+            document_id = self._call("POST", "/document/create-by-text", json=body)["document"]["id"]
+        self._set_owner([document_id], owner)
+
+    def set_owner(self, prefix: str, owner: str) -> None:
+        ids = [item["id"] for item in self._find(prefix)]
+        if ids:
+            self._set_owner(ids, owner)
+
+    def _set_owner(self, document_ids: list[str], owner: str) -> None:
+        field = self._owner_field_id()
+        self._call(
+            "POST",
+            "/documents/metadata",
+            json={
+                "operation_data": [
+                    {"document_id": item, "metadata_list": [{"id": field, "name": "owner", "value": owner}]}
+                    for item in document_ids
+                ]
+            },
+        )
+
+    def delete(self, prefix: str) -> None:
+        for item in self._find(prefix):
+            self._call("DELETE", f"/documents/{item['id']}")
+
+
+def _source_for(document_name: str, known: dict[str, tuple[str, str]]) -> tuple[str, str]:
+    """Title and link for a retrieved document: corpus page, upload or context."""
+    if document_name in known:
+        return known[document_name]
+    kind, _, rest = document_name.partition(":")
+    item_id, _, title = rest.partition(":")
+    if kind == "upload":
+        return title, f"/api/uploads/{item_id}"
+    if kind == "context":
+        return title, ""
+    return document_name, ""
+
+
 @lru_cache(maxsize=1)
 def _documents_by_filename() -> dict[str, tuple[str, str]]:
     """Map the uploaded Dify file name back to SIP's title and canonical URL."""
@@ -235,15 +394,21 @@ class DifyAssistant:
             "finalizer": os.getenv("DIFY_FINALIZER_API_KEY", "").strip(),
             "knowledge": os.getenv("DIFY_KNOWLEDGE_API_KEY", "").strip(),
         }
+        self.keys["dataset"] = os.getenv("DIFY_DATASET_API_KEY", "").strip()
         missing = [f"DIFY_{app.upper()}_API_KEY" for app, key in self.keys.items() if not key]
         if missing:
             # Fail closed: refuse to start half-configured rather than fail per request.
             raise AssistantUnavailable(f"SIP_ASSISTANT_PROVIDER=dify but {', '.join(missing)} is not set")
         self.http = httpx.Client(timeout=httpx.Timeout(180.0, connect=10.0))
+        self.knowledge_base = DifyKnowledgeBase(
+            self.base_url,
+            self.keys["dataset"],
+            os.getenv("DIFY_DATASET_ID", "cc833d3d-e595-41c7-a7ca-1bc1c5b7decd").strip(),
+        )
 
     def _run(self, app: str, query: str, inputs: dict[str, str], owner_id: str) -> dict:
         # Dify only needs a stable per-user label, not SIP's real user id.
-        user = hashlib.sha256(owner_id.encode()).hexdigest()[:24]
+        user = _owner_label(owner_id)
         response = self.http.post(
             f"{self.base_url}/chat-messages",
             headers={"Authorization": f"Bearer {self.keys[app]}"},
@@ -293,6 +458,8 @@ class DifyAssistant:
                 "language": LANGUAGE_NAMES.get(language, "English"),
                 "history": _transcript(history),
                 "general": "yes" if answer_generally else "no",
+                # The knowledge app only retrieves documents labelled public or with this owner.
+                "owner": _owner_label(owner_id),
             },
             owner_id,
         )
@@ -310,24 +477,40 @@ class DifyAssistant:
         resources = body.get("metadata", {}).get("retriever_resources", []) or []
         top = max((resource.get("score") or 0 for resource in resources), default=0)
         sources: list[KnowledgeChatSource] = []
-        seen: set[str] = set()
+        seen: set[tuple[str, str]] = set()
         known = _documents_by_filename()
         for resource in resources:
             # Show only documents close to the best match; the rest is incidental.
             if (resource.get("score") or 0) < SOURCE_SCORE_RATIO * top:
                 continue
-            title, url = known.get(resource.get("document_name", ""), (resource.get("document_name", ""), ""))
-            if url in seen or not title:
+            title, url = _source_for(resource.get("document_name", ""), known)
+            if (title, url) in seen or not title:
                 continue
-            seen.add(url)
+            seen.add((title, url))
             sources.append(KnowledgeChatSource(title=title, url=url))
         return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=sources)
 
+    # Uploads and Business Contexts go to the Dify knowledge base, labelled with their
+    # owner, so the knowledge assistant can use them. Test data only: this places
+    # documents outside Azure (see dify/README.md).
+
     def index_upload(self, *, upload_id, owner_id, filename, content, visibility):
-        # Uploads are deliberately not sent to a Dify knowledge base: that would place
-        # user documents outside Azure without a processing agreement. The file and its
-        # extracted text are still stored by SIP and used when a document is discussed.
-        logger.info("dify provider: upload %s stored but not indexed", upload_id)
+        owner = PUBLIC if visibility == "org" else _owner_label(owner_id)
+        self.knowledge_base.upsert(f"upload:{upload_id}:", filename, content, owner)
+
+    def set_upload_visibility(self, upload_id, visibility, owner_id):
+        owner = PUBLIC if visibility == "org" else _owner_label(owner_id)
+        self.knowledge_base.set_owner(f"upload:{upload_id}:", owner)
+
+    def remove_upload(self, upload_id):
+        self.knowledge_base.delete(f"upload:{upload_id}:")
+
+    def index_context(self, context, owner_id):
+        owner = PUBLIC if context.status == "approved" else _owner_label(owner_id)
+        self.knowledge_base.upsert(f"context:{context.id}:", context.name, _context_text(context), owner)
+
+    def remove_context(self, context_id):
+        self.knowledge_base.delete(f"context:{context_id}:")
 
 
 # --------------------------------------------------------------------------- selection

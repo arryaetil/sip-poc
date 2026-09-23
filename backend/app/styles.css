@@ -205,6 +205,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .user .message-content { padding: 11px 14px; border-radius: 4px; background: var(--seasal); }
 .message-sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .message-sources a { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; color: var(--focus); font-size: 11px; text-decoration: none; }
+.message-sources span { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; color: var(--muted); font-size: 11px; }
 .message-sources a:hover { border-color: var(--focus); background: #f4f8fc; }
 
 .composer { padding: 16px 0 0; }

@@ -11,6 +11,7 @@ KEYS = {
     "DIFY_STRATEGIST_API_KEY": "app-strategist",
     "DIFY_FINALIZER_API_KEY": "app-finalizer",
     "DIFY_KNOWLEDGE_API_KEY": "app-knowledge",
+    "DIFY_DATASET_API_KEY": "dataset-kb",
 }
 
 HISTORY = [
@@ -34,6 +35,33 @@ def dify(monkeypatch):
     assistant = DifyAssistant()
     assistant.http = httpx.Client(transport=httpx.MockTransport(handler))
     return assistant, sent, reply
+
+
+@pytest.fixture
+def knowledge_base(dify):
+    """The Dify knowledge base client, answering like the real API."""
+    assistant, _, _ = dify
+    calls: list[tuple[str, str, dict]] = []
+    documents: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else {}
+        path = request.url.path.split("/datasets/", 1)[1].split("/", 1)[1]
+        calls.append((request.method, path, body))
+        if path == "metadata":
+            return httpx.Response(200, json={"doc_metadata": [{"id": "field-1", "name": "owner"}]})
+        if path == "documents" and request.method == "GET":
+            keyword = request.url.params["keyword"]
+            return httpx.Response(200, json={"data": [d for d in documents if keyword in d["name"]]})
+        if path == "document/create-by-text":
+            documents.append({"id": f"doc-{len(documents)}", "name": body["name"]})
+            return httpx.Response(200, json={"document": documents[-1]})
+        return httpx.Response(200, json={})
+
+    assistant.knowledge_base.http = httpx.Client(
+        base_url="https://dify.test/v1", transport=httpx.MockTransport(handler)
+    )
+    return assistant, calls, documents
 
 
 def test_dify_refuses_to_start_without_every_key(monkeypatch):
@@ -112,10 +140,55 @@ def test_knowledge_answer_maps_dify_files_to_sip_sources(dify, monkeypatch):
     assert json.loads(sent[0].content)["inputs"]["general"] == "no"
 
 
-def test_dify_does_not_send_uploads_anywhere(dify):
-    assistant, sent, _ = dify
-    assistant.index_upload(upload_id="u1", owner_id="alice", filename="offer.pdf", content="secret", visibility="private")
-    assert sent == []
+def owners_set(calls):
+    return [
+        item["metadata_list"][0]["value"]
+        for method, path, body in calls
+        if path == "documents/metadata"
+        for item in body["operation_data"]
+    ]
+
+
+def test_private_upload_is_labelled_with_its_owner_only(knowledge_base):
+    assistant, calls, documents = knowledge_base
+    assistant.index_upload(upload_id="u1", owner_id="alice", filename="offer.pdf", content="text", visibility="private")
+
+    assert documents[0]["name"] == "upload:u1:offer.pdf"
+    assert owners_set(calls) == [assistants._owner_label("alice")]
+    assert "alice" not in json.dumps([body for _, _, body in calls])
+
+
+def test_published_evidence_becomes_public(knowledge_base):
+    assistant, calls, _ = knowledge_base
+    assistant.index_upload(upload_id="u1", owner_id="alice", filename="offer.pdf", content="text", visibility="private")
+    assistant.set_upload_visibility("u1", "org", "alice")
+    assert owners_set(calls)[-1] == "public"
+
+
+def test_context_is_private_until_approved_and_updates_in_place(knowledge_base):
+    from app.models import StoredBusinessContext
+    from test_workspaces import context
+
+    assistant, calls, documents = knowledge_base
+    draft = StoredBusinessContext(**context("SIP").model_dump(), id="c1", status="draft", created_at="t", updated_at="t")
+    assistant.index_context(draft, "alice")
+    assistant.index_context(draft.model_copy(update={"status": "approved"}), "alice")
+
+    assert len(documents) == 1  # the second save updated the same document
+    assert any(path == "documents/doc-0/update-by-text" for _, path, _ in calls)
+    assert owners_set(calls) == [assistants._owner_label("alice"), "public"]
+
+
+def test_knowledge_request_carries_the_owner_filter_value(dify):
+    assistant, sent, reply = dify
+    reply["answer"] = json.dumps({"message": "Hi", "answered_from_sources": False})
+    assistant.knowledge_answer([], "Hoi", "nl", "alice", False)
+    assert json.loads(sent[0].content)["inputs"]["owner"] == assistants._owner_label("alice")
+
+
+def test_upload_and_context_sources_map_back_to_sip():
+    assert assistants._source_for("upload:u1:offer.pdf", {}) == ("offer.pdf", "/api/uploads/u1")
+    assert assistants._source_for("context:c1:SIP", {}) == ("SIP", "")
 
 
 def test_knowledge_lists_no_sources_when_the_corpus_has_no_answer(dify):
