@@ -795,12 +795,17 @@ function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], anima
   if (role === "assistant" && sources.length) {
     const links = document.createElement("div");
     links.className = "message-sources";
+    // Number the chips only when the answer itself cites [Source N].
+    const numbered = /\[Source \d+\]/.test(text);
     sources.forEach((source, index) => {
-      const link = document.createElement("a");
-      link.href = source.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = `[${index + 1}] ${source.title}`;
+      // A Business Context has no page of its own, so it is a label, not a link.
+      const link = document.createElement(source.url ? "a" : "span");
+      if (source.url) {
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      }
+      link.textContent = numbered ? `[${index + 1}] ${source.title}` : source.title;
       links.append(link);
     });
     row.querySelector(".message-content").append(links);

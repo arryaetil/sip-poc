@@ -208,6 +208,11 @@ class ContextStore:
 
         return self._to_context(row) if row else None
 
+    def context_owner(self, context_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT owner_id FROM business_contexts WHERE id = ?", (context_id,)).fetchone()
+        return row["owner_id"] if row else None
+
     def create(self, context: BusinessContext, status: str, owner_id: str) -> StoredBusinessContext:
         context_id = str(uuid4())
         with self._connect() as connection:

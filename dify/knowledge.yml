@@ -144,6 +144,12 @@ workflow:
           required: false
           type: paragraph
           variable: general
+        - label: owner
+          max_length: 32
+          options: []
+          required: true
+          type: paragraph
+          variable: owner
       height: 90
       id: start
       position:
@@ -258,6 +264,20 @@ workflow:
         query_variable_selector:
         - rewrite
         - text
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: or
+          conditions:
+          - id: owner-public
+            metadata_id: 4db261db-d0f7-4c92-a5fe-15cb3e02ee70
+            name: owner
+            comparison_operator: is
+            value: public
+          - id: owner-self
+            metadata_id: 4db261db-d0f7-4c92-a5fe-15cb3e02ee70
+            name: owner
+            comparison_operator: is
+            value: '{{#start.owner#}}'
         query_attachment_selector: []
       height: 90
       id: retrieval
