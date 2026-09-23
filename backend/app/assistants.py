@@ -252,6 +252,7 @@ def _owner_label(owner_id: str) -> str:
 
 
 PUBLIC = "public"
+RATE_LIMIT_WAIT = 65
 
 
 def _context_text(context: StoredBusinessContext) -> str:
@@ -299,7 +300,9 @@ class DifyKnowledgeBase:
         for attempt in range(3):
             response = self.http.request(method, self.dataset + path, **kwargs)
             if response.status_code in (403, 429) and "rate limit" in response.text and attempt < 2:
-                time.sleep(10)  # Sandbox plan: roughly 10 knowledge requests per minute.
+                # Sandbox plan: roughly 10 knowledge requests per minute, counted per minute.
+                logger.warning("Dify knowledge base rate limit; waiting %s s", RATE_LIMIT_WAIT)
+                time.sleep(RATE_LIMIT_WAIT)
                 continue
             if response.status_code >= 400:
                 logger.error("Dify knowledge base %s %s -> %s: %s", method, path, response.status_code, response.text[:500])
