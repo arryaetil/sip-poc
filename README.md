@@ -40,7 +40,7 @@ environment is created by following the
 | Region | West Europe for every resource. It supports agentic retrieval and the semantic ranker on the AI Search free tier; North Europe is closed to new search services. |
 | Database | Azure SQL with EF Core and a Unit of Work layer. |
 | Schema migrations | Run in the deploy stage of the pipeline, never on application startup. |
-| Retrieval | Foundry IQ on Azure AI Search — free tier for development, Basic before production. |
+| Retrieval | Foundry IQ on Azure AI Search — free tier for development, Basic before production. Reached through an `IKnowledgeAssistant` interface, because Dify has to be compared against it. |
 | Identity | A system-assigned managed identity per web app, so each environment has its own. No API keys, no client secrets, no passwords in connection strings. |
 | Deploy cadence | At most two deploys per day, behind a manual approval on the `sip-dev` environment. |
 
@@ -117,6 +117,19 @@ Production repeats the set with `prod`, in its own resource group. Development
 and production each keep their own database, storage account, key vault and
 identity; a later test environment may share the development App Service plan
 and Log Analytics workspace, but never a database or a storage account.
+
+### Room to extend
+
+Model access sits behind an `IKnowledgeAssistant` interface that takes a question
+and returns an answer with citations. Foundry is one implementation; Dify will be
+a second, because comparing the two is a requirement rather than an option. The
+seam is at the whole answer rather than at retrieval, because Dify performs
+retrieval and generation together.
+
+Planned capabilities — a marketing studio, lead generation — are new domains
+above an unchanged platform layer, which is only true for as long as EF Core
+types and the model client stay behind their interfaces. Details and the
+comparison criteria are in [Extending SIP](docs/EXTENSIBILITY.md).
 
 ### Where the application is tested
 
