@@ -827,7 +827,6 @@ function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], anima
 function resetKnowledgeChat() {
   knowledgeConversationId = null;
   knowledgeMessages.replaceChildren();
-  appendKnowledgeMessage(t("knowledge.first_message"), "assistant");
   setStatus(knowledgeStatus, "");
   knowledgeInput.value = "";
   resizeTextArea(knowledgeInput);
@@ -852,8 +851,7 @@ async function openKnowledgeConversation(conversationId) {
   const conversation = await api(`/api/conversations/${conversationId}`);
   knowledgeConversationId = conversation.id;
   knowledgeMessages.replaceChildren();
-  if (!conversation.messages.length) appendKnowledgeMessage(t("knowledge.first_message"), "assistant");
-  else conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
+  conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
   knowledgeHistory.value = conversation.id;
   showKnowledgeConversation();
   knowledgeInput.focus();
@@ -1124,7 +1122,13 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
   knowledgeInput.value = "";
   resizeTextArea(knowledgeInput);
   knowledgeSend.disabled = true;
-  setStatus(knowledgeStatus, t("knowledge.thinking"), "success");
+  setStatus(knowledgeStatus, "");
+  // Placeholder where the answer will appear, instead of a status line under the composer.
+  const pendingRow = appendMessage(knowledgeMessages, "", "assistant", t("knowledge.assistant_name"));
+  const pendingMessage = pendingRow.querySelector(".message");
+  pendingMessage.classList.add("pending");
+  pendingMessage.append(...Array.from({ length: 3 }, () => document.createElement("span")));
+  pendingMessage.setAttribute("aria-label", t("knowledge.thinking"));
   try {
     const data = await api("/api/knowledge/chat", {
       method: "POST",
@@ -1135,6 +1139,7 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
       }),
     });
     knowledgeConversationId = data.conversation_id;
+    pendingRow.remove();
     appendKnowledgeMessage(
       data.message,
       "assistant",
@@ -1145,6 +1150,7 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
     await loadKnowledgeHistory();
     setStatus(knowledgeStatus, "");
   } catch (error) {
+    pendingRow.remove();
     userRow.remove();
     knowledgeInput.value = message;
     resizeTextArea(knowledgeInput);
