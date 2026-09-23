@@ -118,7 +118,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .view-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
 .view-header h1 { margin: 0; font-size: 32px; line-height: 1.18; letter-spacing: -0.02em; font-weight: 700; text-wrap: balance; }
 .view-header p { max-width: 66ch; margin: 9px 0 0; color: var(--muted); line-height: 1.5; text-wrap: pretty; }
+.view-header > div:first-child { min-width: 0; }
 .header-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.header-actions select {
+  width: 240px;
+  min-height: 42px;
+  border: 1px solid #aeb2b8;
+  border-radius: 4px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--night);
+  font: inherit;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+.header-actions select:hover { border-color: var(--night); }
+.header-actions select:focus { border-color: var(--focus); outline: 3px solid rgba(0, 102, 204, .16); outline-offset: 0; }
 
 .conversation-launcher { max-width: 760px; margin: 8vh auto 72px; text-align: center; }
 .launcher-kicker { margin: 0 0 12px; color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
@@ -180,6 +195,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .message-content { max-width: min(680px, 80%); }
 .message.typing::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: currentColor; vertical-align: -.12em; animation: typing-caret 760ms step-end infinite; }
 @keyframes typing-caret { 50% { opacity: 0; } }
+.message.pending { display: flex; gap: 5px; height: 1.6em; align-items: center; }
+.message.pending span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: pending-dot 1s ease-in-out infinite; }
+.message.pending span:nth-child(2) { animation-delay: .15s; }
+.message.pending span:nth-child(3) { animation-delay: .3s; }
+@keyframes pending-dot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
 .message-author { display: block; margin: 0 0 5px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .message { margin: 0; white-space: pre-wrap; line-height: 1.6; text-wrap: pretty; }
 .user .message-content { padding: 11px 14px; border-radius: 4px; background: var(--seasal); }
@@ -257,6 +277,7 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
   .launcher-form, .primary-button, .secondary-button, .danger-button, .send-button { transition-duration: 0ms; transform: none !important; }
   .view:not([hidden]) { animation: none; }
   .message.typing::after { display: none; animation: none; }
+  .message.pending span { animation: none; opacity: .6; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .launcher-form, .chat-form { background: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; }
