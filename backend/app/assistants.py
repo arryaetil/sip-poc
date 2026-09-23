@@ -418,6 +418,12 @@ class DifyAssistant:
         )
         if response.status_code >= 400:
             logger.error("Dify %s app returned %s: %s", app, response.status_code, response.text[:1000])
+            if "rate limit" in response.text:
+                # Every knowledge question is a knowledge-base request, and the Sandbox
+                # plan allows about ten a minute across the whole workspace.
+                raise AssistantUnavailable(
+                    "Dify is busy: the free plan's request limit was reached. Try again in a minute."
+                )
             raise RuntimeError(f"Dify {app} app returned {response.status_code}")
         body = response.json()
         # The inputs and answer are logged so a wrong answer can be traced to what was sent.
