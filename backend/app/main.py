@@ -656,7 +656,7 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
                 {"role": message.role, "content": message.content}
                 for message in conversation.messages
             ),
-            {"role": "user", "content": request.message},
+            {"role": "user", "content": grounded_input},
         ],
     }
 
