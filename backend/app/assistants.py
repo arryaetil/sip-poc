@@ -38,6 +38,9 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 LANGUAGE_NAMES = {"en": "English", "nl": "Dutch", "de": "German"}
+# Measured on the ETIL corpus: the intended document scores ~0.66, incidental
+# hits on the same answer 0.50-0.60.
+SOURCE_SCORE_RATIO = 0.85
 
 
 class AssistantUnavailable(RuntimeError):
@@ -271,10 +274,15 @@ class DifyAssistant:
             },
             owner_id,
         )
+        resources = body.get("metadata", {}).get("retriever_resources", []) or []
+        top = max((resource.get("score") or 0 for resource in resources), default=0)
         sources: list[KnowledgeChatSource] = []
         seen: set[str] = set()
         known = _documents_by_filename()
-        for resource in body.get("metadata", {}).get("retriever_resources", []) or []:
+        for resource in resources:
+            # Show only documents close to the best match; the rest is incidental.
+            if (resource.get("score") or 0) < SOURCE_SCORE_RATIO * top:
+                continue
             title, url = known.get(resource.get("document_name", ""), (resource.get("document_name", ""), ""))
             if url in seen or not title:
                 continue

@@ -194,7 +194,8 @@ workflow:
           enabled: false
           variable_selector: []
         model:
-          completion_params: {}
+          completion_params:
+            reasoning_effort: minimal
           mode: chat
           name: gpt-5-mini
           provider: langgenius/openai/openai
@@ -245,7 +246,7 @@ workflow:
           reranking_enable: true
           reranking_mode: weighted_score
           top_k: 12
-          score_threshold: null
+          score_threshold: 0.4
           weights:
             weight_type: customized
             keyword_setting:
@@ -281,9 +282,10 @@ workflow:
           - retrieval
           - result
         model:
-          completion_params: {}
+          completion_params:
+            reasoning_effort: low
           mode: chat
-          name: gpt-5
+          name: gpt-5-mini
           provider: langgenius/openai/openai
         prompt_template:
         - id: answer_llm-system
@@ -375,9 +377,10 @@ workflow:
           enabled: false
           variable_selector: []
         model:
-          completion_params: {}
+          completion_params:
+            reasoning_effort: low
           mode: chat
-          name: gpt-5
+          name: gpt-5-mini
           provider: langgenius/openai/openai
         prompt_template:
         - id: general_llm-system

@@ -26,8 +26,9 @@ from app.models import BusinessContext, ProductStrategistTurn  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent
 PROVIDER = "langgenius/openai/openai"
-ANSWER_MODEL = "gpt-5"
-FAST_MODEL = "gpt-5-mini"
+# gpt-5 took 15-17 s per chat turn and ~55 s to finalise a context; SIP itself
+# uses gpt-5-mini. Reasoning effort trades depth for latency per app.
+MODEL = "gpt-5-mini"
 KNOWLEDGE_DATASET_ID = "cc833d3d-e595-41c7-a7ca-1bc1c5b7decd"
 EMBEDDING_MODEL = "text-embedding-3-large"
 
@@ -109,14 +110,14 @@ def llm_node(
     title: str,
     system: str,
     user: str,
-    model: str = ANSWER_MODEL,
+    effort: str = "low",
     schema: str | None = None,
     context: list[str] | None = None,
     y: int = 282,
 ) -> dict:
-    params: dict = {}
+    params: dict = {"reasoning_effort": effort}
     if schema:
-        params = {"response_format": "json_schema", "json_schema": schema}
+        params |= {"response_format": "json_schema", "json_schema": schema}
     return node(
         node_id,
         x,
@@ -124,7 +125,7 @@ def llm_node(
             "title": title,
             "type": "llm",
             "context": {"enabled": bool(context), "variable_selector": context or []},
-            "model": {"completion_params": params, "mode": "chat", "name": model, "provider": PROVIDER},
+            "model": {"completion_params": params, "mode": "chat", "name": MODEL, "provider": PROVIDER},
             "prompt_template": [
                 {"id": f"{node_id}-system", "role": "system", "text": system},
                 {"id": f"{node_id}-user", "role": "user", "text": user},
@@ -210,7 +211,15 @@ def strategist() -> dict:
 def finalizer() -> dict:
     nodes = [
         start_node([text_input("history", 100_000)]),
-        llm_node("llm", 380, "Finalizer", prompt("finalizer_prompt.txt"), CONVERSATION_BLOCK, schema=strict_schema(BusinessContext)),
+        llm_node(
+            "llm",
+            380,
+            "Finalizer",
+            prompt("finalizer_prompt.txt"),
+            CONVERSATION_BLOCK,
+            effort="medium",
+            schema=strict_schema(BusinessContext),
+        ),
         answer_node("answer", 680, "llm"),
     ]
     edges = [edge("start", "llm", "start", "llm"), edge("llm", "answer", "llm", "answer")]
@@ -258,7 +267,8 @@ def knowledge() -> dict:
                 "reranking_enable": True,
                 "reranking_mode": "weighted_score",
                 "top_k": 12,
-                "score_threshold": None,
+                # Greetings score ~0.3, real questions 0.6+; keep noise out of the context.
+                "score_threshold": 0.4,
                 "weights": {
                     "weight_type": "customized",
                     "keyword_setting": {"keyword_weight": 0.3},
@@ -300,7 +310,7 @@ def knowledge() -> dict:
     nodes = [
         start_node([text_input("language", 32), text_input("history", 100_000), text_input("general", 8)]),
         branch,
-        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, model=FAST_MODEL, y=420),
+        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", y=420),
         retrieval,
         llm_node("answer_llm", 980, "Grounded answer", grounded, CONVERSATION_BLOCK, context=["retrieval", "result"]),
         answer_node("answer", 1280, "answer_llm"),

@@ -94,6 +94,7 @@ workflow:
           variable_selector: []
         model:
           completion_params:
+            reasoning_effort: medium
             response_format: json_schema
             json_schema: '{"name": "BusinessContext", "strict": true, "schema": {"properties": {"name":
               {"title": "Name", "type": "string"}, "offering_type": {"enum": ["product", "service"], "title":
@@ -118,7 +119,7 @@ workflow:
               "key_marketing_messages", "assumptions", "open_questions"], "title": "BusinessContext",
               "type": "object", "additionalProperties": false}}'
           mode: chat
-          name: gpt-5
+          name: gpt-5-mini
           provider: langgenius/openai/openai
         prompt_template:
         - id: llm-system
