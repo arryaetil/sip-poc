@@ -47,6 +47,13 @@ class AssistantUnavailable(RuntimeError):
     """The provider is not configured; endpoints answer 503."""
 
 
+class KnowledgeReply(BaseModel):
+    """What the Dify knowledge app returns for a grounded (non-general) turn."""
+
+    message: str
+    answered_from_sources: bool
+
+
 @dataclass
 class KnowledgeAnswer:
     message: str
@@ -177,9 +184,24 @@ class FoundryAssistant:
 # --------------------------------------------------------------------------- Dify
 
 
-def _transcript(history: list[ConversationMessage]) -> str:
+# Dify rejects a paragraph input of 100,000 characters or more (measured).
+HISTORY_LIMIT = 95_000
+OMITTED = "[Earlier messages omitted]"
+
+
+def _transcript(history: list[ConversationMessage], limit: int = HISTORY_LIMIT) -> str:
+    """The conversation as text, dropping the oldest messages once it gets too long."""
     labels = {"user": "User", "assistant": "Assistant"}
-    return "\n\n".join(f"{labels[item.role]}: {item.content}" for item in history)
+    parts: list[str] = []
+    size = 0
+    for item in reversed(history):
+        part = f"{labels[item.role]}: {item.content}"
+        if size + len(part) + 2 > limit - len(OMITTED) - 2:
+            parts.append(OMITTED)
+            break
+        parts.append(part)
+        size += len(part) + 2
+    return "\n\n".join(reversed(parts))
 
 
 def _parse_json(model: type[BaseModel], text: str) -> BaseModel:
@@ -274,6 +296,17 @@ class DifyAssistant:
             },
             owner_id,
         )
+        if answer_generally:
+            return KnowledgeAnswer(message=body.get("answer", ""), response_id=body.get("message_id"), sources=[])
+        try:
+            reply = _parse_json(KnowledgeReply, body.get("answer", ""))
+        except ValueError:
+            # An app published before the JSON answer existed returns plain text.
+            reply = KnowledgeReply(message=body.get("answer", ""), answered_from_sources=True)
+        if not reply.answered_from_sources:
+            # Greeting, or the corpus does not hold the answer: list no sources, so the
+            # UI offers a general answer exactly as it does on the Foundry path.
+            return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=[])
         resources = body.get("metadata", {}).get("retriever_resources", []) or []
         top = max((resource.get("score") or 0 for resource in resources), default=0)
         sources: list[KnowledgeChatSource] = []
@@ -288,7 +321,7 @@ class DifyAssistant:
                 continue
             seen.add(url)
             sources.append(KnowledgeChatSource(title=title, url=url))
-        return KnowledgeAnswer(message=body.get("answer", ""), response_id=body.get("message_id"), sources=sources)
+        return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=sources)
 
     def index_upload(self, *, upload_id, owner_id, filename, content, visibility):
         # Uploads are deliberately not sent to a Dify knowledge base: that would place

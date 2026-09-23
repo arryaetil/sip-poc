@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = ROOT / "backend" / "app"
 sys.path.insert(0, str(ROOT / "backend"))
 
+from app.assistants import KnowledgeReply  # noqa: E402
 from app.models import BusinessContext, ProductStrategistTurn  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent
@@ -243,7 +244,13 @@ def knowledge() -> dict:
         "ambiguous to identify the language, use {{#start.language#}}, the current interface language. "
         "Follow the user if they switch between English, Dutch or German.\n\n"
     )
-    grounded = f"{language}{base}\n\nReference material:\n{{{{#context#}}}}"
+    grounded = (
+        f"{language}{base}\n\n"
+        "Return your reply as JSON: `message` is what the user reads; `answered_from_sources` is true "
+        "only when the message states facts taken from the reference material, and false for greetings, "
+        "small talk, or when the reference material does not contain the answer.\n\n"
+        "Reference material:\n{{#context#}}"
+    )
     general = (
         f"{language}{base}\n\nThis turn is a visually and structurally separate general answer. "
         "Answer from general knowledge; this is explicitly not a sourced SIP answer. "
@@ -312,7 +319,15 @@ def knowledge() -> dict:
         branch,
         llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", y=420),
         retrieval,
-        llm_node("answer_llm", 980, "Grounded answer", grounded, CONVERSATION_BLOCK, context=["retrieval", "result"]),
+        llm_node(
+            "answer_llm",
+            980,
+            "Grounded answer",
+            grounded,
+            CONVERSATION_BLOCK,
+            schema=strict_schema(KnowledgeReply),
+            context=["retrieval", "result"],
+        ),
         answer_node("answer", 1280, "answer_llm"),
         llm_node("general_llm", 680, "General answer", general, CONVERSATION_BLOCK, y=120),
         answer_node("general_answer", 980, "general_llm", y=120),
