@@ -1,0 +1,118 @@
+import json
+
+import httpx
+import pytest
+
+from app import assistants
+from app.assistants import AssistantUnavailable, DifyAssistant, get_assistant
+from app.models import ConversationMessage
+
+KEYS = {
+    "DIFY_STRATEGIST_API_KEY": "app-strategist",
+    "DIFY_FINALIZER_API_KEY": "app-finalizer",
+    "DIFY_KNOWLEDGE_API_KEY": "app-knowledge",
+}
+
+HISTORY = [
+    ConversationMessage(id=1, role="user", content="We build a housing dashboard", created_at="t"),
+    ConversationMessage(id=2, role="assistant", content="Who uses it?", created_at="t"),
+]
+
+
+@pytest.fixture
+def dify(monkeypatch):
+    """A DifyAssistant whose HTTP calls land in `sent` and get `reply` back."""
+    for name, value in KEYS.items():
+        monkeypatch.setenv(name, value)
+    sent: list[httpx.Request] = []
+    reply: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json=reply)
+
+    assistant = DifyAssistant()
+    assistant.http = httpx.Client(transport=httpx.MockTransport(handler))
+    return assistant, sent, reply
+
+
+def test_dify_refuses_to_start_without_every_key(monkeypatch):
+    monkeypatch.setenv("SIP_ASSISTANT_PROVIDER", "dify")
+    monkeypatch.setenv("DIFY_STRATEGIST_API_KEY", "app-x")
+    monkeypatch.delenv("DIFY_FINALIZER_API_KEY", raising=False)
+    monkeypatch.delenv("DIFY_KNOWLEDGE_API_KEY", raising=False)
+    get_assistant.cache_clear()
+    try:
+        with pytest.raises(AssistantUnavailable, match="DIFY_FINALIZER_API_KEY"):
+            get_assistant()
+    finally:
+        get_assistant.cache_clear()
+
+
+def test_unknown_provider_is_rejected(monkeypatch):
+    monkeypatch.setenv("SIP_ASSISTANT_PROVIDER", "openai")
+    get_assistant.cache_clear()
+    try:
+        with pytest.raises(AssistantUnavailable):
+            get_assistant()
+    finally:
+        get_assistant.cache_clear()
+
+
+def test_strategist_turn_sends_history_and_parses_json(dify):
+    assistant, sent, reply = dify
+    reply["answer"] = json.dumps(
+        {"message": "Tell me more", "is_ready_to_save": False, "readiness_reason": "No customers yet"}
+    )
+
+    turn = assistant.strategist_turn(HISTORY, "Municipalities", "nl", "alice")
+
+    assert turn.message == "Tell me more"
+    body = json.loads(sent[0].content)
+    assert sent[0].headers["authorization"] == "Bearer app-strategist"
+    assert body["query"] == "Municipalities"
+    assert body["inputs"]["language"] == "Dutch"
+    assert "User: We build a housing dashboard" in body["inputs"]["history"]
+    assert "Assistant: Who uses it?" in body["inputs"]["history"]
+    # Dify gets a stable pseudonym, never SIP's user id.
+    assert body["user"] != "alice" and len(body["user"]) == 24
+
+
+def test_invalid_json_is_an_error_not_a_blank_turn(dify):
+    assistant, _, reply = dify
+    reply["answer"] = "Sure! Here is your answer."
+    with pytest.raises(ValueError):
+        assistant.strategist_turn(HISTORY, "hi", "en", "alice")
+
+
+def test_knowledge_answer_maps_dify_files_to_sip_sources(dify, monkeypatch):
+    assistant, sent, reply = dify
+    monkeypatch.setattr(
+        assistants,
+        "_documents_by_filename",
+        lambda: {"solution-de-woonatlas.md": ("De WoonAtlas - Etil", "https://etil.nl/de-woonatlas/")},
+    )
+    reply.update(
+        {
+            "answer": "De WoonAtlas is een beleidsplatform.",
+            "message_id": "m1",
+            "metadata": {
+                "retriever_resources": [
+                    {"document_name": "solution-de-woonatlas.md", "score": 0.78},
+                    {"document_name": "solution-de-woonatlas.md", "score": 0.77},
+                ]
+            },
+        }
+    )
+
+    answer = assistant.knowledge_answer(HISTORY, "Wat is de WoonAtlas?", "nl", "alice", False)
+
+    assert answer.message.startswith("De WoonAtlas")
+    assert [(s.title, s.url) for s in answer.sources] == [("De WoonAtlas - Etil", "https://etil.nl/de-woonatlas/")]
+    assert json.loads(sent[0].content)["inputs"]["general"] == "no"
+
+
+def test_dify_does_not_send_uploads_anywhere(dify):
+    assistant, sent, _ = dify
+    assistant.index_upload(upload_id="u1", owner_id="alice", filename="offer.pdf", content="secret", visibility="private")
+    assert sent == []
