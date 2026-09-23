@@ -82,9 +82,9 @@ latency, cost per answer.
 | Answer quality on the fixed set | the core, including an honest "not found" |
 | Citation fidelity | do citations point at what was actually supplied to the model |
 | Permission awareness | can results be filtered per user, or does everyone see everything |
-| Cost per answer | Dify: hosting plus tokens. Foundry: tokens plus Azure AI Search |
-| Operational burden | who patches, backs up and monitors it |
-| Data residency | Dify Cloud places data outside Azure; self-hosting does not |
+| Cost per answer | Dify: subscription plus model usage. Foundry: tokens plus Azure AI Search |
+| Operational burden | who patches, backs up and monitors it — largely nil for a hosted Dify, which counts in its favour |
+| Data residency | everything sent to Dify leaves Azure; Foundry stays inside the tenant |
 | Workflow adaptability | how quickly someone without programming experience changes a prompt chain |
 | Auditability | can you reconstruct what was sent to the model |
 
@@ -93,16 +93,42 @@ a document belongs to its uploader, and evidence becomes organisation-wide only
 after approval. Dify does not know those rules. Whether it can be made to respect
 them is a finding for the comparison, not an obstacle to running it.
 
-### Where Dify runs
+### Dify is consumed as a hosted API
 
-Dify ships as containers and needs PostgreSQL, Redis and a vector store beside
-it. Self-hosting means Azure Container Apps or a virtual machine — containers
-alongside the App Service web app, not instead of it. The two are different
-workloads and do not conflict.
+Dify is not self-hosted. It is reached over its API as a managed service, so
+there are no containers anywhere in this architecture: SIP is a web app, Dify is
+an external dependency. `DifyKnowledgeAssistant` is an HTTP client, which makes
+the second implementation roughly a day of work rather than a project.
 
-Dify Cloud removes that operational work but places data outside Azure, which is
-a question for the senior developer before any customer document is involved.
-Synthetic evaluation data does not raise it.
+**This is the one accepted exception to the no-keys rule.** A service outside
+Azure cannot authenticate with a managed identity, so Dify requires an API key.
+The key is stored in Key Vault and read at run time using the application's
+managed identity — the application still holds no secret of its own, it is only
+allowed to fetch one. The key never appears in application settings, in the
+pipeline, or in the repository.
+
+### What a hosted Dify means for the comparison
+
+Two criteria move, and one of them constrains the exercise.
+
+Operational burden largely disappears for Dify, and that counts in its favour.
+Score it honestly rather than treating self-hosting effort as a cost it does not
+have.
+
+Data residency becomes the decisive question. Anything sent to Dify for retrieval
+leaves Azure. The `knowledge/` corpus is reviewed public website content, so the
+quality comparison can run on it without raising the question at all. Private
+uploads are different: sending customer documents to an external service requires
+a data processing agreement and a clear answer about where they are hosted.
+
+The consequence is worth stating plainly, because it shapes the conclusion.
+Without such an agreement the comparison cannot cover private documents — which
+is precisely where SIP's visibility rules are strictest. The two systems are then
+compared on the public knowledge path only, and the report has to say so instead
+of implying a like-for-like result.
+
+Settle this before the evaluation starts, not after: is a processing agreement
+with Dify in scope, or is the comparison deliberately limited to public content?
 
 ## Planned: marketing studio
 
