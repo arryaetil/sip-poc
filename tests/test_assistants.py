@@ -116,3 +116,26 @@ def test_dify_does_not_send_uploads_anywhere(dify):
     assistant, sent, _ = dify
     assistant.index_upload(upload_id="u1", owner_id="alice", filename="offer.pdf", content="secret", visibility="private")
     assert sent == []
+
+
+def test_knowledge_lists_no_sources_when_the_corpus_has_no_answer(dify):
+    assistant, _, reply = dify
+    reply.update(
+        {
+            "answer": json.dumps({"message": "Dat staat niet op de website.", "answered_from_sources": False}),
+            "metadata": {"retriever_resources": [{"document_name": "home.md", "score": 0.65}]},
+        }
+    )
+    answer = assistant.knowledge_answer([], "Wie is de CEO?", "nl", "alice", False)
+    assert answer.message == "Dat staat niet op de website."
+    assert answer.sources == []
+
+
+def test_long_history_drops_the_oldest_messages():
+    history = [
+        ConversationMessage(id=i, role="user", content=f"m{i} " + "x" * 1000, created_at="t") for i in range(200)
+    ]
+    text = assistants._transcript(history, limit=10_000)
+    assert len(text) < 10_000
+    assert text.startswith(assistants.OMITTED)
+    assert "m199 " in text and "m0 " not in text
