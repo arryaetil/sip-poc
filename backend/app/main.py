@@ -41,12 +41,14 @@ from app.models import (
     PortfolioSourceSummary,
     SaveContextRequest,
     StoredBusinessContext,
+    StudioProjectRequest,
     UpdateUserRequest,
     UploadRecord,
     UserInfo,
     UserRecord,
 )
 from app.assistants import get_assistant
+from app import studio
 from app.knowledge import (
     create_website_offering_profile,
     get_knowledge_document,
@@ -657,7 +659,37 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
         sources=answer.sources,
         near_misses=answer.near_misses,
         general_answer_available=not answer.sources and not request.answer_generally,
+        marketing_request=answer.marketing_request,
     )
+
+
+@app.get("/api/studio/link")
+def studio_link(request: Request) -> dict[str, str]:
+    """A short-lived signed link that opens the marketing studio for this user."""
+    owner_id, _ = _actor(request)
+    try:
+        return {"url": studio.signed_link(owner_id)}
+    except studio.StudioUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/studio/projects")
+def create_studio_project(body: StudioProjectRequest, request: Request) -> dict[str, str]:
+    """Hand a knowledge conversation over to the marketing studio."""
+    owner_id, is_admin = _actor(request)
+    history = []
+    if body.conversation_id:
+        conversation = get_context_store().get_conversation(body.conversation_id, owner_id, is_admin)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        history = conversation.messages
+    try:
+        return {"url": studio.create_project(owner_id, body.marketing_request, history, body.sources)}
+    except studio.StudioUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Creating a studio project failed:\n%s", traceback.format_exc())
+        raise HTTPException(status_code=502, detail=f"The marketing studio could not be prepared: {exc}") from exc
 
 
 @app.post("/api/contexts/prepare", response_model=BusinessContext)

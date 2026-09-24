@@ -33,6 +33,7 @@ from app.models import (
     ConversationMessage,
     KnowledgeChatSource,
     KnowledgeNearMiss,
+    MarketingRequest,
     ProductStrategistTurn,
     StoredBusinessContext,
 )
@@ -54,6 +55,9 @@ class KnowledgeReply(BaseModel):
 
     message: str
     answered_from_sources: bool
+    # Filled when the user asks to make marketing material (a post, one-pager,
+    # presentation); null otherwise. Required in the Dify schema (strict mode).
+    marketing_request: MarketingRequest | None = None
 
 
 @dataclass
@@ -62,6 +66,7 @@ class KnowledgeAnswer:
     response_id: str | None
     sources: list[KnowledgeChatSource]
     near_misses: list[KnowledgeNearMiss] = field(default_factory=list)
+    marketing_request: MarketingRequest | None = None
 
 
 class Assistant(Protocol):
@@ -483,13 +488,18 @@ class DifyAssistant:
             reply = _parse_json(KnowledgeReply, body.get("answer", ""))
         except ValueError:
             # An app published before the JSON answer existed returns plain text.
-            reply = KnowledgeReply(message=body.get("answer", ""), answered_from_sources=True)
+            reply = KnowledgeReply(message=body.get("answer", ""), answered_from_sources=True, marketing_request=None)
         # The model sometimes repeats the flag inside the text; the user should never see it.
         reply.message = FLAG_ECHO.sub("", reply.message).rstrip()
         if not reply.answered_from_sources:
             # Greeting, or the corpus does not hold the answer: list no sources, so the
             # UI offers a general answer exactly as it does on the Foundry path.
-            return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=[])
+            return KnowledgeAnswer(
+                message=reply.message,
+                response_id=body.get("message_id"),
+                sources=[],
+                marketing_request=reply.marketing_request,
+            )
         resources = body.get("metadata", {}).get("retriever_resources", []) or []
         top = max((resource.get("score") or 0 for resource in resources), default=0)
         by_document: dict[str, KnowledgeChatSource] = {}
@@ -504,7 +514,12 @@ class DifyAssistant:
             if passage and passage not in source.passages and len(source.passages) < MAX_PASSAGES:
                 source.passages.append(passage)
         sources = [source for source in by_document.values() if source.title]
-        return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=sources)
+        return KnowledgeAnswer(
+            message=reply.message,
+            response_id=body.get("message_id"),
+            sources=sources,
+            marketing_request=reply.marketing_request,
+        )
 
     # Uploads and Business Contexts go to the Dify knowledge base, labelled with their
     # owner, so the knowledge assistant can use them. Test data only: this places

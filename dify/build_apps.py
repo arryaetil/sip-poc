@@ -59,12 +59,30 @@ def prompt(name: str) -> str:
     return (APP_DIR / name).read_text(encoding="utf-8").strip()
 
 
+def _make_strict(node):
+    """OpenAI strict mode: every object closed and fully required, no defaults.
+
+    Only schema keywords are removed: a *property* called "title" (a dict value
+    inside "properties") must survive, a "title" annotation (a string) need not.
+    """
+    if isinstance(node, dict):
+        node.pop("default", None)
+        if isinstance(node.get("title"), str):
+            node.pop("title")
+        if node.get("type") == "object" and "properties" in node:
+            node["additionalProperties"] = False
+            node["required"] = list(node["properties"])
+        for value in node.values():
+            _make_strict(value)
+    elif isinstance(node, list):
+        for value in node:
+            _make_strict(value)
+    return node
+
+
 def strict_schema(model) -> str:
-    """OpenAI strict JSON schema: every field required, nothing extra."""
-    schema = model.model_json_schema()
-    schema["additionalProperties"] = False
-    schema["required"] = list(schema["properties"])
-    return json.dumps({"name": model.__name__, "strict": True, "schema": schema})
+    """OpenAI strict JSON schema generated from a Pydantic model, nested models included."""
+    return json.dumps({"name": model.__name__, "strict": True, "schema": _make_strict(model.model_json_schema())})
 
 
 def text_input(name: str, max_length: int, required: bool = False) -> dict:
@@ -265,6 +283,13 @@ def knowledge() -> dict:
         "only when the message states facts taken from the reference material, and false for greetings, "
         "small talk, or when the reference material does not contain the answer. Never mention "
         "`answered_from_sources` inside `message`.\n\n"
+        "`marketing_request`: when the user asks you to make marketing material (a LinkedIn or social "
+        "post, a one-pager or flyer, a presentation or PowerPoint), fill it in: `format` is linkedin_post, "
+        "one_pager or presentation; `brief` restates in one or two sentences what to make, for whom and "
+        "about which offering, in the user's language; `title` is a short project name; `brand` is etil, "
+        "or ibc-group only when the user asks for ibc group. Do not produce the material yourself: in "
+        "`message`, answer briefly with the key facts from the reference material and say it can be "
+        "designed in the Marketing studio. Otherwise set `marketing_request` to null.\n\n"
         "Reference material:\n{{#context#}}"
     )
     general = (

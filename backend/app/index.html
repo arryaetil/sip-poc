@@ -400,11 +400,20 @@
         <button class="secondary-button" type="button" data-return="portfolio" data-i18n="under_construction.view_portfolio">View ibc group Portfolio</button>
       </section>
 
-      <section id="marketing-view" class="view under-construction" aria-labelledby="marketing-title" hidden>
-        <p class="section-kicker" data-i18n="marketing.kicker">Marketing studio</p>
-        <h1 id="marketing-title" data-i18n="marketing.title">Under construction</h1>
-        <p data-i18n="marketing.copy">This workspace will use approved Business Contexts to prepare consistent marketing material.</p>
-        <button class="secondary-button" type="button" data-return="portfolio" data-i18n="under_construction.view_portfolio">View ibc group Portfolio</button>
+      <section id="marketing-view" class="view studio-view" aria-labelledby="marketing-title" hidden>
+        <header class="view-header studio-header">
+          <div>
+            <h1 id="marketing-title" data-i18n="marketing.kicker">Marketing studio</h1>
+            <p data-i18n="marketing.studio_subtitle">Design posts, one-pagers and presentations in the Etil and ibc group house style.</p>
+          </div>
+          <div class="header-actions">
+            <button id="studio-new-tab" class="secondary-button" type="button" data-i18n="marketing.open_new_tab">Open in new tab</button>
+          </div>
+        </header>
+        <div class="studio-frame-wrap">
+          <iframe id="studio-frame" class="studio-frame" title="Marketing studio" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
+          <p id="studio-status" class="studio-status" role="status"></p>
+        </div>
       </section>
 
       <section id="team-view" class="view team" aria-labelledby="team-title" hidden>

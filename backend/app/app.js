@@ -200,7 +200,7 @@ function showView(name) {
   Object.entries(views).forEach(([viewName, element]) => {
     element.hidden = viewName !== name;
   });
-  document.body.classList.toggle("chat-open", name === "builder" || (name === "knowledge" && !knowledgeChat.hidden));
+  document.body.classList.toggle("chat-open", name === "builder" || name === "marketing" || (name === "knowledge" && !knowledgeChat.hidden));
   const navigationView = name === "builder" || (name === "review" && reviewOrigin === "builder")
     ? "conversations"
     : name === "review" || name === "source" ? "portfolio" : name;
@@ -883,6 +883,102 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeSourcePanel();
 });
 
+const studioFrame = document.querySelector("#studio-frame");
+const studioStatus = document.querySelector("#studio-status");
+let studioLastLink = "";
+
+async function openMarketingStudio(link = null) {
+  showView("marketing");
+  studioStatus.textContent = t("marketing.loading");
+  studioStatus.hidden = false;
+  try {
+    // Signed links are single-use and short-lived, so fetch one per opening.
+    studioLastLink = link || (await api("/api/studio/link")).url;
+    studioFrame.src = studioLastLink;
+  } catch (error) {
+    studioStatus.textContent = error.message || t("marketing.unavailable");
+  }
+}
+
+studioFrame.addEventListener("load", () => {
+  if (studioFrame.src) studioStatus.hidden = true;
+});
+
+document.querySelector("#studio-new-tab").addEventListener("click", async () => {
+  // A fresh link: the one used by the frame may already be spent. Safari and
+  // other browsers that refuse cookies in embedded frames can work from here.
+  const tab = window.open("about:blank", "_blank");
+  try {
+    const { url } = await api("/api/studio/link");
+    tab.location.href = url;
+  } catch (error) {
+    tab.close();
+    studioStatus.textContent = error.message || t("marketing.unavailable");
+    studioStatus.hidden = false;
+  }
+});
+
+function appendStudioOffer(marketingRequest, sources, conversationId) {
+  const row = document.createElement("div");
+  row.className = "message-row assistant studio-offer-row";
+  const card = document.createElement("div");
+  card.className = "studio-offer";
+  card.setAttribute("role", "group");
+  card.setAttribute("aria-label", t("studio.offer_title"));
+
+  const badge = document.createElement("span");
+  badge.className = "studio-offer-badge";
+  badge.textContent = t(`studio.format_${marketingRequest.format}`);
+  const title = document.createElement("h3");
+  title.textContent = t("studio.offer_title");
+  const brief = document.createElement("p");
+  brief.className = "studio-offer-brief";
+  brief.textContent = marketingRequest.brief;
+
+  const actions = document.createElement("div");
+  actions.className = "studio-offer-actions";
+  const yes = document.createElement("button");
+  yes.type = "button";
+  yes.className = "primary-button";
+  yes.textContent = t("studio.offer_yes");
+  const no = document.createElement("button");
+  no.type = "button";
+  no.className = "text-button";
+  no.textContent = t("studio.offer_no");
+  const status = document.createElement("p");
+  status.className = "studio-offer-status";
+  status.setAttribute("role", "status");
+
+  yes.addEventListener("click", async () => {
+    yes.disabled = true;
+    no.disabled = true;
+    status.textContent = t("studio.preparing");
+    try {
+      const { url } = await api("/api/studio/projects", {
+        method: "POST",
+        body: JSON.stringify({ marketing_request: marketingRequest, conversation_id: conversationId, sources }),
+      });
+      await openMarketingStudio(url);
+      status.textContent = "";
+    } catch (error) {
+      status.textContent = error.message;
+      yes.disabled = false;
+      no.disabled = false;
+    }
+  });
+  no.addEventListener("click", () => {
+    card.classList.add("dismissed");
+    actions.remove();
+    status.textContent = t("studio.dismissed");
+  });
+
+  actions.append(yes, no);
+  card.append(badge, title, brief, actions, status);
+  row.append(card);
+  knowledgeMessages.append(row);
+  knowledgeMessages.scrollTop = knowledgeMessages.scrollHeight;
+}
+
 function resetKnowledgeChat() {
   closeSourcePanel();
   knowledgeConversationId = null;
@@ -1207,6 +1303,7 @@ knowledgeChatForm.addEventListener("submit", async (event) => {
       data.near_misses,
       true,
     );
+    if (data.marketing_request) appendStudioOffer(data.marketing_request, data.sources, data.conversation_id);
     await loadKnowledgeHistory();
     setStatus(knowledgeStatus, "");
   } catch (error) {
@@ -1249,6 +1346,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     if (item.dataset.view === "portfolio") await loadPortfolio();
     if (item.dataset.view === "team") await loadTeam();
     showView(item.dataset.view);
+    if (item.dataset.view === "marketing" && !studioFrame.src) await openMarketingStudio();
     if (item.dataset.view === "knowledge") {
       await loadKnowledgeHistory();
       showKnowledgeHome();
