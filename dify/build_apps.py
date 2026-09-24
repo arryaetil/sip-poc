@@ -249,7 +249,8 @@ def knowledge() -> dict:
         f"{language}{base}\n\n"
         "Return your reply as JSON: `message` is what the user reads; `answered_from_sources` is true "
         "only when the message states facts taken from the reference material, and false for greetings, "
-        "small talk, or when the reference material does not contain the answer.\n\n"
+        "small talk, or when the reference material does not contain the answer. Never mention "
+        "`answered_from_sources` inside `message`.\n\n"
         "Reference material:\n{{#context#}}"
     )
     general = (
