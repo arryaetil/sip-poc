@@ -438,6 +438,23 @@
     </main>
   </div>
 
+  <aside id="source-panel" class="source-panel" aria-labelledby="source-panel-title" hidden>
+    <header class="source-panel-header">
+      <div>
+        <p id="source-panel-kind" class="source-panel-kind"></p>
+        <h2 id="source-panel-title"></h2>
+      </div>
+      <button id="source-panel-close" class="source-panel-close" type="button" data-i18n-aria-label="source_panel.close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <p class="source-panel-label" data-i18n="source_panel.passages">Passages used for this answer</p>
+    <div id="source-panel-passages" class="source-panel-passages"></div>
+    <footer class="source-panel-footer">
+      <button id="source-panel-open" class="secondary-button" type="button"></button>
+    </footer>
+  </aside>
+
   <dialog id="delete-dialog" class="confirm-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
     <form method="dialog">
       <h2 id="delete-title">Delete item?</h2>

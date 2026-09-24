@@ -206,6 +206,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .message-sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .message-sources a { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; color: var(--focus); font-size: 11px; text-decoration: none; }
 .message-sources span { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; color: var(--muted); font-size: 11px; }
+.message-sources button { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; background: var(--surface); color: var(--focus); font: inherit; font-size: 11px; cursor: pointer; }
+.message-sources button:hover { border-color: var(--focus); background: #f4f8fc; }
+
+.source-panel {
+  position: fixed;
+  top: 100px;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  width: min(440px, 100vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: -18px 0 40px rgba(18, 18, 18, .08);
+  animation: source-panel-in 200ms cubic-bezier(.23,1,.32,1) both;
+}
+@keyframes source-panel-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.source-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 14px; border-bottom: 1px solid var(--border); }
+.source-panel-kind { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.source-panel-header h2 { margin: 0; font-size: 19px; line-height: 1.3; overflow-wrap: anywhere; }
+.source-panel-close { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.source-panel-close:hover { background: var(--seasal); color: var(--night); }
+.source-panel-close svg { width: 18px; height: 18px; }
+.source-panel-label { margin: 18px 24px 10px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.source-panel-passages { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 18px; display: grid; align-content: start; gap: 12px; }
+.source-panel-passages blockquote { margin: 0; padding: 12px 14px; border-left: 3px solid var(--focus); border-radius: 0 4px 4px 0; background: var(--seasal); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.source-panel-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.source-panel-footer { padding: 14px 24px; border-top: 1px solid var(--border); }
+@media (max-width: 560px) { .source-panel { top: 82px; } }
+@media (prefers-reduced-motion: reduce) { .source-panel { animation: none; } }
 .message-sources a:hover { border-color: var(--focus); background: #f4f8fc; }
 
 .composer { padding: 16px 0 0; }
