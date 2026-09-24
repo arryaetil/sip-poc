@@ -114,7 +114,7 @@ workflow:
               "required": ["message", "is_ready_to_save", "readiness_reason"], "title": "ProductStrategistTurn",
               "type": "object", "additionalProperties": false}}'
           mode: chat
-          name: gpt-5-mini
+          name: gpt-5.6-sol
           provider: langgenius/openai/openai
         prompt_template:
         - id: llm-system

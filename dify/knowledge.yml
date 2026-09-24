@@ -203,7 +203,7 @@ workflow:
           completion_params:
             reasoning_effort: minimal
           mode: chat
-          name: gpt-5-mini
+          name: gpt-5.6-luna
           provider: langgenius/openai/openai
         prompt_template:
         - id: rewrite-system
@@ -313,7 +313,7 @@ workflow:
               Sources", "type": "boolean"}}, "required": ["message", "answered_from_sources"], "title":
               "KnowledgeReply", "type": "object", "additionalProperties": false}}'
           mode: chat
-          name: gpt-5-mini
+          name: gpt-5.6-luna
           provider: langgenius/openai/openai
         prompt_template:
         - id: answer_llm-system
@@ -414,7 +414,7 @@ workflow:
           completion_params:
             reasoning_effort: low
           mode: chat
-          name: gpt-5-mini
+          name: gpt-5.6-luna
           provider: langgenius/openai/openai
         prompt_template:
         - id: general_llm-system

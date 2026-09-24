@@ -119,7 +119,7 @@ workflow:
               "key_marketing_messages", "assumptions", "open_questions"], "title": "BusinessContext",
               "type": "object", "additionalProperties": false}}'
           mode: chat
-          name: gpt-5-mini
+          name: gpt-5.6-sol
           provider: langgenius/openai/openai
         prompt_template:
         - id: llm-system
