@@ -95,6 +95,10 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
     label bottom right, logo no longer cropped, text grounded in `context.md`.
   - `brand/logo.svg` (493 bytes) is created by Open Design itself
     (`design-systems/index.ts`), not by the model, and is unused. Harmless.
+    It lands in the design system's `assets/` on the volume, so
+    `studio._copy_brand_assets` copies it along; skip `assets/logo.svg` there.
+  - Verified 12:21: after deploy `b5f866ec` the stale claim-only SVG is gone and
+    `assets/etil-logo-lockup-white.png` is present.
   - ❌ → fix deployed, **not yet verified**: `etil-logo-slogan-white.svg` held only
     the claim without the "Etil" wordmark. Added `etil-logo-lockup-white.png`
     (official "Etil logo white with claim"), renamed the old file to
