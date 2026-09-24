@@ -16,13 +16,14 @@ for name in OD_API_TOKEN STUDIO_HANDOFF_SECRET SIP_ORIGIN; do
 done
 
 # Railway mounts volumes owned by root; the daemon runs as open-design (1001).
-mkdir -p "$DATA_DIR/design-systems"
+mkdir -p "$DATA_DIR/design-systems" "$DATA_DIR/home"
 # Brand packages are overwritten on every start so a redeploy ships changes.
 cp -R /seed/design-systems/. "$DATA_DIR/design-systems/"
 chown -R 1001:1001 "$DATA_DIR"
 
 # The daemon only listens on localhost; the gateway is the one way in.
-su -s /bin/sh open-design -c "cd /app && OD_DATA_DIR='$DATA_DIR' OD_PORT='$INTERNAL_PORT' OD_BIND_HOST=127.0.0.1 exec node apps/daemon/dist/cli.js --no-open" &
+# OpenCode keeps its config and auth under HOME; the image user has none.
+su -s /bin/sh open-design -c "cd /app && HOME='$DATA_DIR/home' OD_DATA_DIR='$DATA_DIR' OD_PORT='$INTERNAL_PORT' OD_BIND_HOST=127.0.0.1 exec node apps/daemon/dist/cli.js --no-open" &
 
 export OD_INTERNAL_PORT="$INTERNAL_PORT"
 exec su -s /bin/sh open-design -c "exec node /seed/gateway.mjs"
