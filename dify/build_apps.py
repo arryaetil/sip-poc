@@ -364,7 +364,9 @@ def knowledge() -> dict:
             ]
         ),
         branch,
-        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="none", y=420),
+        # "none" is valid for gpt-5.6, but the Dify editor rewrites it to "minimal" on
+        # load, which gpt-5.6 rejects; "low" survives publishing from the editor.
+        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="low", y=420),
         retrieval,
         llm_node(
             "answer_llm",
