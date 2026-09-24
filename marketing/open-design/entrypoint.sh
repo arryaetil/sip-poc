@@ -27,6 +27,11 @@ chown -R 1001:1001 "$DATA_DIR"
 # out of the process list.
 if [ -n "${STUDIO_OPENAI_API_KEY:-}" ]; then export OD_OPENAI_API_KEY="$STUDIO_OPENAI_API_KEY"; fi
 
+# Seed the daemon-owned browser choice. The upstream default is OpenDesign
+# Cloud (amr), whose client-side sign-in gate runs before our gateway sees a
+# request. Native OpenCode needs no browser key; the gateway supplies BYOK.
+node /seed/configure-studio.mjs
+
 # OpenCode keeps its config and auth under HOME; the image user has none.
 su -s /bin/sh open-design -c "cd /app && HOME='$DATA_DIR/home' OD_DATA_DIR='$DATA_DIR' OD_PORT='$INTERNAL_PORT' OD_BIND_HOST=127.0.0.1 exec node apps/daemon/dist/cli.js --no-open" &
 

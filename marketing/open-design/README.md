@@ -1,5 +1,21 @@
 # Open Design — marketing studio spike
 
+## Current SIP integration (24 September 2026)
+
+Open this service through SIP's signed studio link. No separate OpenDesign Cloud
+login and no browser API key are required. The gateway supplies the server's
+OpenAI key for both `/api/runs` and `/api/chat`. At startup,
+`configure-studio.mjs` selects the installed OpenCode runner in the browser;
+the upstream Cloud default otherwise asks for the uninstalled Vela program.
+The actual run is mapped to `byok-opencode` by the gateway.
+
+Deploy from the repository root with:
+`railway up marketing/open-design --path-as-root --service open-design`.
+The `--path-as-root` flag is essential to avoid deploying SIP to this service.
+
+The original spike notes below describe the upstream setup; their browser
+password/API-key instructions are superseded by the SIP integration above.
+
 A spike, not the marketing studio: it lets marketing colleagues try an
 AI design tool in the Etil and ibc group house style, so the decision between
 adopting [Open Design](https://github.com/nexu-io/open-design) (Apache-2.0) and

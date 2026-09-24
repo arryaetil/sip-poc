@@ -9,6 +9,7 @@ USER root
 COPY design-systems /seed/design-systems
 COPY entrypoint.sh /seed/entrypoint.sh
 COPY gateway.mjs /seed/gateway.mjs
+COPY configure-studio.mjs /seed/configure-studio.mjs
 RUN chmod +x /seed/entrypoint.sh
 
 # The BYOK runtime ("OpenAI API via OpenCode") runs the OpenCode CLI, which the

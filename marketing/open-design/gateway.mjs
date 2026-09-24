@@ -107,7 +107,7 @@ function withServerModel(body) {
 }
 
 function proxy(req, res) {
-  if (req.method === 'POST' && new URL(req.url || '/', 'http://gateway').pathname === '/api/runs') {
+  if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(new URL(req.url || '/', 'http://gateway').pathname)) {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => forward(req, res, withServerModel(Buffer.concat(chunks))));
