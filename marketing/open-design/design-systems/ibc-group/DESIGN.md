@@ -52,6 +52,20 @@ Precise, human and approachable; not loud, but strong.
 
 Never invent customers, results, figures or capabilities: only state what the supplied Business Context or source material supports.
 
+## Image library and AI labels
+
+Prefer these approved images over generating new ones: `assets/images/service-ibc-group-all-services-black-ai-notice.jpg`, `assets/images/service-ibc-group-all-services.jpg`, `assets/images/service-ibc-group-data-service.jpg`, `assets/images/service-ibc-group-ibc-spectrum-motiv.jpg`, `assets/images/service-ibc-group-people-service.jpg`, `assets/images/service-ibc-group-process-service.jpg`, `assets/images/service-ibc-group-technology-service.jpg`. They already carry the AI notice where needed.
+
+From the *AI-Generated Images Guideline*: always label an image when someone could think it is real (photo-like, used in marketing, social media or external communication, or shareable on its own). Place the label directly on the image, small and discreet, bottom right: **"AI-generated image – created by IBC Group Marketing"** (short: "AI-generated | IBC Group Marketing"). When in doubt, label. Do not use Creative Commons images without the author attribution from the licence library; ask marketing instead.
+
+## LinkedIn post pattern (from the official templates)
+
+Portrait 4:5 (1080×1350). Examples in `assets/examples/linkedin-*.jpg` — match them closely.
+- Full-bleed dark image in the colour of the topic, darker on the left so text reads.
+- Top left: a short thin white rule, "Perspective on" in Ubuntu Light, then the topic in capitals in its spectrum colour: DATA `#ff3333`, PEOPLE `#ff6600`, PROCESS `#009966`, TECHNOLOGY `#0066cc`.
+- One short statement in white Ubuntu Bold, large, three to five lines, ending with a full stop.
+- Bottom left: the light ibc group logo with "connecting performance."; bottom right: the AI-generated visual label when the image is AI-generated.
+
 ## 6. Layout & Components
 
 - White or Seasalt content surfaces; Night for title and key-message sections.

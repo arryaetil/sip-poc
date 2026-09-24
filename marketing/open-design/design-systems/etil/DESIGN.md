@@ -70,6 +70,12 @@ Visuals express insight, connection, governance, public environments, regional d
 
 AI-generated images must carry the label **"AI-GENERATED VISUAL — provided by ibc group marketing"** (small outlined pill, bottom right), as in the official templates.
 
+## Image library and AI labels
+
+Prefer these approved images over generating new ones: `assets/images/case-1.jpg`, `assets/images/case-2.jpg`, `assets/images/case-3.jpg`, `assets/images/case-4.jpg`, `assets/images/case-5.jpg`, `assets/images/case-6.jpg`, `assets/images/etil-etil-header-2.jpg`, `assets/images/etil-header-v1-1.jpg`, `assets/images/etil-ibc-beleid-2.jpg`, `assets/images/etil-ibc-group-process-teaser-2.jpg`, `assets/images/etil-ibc-menskracht-3.jpg`, `assets/images/etil-services-hero.jpg`. They already carry the AI notice where needed.
+
+From the *AI-Generated Images Guideline*: always label an image when someone could think it is real (photo-like, used in marketing, social media or external communication, or shareable on its own). Place the label directly on the image, small and discreet, bottom right: **"AI-generated image – created by IBC Group Marketing"** (short: "AI-generated | IBC Group Marketing"). When in doubt, label. Do not use Creative Commons images without the author attribution from the licence library; ask marketing instead.
+
 ## 7. LinkedIn post pattern (from the official templates)
 
 Portrait 4:5 (1080×1350). Examples in `assets/examples/linkedin-*.jpg` — match them closely.
