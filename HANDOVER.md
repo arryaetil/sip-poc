@@ -89,12 +89,27 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
   needs it. `HOME` for the daemon is `/app/.od/home`.
 - `studio.create_project` copies the design system's `assets/` and `fonts/` into
   the project's `brand/` folder (the model otherwise has no logo or font files).
-- **In progress at handover**: the latest SIP change (copy fonts, exact logo
-  instructions, "never draw a logo") is committed but SIP must be redeployed and
-  `e2e_test.py` rerun. Last run showed Arial instead of Ubuntu (fonts were not
-  copied yet), the logo lockup cropped at the bottom, and a model-invented
-  `brand/logo.svg` (unused). Check the result visually: open a signed link to
-  `/api/projects/<id>/raw/<file>.html` (see `studio.signed_link`).
+- Status 24-09 12:20 (after Codex's `configure-studio.mjs` fix, which seeds the
+  browser runner to OpenCode and maps `/api/chat` too):
+  - ✅ Ubuntu loads (fonts copied to `brand/fonts/`), approved image used, AI
+    label bottom right, logo no longer cropped, text grounded in `context.md`.
+  - `brand/logo.svg` (493 bytes) is created by Open Design itself
+    (`design-systems/index.ts`), not by the model, and is unused. Harmless.
+  - ❌ → fix deployed, **not yet verified**: `etil-logo-slogan-white.svg` held only
+    the claim without the "Etil" wordmark. Added `etil-logo-lockup-white.png`
+    (official "Etil logo white with claim"), renamed the old file to
+    `etil-claim-only-white.svg`, and `entrypoint.sh` now deletes old package
+    files on start (they lingered on the volume). Deploy `b5f866ec` was building.
+  - **Next**: rerun `cd backend && python ../marketing/open-design/e2e_test.py`,
+    check the post HTML uses `brand/etil-logo-lockup-white.png`, and view it via
+    `studio.signed_link('e2e-test', '/api/projects/<id>/raw/<file>.html')` (set
+    `OPEN_DESIGN_INTERNAL_URL` to the public URL when running locally).
+- Unused brand material worth adding next: PowerPoint masters
+  (`C:\Users\ArryaWillems\source\ibc-huisstijl\extra3\Powerpoint Master\`),
+  claim posts ("connecting insights to impact" / "connecting performance"
+  folders under `extra1\LinkedIn Templates\Posting Templates\`), 2–3 more LinkedIn
+  examples per domain, LinkedIn profile banners. Creative Commons images need
+  attribution: leave them out.
 - Not tested: Safari (use "Open in new tab"), one-pager and presentation formats,
   PPTX export.
 

@@ -17,7 +17,11 @@ done
 
 # Railway mounts volumes owned by root; the daemon runs as open-design (1001).
 mkdir -p "$DATA_DIR/design-systems" "$DATA_DIR/home"
-# Brand packages are overwritten on every start so a redeploy ships changes.
+# Brand packages are replaced on every start so a redeploy ships changes and
+# removed or renamed files do not linger on the volume.
+for package in /seed/design-systems/*/; do
+  rm -rf "$DATA_DIR/design-systems/$(basename "$package")"
+done
 cp -R /seed/design-systems/. "$DATA_DIR/design-systems/"
 chown -R 1001:1001 "$DATA_DIR"
 
