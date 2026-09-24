@@ -245,3 +245,26 @@ def test_flag_echoed_in_the_text_is_removed(dify):
     assistant, _, reply = dify
     reply["answer"] = json.dumps({"message": "Here is a draft.\n\nanswered_from_sources: true", "answered_from_sources": True})
     assert assistant.knowledge_answer([], "Draft", "en", "alice", False).message == "Here is a draft."
+
+
+def test_foundry_knowledge_path_imports_resolve(monkeypatch):
+    """The Foundry path imports lazily, so a wrong module only fails at request time."""
+    from app import knowledge, retrieval
+
+    monkeypatch.setattr(retrieval, "retrieve_with_diagnostics", lambda *a, **k: ([], None, []))
+    monkeypatch.setattr(knowledge, "create_knowledge_input", lambda message, documents, excerpt: message)
+
+    class Response:
+        output_text = "ok"
+        id = "r1"
+
+    class Client:
+        class responses:
+            @staticmethod
+            def create(**kwargs):
+                return Response()
+
+    assistant = assistants.FoundryAssistant()
+    monkeypatch.setattr(assistant, "_client", lambda: Client())
+    monkeypatch.setattr("app.main._knowledge_prompt_for", lambda language: "prompt", raising=False)
+    assert assistant.knowledge_answer([], "Hoi", "nl", "alice", False).message == "ok"

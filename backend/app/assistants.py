@@ -152,7 +152,8 @@ class FoundryAssistant:
 
     def knowledge_answer(self, history, message, language, owner_id, answer_generally):
         from app.main import _knowledge_prompt_for
-        from app.retrieval import create_knowledge_input, retrieve_with_diagnostics
+        from app.knowledge import create_knowledge_input
+        from app.retrieval import retrieve_with_diagnostics
 
         documents, excerpt, near_misses = retrieve_with_diagnostics(message, owner_id=owner_id)
         if answer_generally:

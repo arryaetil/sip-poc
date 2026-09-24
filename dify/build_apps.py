@@ -364,7 +364,7 @@ def knowledge() -> dict:
             ]
         ),
         branch,
-        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", y=420),
+        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="none", y=420),
         retrieval,
         llm_node(
             "answer_llm",
