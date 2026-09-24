@@ -201,9 +201,9 @@ workflow:
           variable_selector: []
         model:
           completion_params:
-            reasoning_effort: low
+            reasoning_effort: minimal
           mode: chat
-          name: gpt-5.6-luna
+          name: gpt-5-mini
           provider: langgenius/openai/openai
         prompt_template:
         - id: rewrite-system

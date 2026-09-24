@@ -33,6 +33,7 @@ PROVIDER = "langgenius/openai/openai"
 # knowledge assistant summarises retrieved passages, where speed matters more.
 QUALITY_MODEL = "gpt-5.6-terra"
 FAST_MODEL = "gpt-5.6-luna"
+REWRITE_MODEL = "gpt-5-mini"
 KNOWLEDGE_DATASET_ID = "cc833d3d-e595-41c7-a7ca-1bc1c5b7decd"
 OWNER_FIELD_ID = "4db261db-d0f7-4c92-a5fe-15cb3e02ee70"  # created by setup_knowledge_metadata.py
 EMBEDDING_MODEL = "text-embedding-3-large"
@@ -364,9 +365,10 @@ def knowledge() -> dict:
             ]
         ),
         branch,
-        # "none" is valid for gpt-5.6, but the Dify editor rewrites it to "minimal" on
-        # load, which gpt-5.6 rejects; "low" survives publishing from the editor.
-        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="low", y=420),
+        # The Dify editor sets this node's reasoning_effort to "minimal" when the app is
+        # published from it, and gpt-5.6 rejects "minimal". gpt-5-mini accepts it, and
+        # a one-line query rewrite needs no more.
+        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", model=REWRITE_MODEL, y=420),
         retrieval,
         llm_node(
             "answer_llm",
