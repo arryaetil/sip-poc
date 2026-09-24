@@ -88,13 +88,42 @@ function authorised(req) {
 
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 
+// The model key lives here, not in each marketer's browser: every run is sent
+// to the BYOK OpenCode runtime with the server's OpenAI key and model.
+const MODEL_KEY = process.env.STUDIO_OPENAI_API_KEY || '';
+const MODEL = process.env.STUDIO_MODEL || 'gpt-5.6-terra';
+
+function withServerModel(body) {
+  if (!MODEL_KEY) return body;
+  try {
+    const run = JSON.parse(body.toString('utf8') || '{}');
+    run.agentId = 'byok-opencode';
+    run.model = MODEL;
+    run.byokProvider = { protocol: 'openai', apiKey: MODEL_KEY, baseUrl: 'https://api.openai.com/v1', model: MODEL };
+    return Buffer.from(JSON.stringify(run));
+  } catch {
+    return body;
+  }
+}
+
 function proxy(req, res) {
+  if (req.method === 'POST' && new URL(req.url || '/', 'http://gateway').pathname === '/api/runs') {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => forward(req, res, withServerModel(Buffer.concat(chunks))));
+    return;
+  }
+  forward(req, res, null);
+}
+
+function forward(req, res, body) {
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
     if (!HOP_BY_HOP.has(key) && key !== 'cookie' && key !== 'authorization' && key !== 'host') headers[key] = value;
   }
   headers.authorization = `Bearer ${TOKEN}`;
   headers.host = `127.0.0.1:${UPSTREAM_PORT}`;
+  if (body) headers['content-length'] = String(body.length);
   const upstream = http.request(
     { host: '127.0.0.1', port: UPSTREAM_PORT, method: req.method, path: req.url, headers },
     (response) => {
@@ -113,7 +142,8 @@ function proxy(req, res) {
     if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'text/plain' });
     res.end('Open Design is not reachable');
   });
-  req.pipe(upstream);
+  if (body) upstream.end(body);
+  else req.pipe(upstream);
 }
 
 http
