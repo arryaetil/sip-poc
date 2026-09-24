@@ -252,6 +252,7 @@ def _owner_label(owner_id: str) -> str:
 
 
 PUBLIC = "public"
+FLAG_ECHO = re.compile(r"\s*`?answered_from_sources`?\s*[:=]\s*(true|false)\.?\s*$", re.IGNORECASE)
 RATE_LIMIT_WAIT = 65
 
 
@@ -478,6 +479,8 @@ class DifyAssistant:
         except ValueError:
             # An app published before the JSON answer existed returns plain text.
             reply = KnowledgeReply(message=body.get("answer", ""), answered_from_sources=True)
+        # The model sometimes repeats the flag inside the text; the user should never see it.
+        reply.message = FLAG_ECHO.sub("", reply.message).rstrip()
         if not reply.answered_from_sources:
             # Greeting, or the corpus does not hold the answer: list no sources, so the
             # UI offers a general answer exactly as it does on the Foundry path.

@@ -223,3 +223,9 @@ def test_rate_limit_becomes_a_clear_unavailable_error(dify, monkeypatch):
     assistant.http = httpx.Client(transport=httpx.MockTransport(limited))
     with pytest.raises(AssistantUnavailable, match="Try again in a minute"):
         assistant.knowledge_answer([], "Hoi", "nl", "alice", False)
+
+
+def test_flag_echoed_in_the_text_is_removed(dify):
+    assistant, _, reply = dify
+    reply["answer"] = json.dumps({"message": "Here is a draft.\n\nanswered_from_sources: true", "answered_from_sources": True})
+    assert assistant.knowledge_answer([], "Draft", "en", "alice", False).message == "Here is a draft."
