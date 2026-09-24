@@ -33,6 +33,11 @@ class ConversationMessageRequest(BaseModel):
 class KnowledgeChatSource(BaseModel):
     title: str
     url: str
+    # web: a public page, opened directly. upload/context: shown in the source viewer.
+    kind: Literal["web", "upload", "context"] = "web"
+    item_id: str | None = None
+    # The retrieved text the answer was based on, so the viewer can show it.
+    passages: list[str] = Field(default_factory=list)
 
 
 class KnowledgeNearMiss(KnowledgeChatSource):

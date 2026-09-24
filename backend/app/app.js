@@ -798,15 +798,20 @@ function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], anima
     // Number the chips only when the answer itself cites [Source N].
     const numbered = /\[Source \d+\]/.test(text);
     sources.forEach((source, index) => {
-      // A Business Context has no page of its own, so it is a label, not a link.
-      const link = document.createElement(source.url ? "a" : "span");
-      if (source.url) {
-        link.href = source.url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
+      const label = numbered ? `[${index + 1}] ${source.title}` : source.title;
+      // Public pages open directly; uploads and contexts open in the source viewer.
+      const viewable = source.kind === "upload" || source.kind === "context";
+      const chip = document.createElement(viewable ? "button" : source.url ? "a" : "span");
+      if (viewable) {
+        chip.type = "button";
+        chip.addEventListener("click", () => openSourcePanel(source, chip));
+      } else if (source.url) {
+        chip.href = source.url;
+        chip.target = "_blank";
+        chip.rel = "noopener noreferrer";
       }
-      link.textContent = numbered ? `[${index + 1}] ${source.title}` : source.title;
-      links.append(link);
+      chip.textContent = label;
+      links.append(chip);
     });
     row.querySelector(".message-content").append(links);
   }
@@ -829,7 +834,57 @@ function appendKnowledgeMessage(text, role, sources = [], nearMisses = [], anima
   return row;
 }
 
+const sourcePanel = document.querySelector("#source-panel");
+const sourcePanelKind = document.querySelector("#source-panel-kind");
+const sourcePanelTitle = document.querySelector("#source-panel-title");
+const sourcePanelPassages = document.querySelector("#source-panel-passages");
+const sourcePanelOpen = document.querySelector("#source-panel-open");
+let sourcePanelReturnFocus = null;
+let sourcePanelAction = null;
+
+function openSourcePanel(source, trigger) {
+  sourcePanelReturnFocus = trigger;
+  sourcePanelKind.textContent = t(`source_panel.kind_${source.kind}`);
+  sourcePanelTitle.textContent = source.title;
+  sourcePanelPassages.replaceChildren();
+  (source.passages || []).forEach((passage) => {
+    const quote = document.createElement("blockquote");
+    quote.textContent = passage;
+    sourcePanelPassages.append(quote);
+  });
+  if (!(source.passages || []).length) {
+    const empty = document.createElement("p");
+    empty.className = "source-panel-empty";
+    empty.textContent = t("source_panel.no_passages");
+    sourcePanelPassages.append(empty);
+  }
+  if (source.kind === "context") {
+    sourcePanelOpen.textContent = t("source_panel.open_context");
+    sourcePanelAction = () => { closeSourcePanel(); openContext(source.item_id); };
+  } else {
+    // Browsers can show a PDF; a Word file can only be downloaded.
+    const isPdf = /\.pdf$/i.test(source.title);
+    sourcePanelOpen.textContent = t(isPdf ? "source_panel.open_pdf" : "source_panel.download");
+    sourcePanelAction = () => window.open(`/api/uploads/${source.item_id}${isPdf ? "?inline=true" : ""}`, "_blank", "noopener");
+  }
+  sourcePanel.hidden = false;
+  document.querySelector("#source-panel-close").focus();
+}
+
+function closeSourcePanel() {
+  if (sourcePanel.hidden) return;
+  sourcePanel.hidden = true;
+  sourcePanelReturnFocus?.focus();
+}
+
+sourcePanelOpen.addEventListener("click", () => sourcePanelAction?.());
+document.querySelector("#source-panel-close").addEventListener("click", closeSourcePanel);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeSourcePanel();
+});
+
 function resetKnowledgeChat() {
+  closeSourcePanel();
   knowledgeConversationId = null;
   knowledgeMessages.replaceChildren();
   setStatus(knowledgeStatus, "");

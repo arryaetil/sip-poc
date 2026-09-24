@@ -562,13 +562,19 @@ def discuss_context_upload(upload_id: str, request: Request) -> ConversationTurn
 
 
 @app.get("/api/uploads/{upload_id}", response_class=FileResponse)
-def download_upload(upload_id: str, request: Request) -> FileResponse:
+def download_upload(upload_id: str, request: Request, inline: bool = False) -> FileResponse:
     owner_id, is_admin = _actor(request)
     record = get_context_store().get_upload(upload_id, owner_id, is_admin)
     path = get_context_store().get_upload_storage_path(upload_id, owner_id, is_admin)
     if record is None or path is None or not Path(path).exists():
         raise HTTPException(status_code=404, detail="Upload not found")
-    return FileResponse(path, media_type=record.media_type, filename=record.filename)
+    # inline lets the browser show a PDF in a tab; Word files download either way.
+    return FileResponse(
+        path,
+        media_type=record.media_type,
+        filename=record.filename,
+        content_disposition_type="inline" if inline else "attachment",
+    )
 
 
 @app.delete("/api/uploads/{upload_id}", status_code=204)

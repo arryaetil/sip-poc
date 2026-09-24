@@ -363,17 +363,21 @@ class DifyKnowledgeBase:
             self._call("DELETE", f"/documents/{item['id']}")
 
 
-def _source_for(document_name: str, known: dict[str, tuple[str, str]]) -> tuple[str, str]:
-    """Title and link for a retrieved document: corpus page, upload or context."""
+def _source_for(document_name: str, known: dict[str, tuple[str, str]]) -> KnowledgeChatSource:
+    """What a retrieved Dify document is in SIP: corpus page, upload or context."""
     if document_name in known:
-        return known[document_name]
+        title, url = known[document_name]
+        return KnowledgeChatSource(title=title, url=url)
     kind, _, rest = document_name.partition(":")
     item_id, _, title = rest.partition(":")
     if kind == "upload":
-        return title, f"/api/uploads/{item_id}"
+        return KnowledgeChatSource(title=title, url=f"/api/uploads/{item_id}", kind="upload", item_id=item_id)
     if kind == "context":
-        return title, ""
-    return document_name, ""
+        return KnowledgeChatSource(title=title, url="", kind="context", item_id=item_id)
+    return KnowledgeChatSource(title=document_name, url="")
+
+
+MAX_PASSAGES = 3
 
 
 @lru_cache(maxsize=1)
@@ -487,18 +491,18 @@ class DifyAssistant:
             return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=[])
         resources = body.get("metadata", {}).get("retriever_resources", []) or []
         top = max((resource.get("score") or 0 for resource in resources), default=0)
-        sources: list[KnowledgeChatSource] = []
-        seen: set[tuple[str, str]] = set()
+        by_document: dict[str, KnowledgeChatSource] = {}
         known = _documents_by_filename()
         for resource in resources:
             # Show only documents close to the best match; the rest is incidental.
             if (resource.get("score") or 0) < SOURCE_SCORE_RATIO * top:
                 continue
-            title, url = _source_for(resource.get("document_name", ""), known)
-            if (title, url) in seen or not title:
-                continue
-            seen.add((title, url))
-            sources.append(KnowledgeChatSource(title=title, url=url))
+            name = resource.get("document_name", "")
+            source = by_document.setdefault(name, _source_for(name, known))
+            passage = (resource.get("content") or "").strip()
+            if passage and passage not in source.passages and len(source.passages) < MAX_PASSAGES:
+                source.passages.append(passage)
+        sources = [source for source in by_document.values() if source.title]
         return KnowledgeAnswer(message=reply.message, response_id=body.get("message_id"), sources=sources)
 
     # Uploads and Business Contexts go to the Dify knowledge base, labelled with their

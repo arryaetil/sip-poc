@@ -187,8 +187,24 @@ def test_knowledge_request_carries_the_owner_filter_value(dify):
 
 
 def test_upload_and_context_sources_map_back_to_sip():
-    assert assistants._source_for("upload:u1:offer.pdf", {}) == ("offer.pdf", "/api/uploads/u1")
-    assert assistants._source_for("context:c1:SIP", {}) == ("SIP", "")
+    upload = assistants._source_for("upload:u1:offer.pdf", {})
+    assert (upload.title, upload.url, upload.kind, upload.item_id) == ("offer.pdf", "/api/uploads/u1", "upload", "u1")
+    context = assistants._source_for("context:c1:SIP", {})
+    assert (context.title, context.kind, context.item_id) == ("SIP", "context", "c1")
+
+
+def test_sources_carry_the_passages_the_answer_used(dify):
+    assistant, _, reply = dify
+    reply.update({
+        "answer": json.dumps({"message": "SIP helps.", "answered_from_sources": True}),
+        "metadata": {"retriever_resources": [
+            {"document_name": "context:c1:SIP", "score": 0.7, "content": "SIP — value: one context"},
+            {"document_name": "context:c1:SIP", "score": 0.69, "content": "SIP — users: sales"},
+        ]},
+    })
+    [source] = assistant.knowledge_answer([], "SIP?", "en", "alice", False).sources
+    assert source.kind == "context"
+    assert source.passages == ["SIP — value: one context", "SIP — users: sales"]
 
 
 def test_knowledge_lists_no_sources_when_the_corpus_has_no_answer(dify):
