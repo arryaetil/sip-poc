@@ -18,11 +18,32 @@ done
 # Railway mounts volumes owned by root; the daemon runs as open-design (1001).
 mkdir -p "$DATA_DIR/design-systems" "$DATA_DIR/home"
 # Brand packages are replaced on every start so a redeploy ships changes and
-# removed or renamed files do not linger on the volume.
+# removed or renamed files do not linger on the volume. The private brand
+# library is uploaded directly to the volume and must survive those resets.
+PRIVATE_LIBRARY="$DATA_DIR/private-brand-library"
+mkdir -p "$PRIVATE_LIBRARY/staged"
 for package in /seed/design-systems/*/; do
-  rm -rf "$DATA_DIR/design-systems/$(basename "$package")"
+  name="$(basename "$package")"
+  installed="$DATA_DIR/design-systems/$name/assets/private-library"
+  staged="$PRIVATE_LIBRARY/staged/$name"
+  if [ -d "$installed" ]; then
+    if [ -e "$staged" ]; then
+      echo "Private library staging conflict for $name; refusing to replace it." >&2
+      exit 1
+    fi
+    mv "$installed" "$staged"
+  fi
+  rm -rf "$DATA_DIR/design-systems/$name"
 done
 cp -R /seed/design-systems/. "$DATA_DIR/design-systems/"
+for package in /seed/design-systems/*/; do
+  name="$(basename "$package")"
+  staged="$PRIVATE_LIBRARY/staged/$name"
+  if [ -d "$staged" ]; then
+    mkdir -p "$DATA_DIR/design-systems/$name/assets"
+    mv "$staged" "$DATA_DIR/design-systems/$name/assets/private-library"
+  fi
+done
 chown -R 1001:1001 "$DATA_DIR"
 
 # The daemon only listens on localhost; the gateway is the one way in.

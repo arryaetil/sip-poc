@@ -123,7 +123,8 @@ def create_project(
                     "design system strictly (colours, Ubuntu, logo rules, tone of voice). Write in the "
                     "language of the brief. For imagery, first use the approved images listed in the design "
                     "system (assets/images) or build the background with CSS; generate a new image only when "
-                    "none fits, and then label it as AI-generated."
+                    "none fits, and then label it as AI-generated. Creative Commons images in the private "
+                    "reference library require a fresh licence check and attribution before use."
                 ),
                 "skipDiscoveryBrief": True,
                 "metadata": {"source": "sip", "format": request.format},
@@ -154,6 +155,11 @@ def _copy_brand_assets(http: httpx.Client, design_system: str, project_id: str) 
     listing.raise_for_status()
     for item in listing.json().get("files", []):
         path = item.get("path") or ""
+        # The private source library remains available through the authenticated
+        # design system, but copying hundreds of originals into every project
+        # would waste storage and model context.
+        if path.startswith("assets/private-library/"):
+            continue
         if not path.startswith(("assets/", "fonts/")) or not path.lower().endswith(ASSET_TYPES):
             continue
         asset = http.get(f"/api/design-systems/{design_system}/static", params={"path": path})

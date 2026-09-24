@@ -37,6 +37,21 @@ building a smaller studio into SIP rests on their experience.
   packages into the data volume on every start, then runs the daemon as the
   image's unprivileged user.
 
+## Private brand library
+
+The original brand guidelines, image library, LinkedIn templates and Office
+masters are stored only on the Open Design Railway volume, under each brand
+package's `assets/private-library/`. They are accessible through the studio's
+authenticated design-system file API, but are deliberately absent from this
+public repository and from the Docker build context. A deployment preserves
+those directories while replacing the public design-system packages.
+
+SIP copies only the curated logos, examples, approved images and Ubuntu fonts
+into each new project. It does not copy the full source library into every
+project. Creative Commons images are reference material until their current
+licence and attribution have been checked. Realistic AI images used externally
+need a label on the image itself.
+
 ## Security, read before sharing the link
 
 - **One shared password.** Upstream calls the token "single-tenant

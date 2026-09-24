@@ -5,6 +5,7 @@ import json
 import time
 
 import pytest
+import httpx
 
 from app import studio
 from app.models import KnowledgeChatSource, MarketingRequest
@@ -46,3 +47,25 @@ def test_context_document_carries_only_supplied_facts():
     assert "Do not invent" in text
     assert "> Een beleidsplatform." in text
     assert "https://etil.nl/de-woonatlas/" in text
+
+
+def test_private_brand_library_is_not_copied_into_every_project():
+    requested = []
+
+    def handle(request):
+        requested.append((request.method, request.url.path, request.url.params.get("path")))
+        if request.url.path.endswith("/files") and request.method == "GET":
+            return httpx.Response(200, json={"files": [
+                {"path": "assets/private-library/large-original.jpg"},
+                {"path": "assets/images/approved.jpg"},
+            ]})
+        if request.url.path.endswith("/static"):
+            return httpx.Response(200, content=b"image", headers={"content-type": "image/jpeg"})
+        return httpx.Response(201)
+
+    with httpx.Client(base_url="https://studio.example", transport=httpx.MockTransport(handle)) as client:
+        studio._copy_brand_assets(client, "user:etil", "example")
+
+    assert ("GET", "/api/design-systems/user:etil/static", "assets/private-library/large-original.jpg") not in requested
+    assert ("GET", "/api/design-systems/user:etil/static", "assets/images/approved.jpg") in requested
+    assert sum(method == "POST" for method, _, _ in requested) == 1
