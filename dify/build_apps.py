@@ -27,9 +27,11 @@ from app.models import BusinessContext, ProductStrategistTurn  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent
 PROVIDER = "langgenius/openai/openai"
-# gpt-5 took 15-17 s per chat turn and ~55 s to finalise a context; SIP itself
-# uses gpt-5-mini. Reasoning effort trades depth for latency per app.
-MODEL = "gpt-5-mini"
+# GPT-5.6 tiers, chosen per job (decided 24-09-2026): the Strategist and the
+# Finalizer shape what lands in the portfolio, so they get the flagship; the
+# knowledge assistant summarises retrieved passages, where speed matters more.
+QUALITY_MODEL = "gpt-5.6-sol"
+FAST_MODEL = "gpt-5.6-luna"
 KNOWLEDGE_DATASET_ID = "cc833d3d-e595-41c7-a7ca-1bc1c5b7decd"
 OWNER_FIELD_ID = "4db261db-d0f7-4c92-a5fe-15cb3e02ee70"  # created by setup_knowledge_metadata.py
 EMBEDDING_MODEL = "text-embedding-3-large"
@@ -113,6 +115,7 @@ def llm_node(
     system: str,
     user: str,
     effort: str = "low",
+    model: str = FAST_MODEL,
     schema: str | None = None,
     context: list[str] | None = None,
     y: int = 282,
@@ -127,7 +130,7 @@ def llm_node(
             "title": title,
             "type": "llm",
             "context": {"enabled": bool(context), "variable_selector": context or []},
-            "model": {"completion_params": params, "mode": "chat", "name": MODEL, "provider": PROVIDER},
+            "model": {"completion_params": params, "mode": "chat", "name": model, "provider": PROVIDER},
             "prompt_template": [
                 {"id": f"{node_id}-system", "role": "system", "text": system},
                 {"id": f"{node_id}-user", "role": "user", "text": user},
@@ -198,7 +201,15 @@ def strategist() -> dict:
     )
     nodes = [
         start_node([text_input("language", 32), text_input("history", 100_000), text_input("extra_instructions", 4_000)]),
-        llm_node("llm", 380, "Product Strategist", system, CONVERSATION_BLOCK, schema=strict_schema(ProductStrategistTurn)),
+        llm_node(
+            "llm",
+            380,
+            "Product Strategist",
+            system,
+            CONVERSATION_BLOCK,
+            model=QUALITY_MODEL,
+            schema=strict_schema(ProductStrategistTurn),
+        ),
         answer_node("answer", 680, "llm"),
     ]
     edges = [edge("start", "llm", "start", "llm"), edge("llm", "answer", "llm", "answer")]
@@ -220,6 +231,7 @@ def finalizer() -> dict:
             prompt("finalizer_prompt.txt"),
             CONVERSATION_BLOCK,
             effort="medium",
+            model=QUALITY_MODEL,
             schema=strict_schema(BusinessContext),
         ),
         answer_node("answer", 680, "llm"),

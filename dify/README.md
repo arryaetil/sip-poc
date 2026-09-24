@@ -37,6 +37,11 @@ schema generated from the same models SIP validates against.
 
 Design choices:
 
+- **Models per job.** The Strategist and the Finalizer run on `gpt-5.6-sol`,
+  because what they produce lands in the portfolio. The knowledge assistant
+  (query rewrite and answer) runs on `gpt-5.6-luna`, where speed matters more
+  than depth. The Foundry path keeps `MODEL_DEPLOYMENT`.
+
 - **SIP owns the conversation.** History is sent as the `history` input on
   every call and Dify memory is off, so conversations survive a provider switch.
 - **Query rewrite before retrieval.** A fast model turns a follow-up such as
