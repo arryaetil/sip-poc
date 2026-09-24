@@ -22,6 +22,11 @@ cp -R /seed/design-systems/. "$DATA_DIR/design-systems/"
 chown -R 1001:1001 "$DATA_DIR"
 
 # The daemon only listens on localhost; the gateway is the one way in.
+# Image generation reads the OpenAI key from OD_OPENAI_API_KEY; the same key
+# the gateway uses for text. Exported (not on the command line) so it stays
+# out of the process list.
+if [ -n "${STUDIO_OPENAI_API_KEY:-}" ]; then export OD_OPENAI_API_KEY="$STUDIO_OPENAI_API_KEY"; fi
+
 # OpenCode keeps its config and auth under HOME; the image user has none.
 su -s /bin/sh open-design -c "cd /app && HOME='$DATA_DIR/home' OD_DATA_DIR='$DATA_DIR' OD_PORT='$INTERNAL_PORT' OD_BIND_HOST=127.0.0.1 exec node apps/daemon/dist/cli.js --no-open" &
 

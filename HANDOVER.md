@@ -75,9 +75,28 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
   (iframe) with the prepared project (`context.md` + pending prompt).
 - Verified: gateway denies without link (401), accepts signed link (302 + cookie),
   project creation with `user:etil` and `context.md` works via the API.
-- **Not yet verified**: the published knowledge app actually returning
-  `marketing_request`; the card and iframe in a real browser session; Safari.
-- Arrya must enter a model API key once in Open Design → Settings (BYOK).
+- Verified since (24-09, ~12:00): the published knowledge app returns
+  `marketing_request` (presentation / linkedin_post recognised, none for plain
+  questions); the studio embeds in SIP in Chrome (Arrya saw it); an end-to-end run
+  (`marketing/open-design/e2e_test.py`) produced a LinkedIn post HTML + post text
+  from `context.md`, matching the Etil template pattern.
+- **Model key is server-side**: Open Design normally keeps the BYOK key in each
+  browser. The gateway rewrites every `POST /api/runs` to `agentId: byok-opencode`
+  with `byokProvider = {protocol: openai, apiKey: STUDIO_OPENAI_API_KEY, model:
+  STUDIO_MODEL (gpt-5.6-terra)}`. Marketers enter nothing. The entrypoint also
+  exports the key as `OD_OPENAI_API_KEY` for image generation.
+- The image bundles the OpenCode CLI (`opencode-ai@1.18.32`); the BYOK runtime
+  needs it. `HOME` for the daemon is `/app/.od/home`.
+- `studio.create_project` copies the design system's `assets/` and `fonts/` into
+  the project's `brand/` folder (the model otherwise has no logo or font files).
+- **In progress at handover**: the latest SIP change (copy fonts, exact logo
+  instructions, "never draw a logo") is committed but SIP must be redeployed and
+  `e2e_test.py` rerun. Last run showed Arial instead of Ubuntu (fonts were not
+  copied yet), the logo lockup cropped at the bottom, and a model-invented
+  `brand/logo.svg` (unused). Check the result visually: open a signed link to
+  `/api/projects/<id>/raw/<file>.html` (see `studio.signed_link`).
+- Not tested: Safari (use "Open in new tab"), one-pager and presentation formats,
+  PPTX export.
 
 ## Railway variables (names only)
 
@@ -86,7 +105,9 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
   OPEN_DESIGN_INTERNAL_URL, OPEN_DESIGN_PUBLIC_URL, STUDIO_HANDOFF_SECRET,
   AZURE_* (Arrya's personal Foundry keys; she wants them removed eventually).
 - `open-design`: OD_API_TOKEN, STUDIO_HANDOFF_SECRET, SIP_ORIGIN,
-  OD_ALLOWED_ORIGINS, OD_DATA_DIR=/app/.od, NODE_OPTIONS. Volume at `/app/.od`.
+  OD_ALLOWED_ORIGINS, OD_DATA_DIR=/app/.od, NODE_OPTIONS, STUDIO_OPENAI_API_KEY,
+  STUDIO_MODEL. Volume at `/app/.od`. Setting a variable redeploys the *last
+  built image*; code changes need `railway up … --path-as-root`.
 - Local copies of the secrets: `backend/.env` (gitignored). Never print them.
 
 ## Known pitfalls
