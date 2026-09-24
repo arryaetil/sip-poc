@@ -53,8 +53,8 @@ function cookieValue(header, name) {
 }
 
 function securityHeaders(res) {
-  // Only SIP may frame the studio.
-  res.setHeader('Content-Security-Policy', `frame-ancestors ${SIP_ORIGIN}`);
+  // SIP embeds the studio, and the studio embeds its own HTML preview.
+  res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${SIP_ORIGIN}`);
 }
 
 function deny(res) {
@@ -131,7 +131,7 @@ function forward(req, res, body) {
       for (const [key, value] of Object.entries(response.headers)) {
         if (!HOP_BY_HOP.has(key) && key !== 'content-security-policy' && key !== 'x-frame-options') out[key] = value;
       }
-      out['content-security-policy'] = `frame-ancestors ${SIP_ORIGIN}`;
+      out['content-security-policy'] = `frame-ancestors 'self' ${SIP_ORIGIN}`;
       res.writeHead(response.statusCode || 502, out);
       // Piping keeps Server-Sent Events streaming instead of buffering them.
       response.pipe(res);
