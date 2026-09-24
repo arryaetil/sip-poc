@@ -12,7 +12,7 @@
   {"id": "fact-interim", "category": "factual", "language": "nl", "question": "Kan ETIL interim-managers leveren voor een programma?", "expected": ["Interim"]},
   {"id": "fact-dashboards", "category": "factual", "language": "nl", "question": "Wat biedt ETIL op het gebied van dashboards en sturingsinformatie?", "expected": ["Sturingsinformatie"]},
   {"id": "lang-lowcode-en", "category": "language", "language": "en", "question": "Which low-code platforms does ETIL work with?", "expected": ["Low-Code"]},
-  {"id": "lang-labour-de", "category": "language", "language": "de", "question": "Welche Lösungen hat ETIL für Einblicke in den Arbeitsmarkt?", "expected": ["Arbeidsmarktinzicht"]},
+  {"id": "lang-labour-de", "category": "language", "language": "de", "question": "Welche Lösungen hat ETIL für Einblicke in den Arbeitsmarkt?", "expected": ["Arbeidsmarkt InZicht"]},
   {"id": "lang-cloud-en", "category": "language", "language": "en", "question": "Does ETIL help with cloud architecture?", "expected": ["Cloud"]},
   {"id": "multi-atlases", "category": "multi", "language": "nl", "question": "Wat is het verschil tussen de WoonAtlas en de EconomieAtlas?", "expected": ["WoonAtlas", "EconomieAtlas"]},
   {"id": "multi-citizens", "category": "multi", "language": "nl", "question": "Hoe helpt de AI-assistent voor burgerservices gemeenten, en via welke kanalen werkt hij?", "expected": ["burgerservices"]},

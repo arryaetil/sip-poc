@@ -1,0 +1,339 @@
+[
+  {
+    "id": "acr-rpa-nl",
+    "category": "acronym",
+    "language": "nl",
+    "question": "Welke RPA-diensten biedt ETIL?",
+    "expected": [
+      "Slimme Automatisering"
+    ],
+    "passed": true,
+    "seconds": 30.0,
+    "sources": [
+      "Start | ibc group",
+      "AI-assistent voor burgerservices - Etil",
+      "Over ons - Etil",
+      "Slimme Automatisering - Etil"
+    ],
+    "answer": "Etil biedt Robotic Process Automation (RPA) als onderdeel van slimme automatisering. In de beschikbare informatie wordt UiPath genoemd als RPA-platform, naast Microsoft Power Automate, Azure AI Services en API-integratieplatformen."
+  },
+  {
+    "id": "acr-rpa-en",
+    "category": "acronym",
+    "language": "en",
+    "question": "can u tell me about etils rpa's",
+    "expected": [
+      "Slimme Automatisering"
+    ],
+    "passed": true,
+    "seconds": 7.4,
+    "sources": [
+      "Slimme Automatisering - Etil",
+      "AI-assistent voor burgerservices - Etil"
+    ],
+    "answer": "Etil’s RPA (Robotic Process Automation) automates repetitive tasks within existing systems. It is part of Etil’s broader smart automation services, alongside AI agents, workflow automation, and document and data processing. Unlike AI agents, RPA performs rule-based tasks. Etil designs automation with attention to security, privacy, and compliance, which is important in the public sector."
+  },
+  {
+    "id": "acr-rpa-diff",
+    "category": "acronym",
+    "language": "en",
+    "question": "What is the difference between RPA and AI agents?",
+    "expected": [
+      "Slimme Automatisering"
+    ],
+    "passed": true,
+    "seconds": 6.0,
+    "sources": [
+      "Slimme Automatisering - Etil",
+      "AI-assistent voor burgerservices - Etil"
+    ],
+    "answer": "RPA performs rule-based tasks. AI agents are intelligent digital assistants that can perform tasks, retrieve information and support processes."
+  },
+  {
+    "id": "acr-sip-short",
+    "category": "acronym",
+    "language": "en",
+    "question": "Tell me about SIP",
+    "expected": [
+      "SIP"
+    ],
+    "passed": true,
+    "seconds": 13.4,
+    "sources": [
+      "SIP-productblad-test.docx",
+      "SIP-productblad-test.docx"
+    ],
+    "answer": "SIP is an internal platform of ibc group and ETIL. Product Owners and sales use it to capture one structured Business Context per product or service: what the offering does, who it is for, which problem it solves, and what differentiates it."
+  },
+  {
+    "id": "acr-sip-lower",
+    "category": "acronym",
+    "language": "en",
+    "question": "what is sip",
+    "expected": [
+      "SIP"
+    ],
+    "passed": true,
+    "seconds": 6.1,
+    "sources": [
+      "SIP-productblad-test.docx",
+      "SIP-productblad-test.docx"
+    ],
+    "answer": "SIP is an internal platform of ibc group and ETIL. It helps Product Owners and sales capture one structured Business Context per product or service: what the offering does, who it is for, which problem it solves, and how it differs from alternatives."
+  },
+  {
+    "id": "acr-vvl",
+    "category": "acronym",
+    "language": "nl",
+    "question": "Wat is VVL?",
+    "expected": [
+      "Vastgoedregister Limburg"
+    ],
+    "passed": true,
+    "seconds": 5.5,
+    "sources": [
+      "Vestigingen- & Vastgoedregister Limburg (VVL) - Etil"
+    ],
+    "answer": "VVL staat voor het Vestigingen- & Vastgoedregister Limburg. Het is een integraal beleidsplatform dat gegevens over vestigingen, bedrijvigheid en vastgoed samenbrengt, combineert, verrijkt en visualiseert. Zo ondersteunt het overheden en publieke organisaties bij ruimtelijke en economische besluitvorming."
+  },
+  {
+    "id": "fact-woonatlas",
+    "category": "factual",
+    "language": "nl",
+    "question": "Wat is de WoonAtlas?",
+    "expected": [
+      "WoonAtlas"
+    ],
+    "passed": true,
+    "seconds": 4.8,
+    "sources": [
+      "De WoonAtlas - Etil"
+    ],
+    "answer": "De WoonAtlas is een integraal beleidsplatform voor woningmarktanalyse en leefbaarheid. Het brengt gegevens uit verschillende bronnen samen in dashboards, kaarten en analyses. Zo krijgen overheden, woningcorporaties en maatschappelijke organisaties inzicht in woningmarktontwikkelingen, regionale verschillen en toekomstige woningbehoefte, als basis voor onderbouwd en toekomstbestendig woonbeleid."
+  },
+  {
+    "id": "fact-skilld",
+    "category": "factual",
+    "language": "nl",
+    "question": "Wat doet Skilld?",
+    "expected": [
+      "Skilld"
+    ],
+    "passed": true,
+    "seconds": 5.8,
+    "sources": [
+      "Skilld - Etil"
+    ],
+    "answer": "Skilld is een skills-based platform van Etil voor werving, ontwikkeling en behoud van talent. Het brengt vaardigheden van kandidaten en medewerkers dynamisch in kaart en matcht op basis van wat mensen daadwerkelijk kunnen en willen leren, in plaats van alleen op diploma’s of werkervaring. Zo helpt Skilld werkgevers een bredere kandidatenpool te bereiken en duurzame matches te maken."
+  },
+  {
+    "id": "fact-geonavigator",
+    "category": "factual",
+    "language": "nl",
+    "question": "Wat is de GEOnavigator?",
+    "expected": [
+      "GEOnavigator"
+    ],
+    "passed": true,
+    "seconds": 6.9,
+    "sources": [
+      "GEOnavigator - Etil"
+    ],
+    "answer": "De GEOnavigator is een centraal platform voor ruimtelijke analyses op het gebied van wonen, werken, leven, economie en vastgoed. Het combineert data uit externe bronnen, zoals CBS en LISA, met eigen registers en presenteert deze in interactieve atlassen. Gebruikers kunnen gebieden op verschillende schaalniveaus vergelijken, trends op de kaart bekijken en geografische clusters of uitschieters identificeren."
+  },
+  {
+    "id": "fact-gavoorslim",
+    "category": "factual",
+    "language": "nl",
+    "question": "Wat is Ga voor SLIM?",
+    "expected": [
+      "Ga voor SLIM"
+    ],
+    "passed": true,
+    "seconds": 11.1,
+    "sources": [
+      "Ga voor SLIM - Etil",
+      "Oplossingen - Etil"
+    ],
+    "answer": "Ga voor SLIM is een programma voor mkb-bedrijven dat helpt om een structurele leercultuur op te bouwen. Met een praktisch 6-stappenplan, slimme tools, AI-gedreven skills-raamwerken, de leercultuurscan van TNO en persoonlijke begeleiding krijgen ondernemers, management en medewerkers inzicht in hun ontwikkelbehoeften. Het programma kan kosteloos worden aangeboden dankzij de SLIM-subsidie."
+  },
+  {
+    "id": "fact-interim",
+    "category": "factual",
+    "language": "nl",
+    "question": "Kan ETIL interim-managers leveren voor een programma?",
+    "expected": [
+      "Interim"
+    ],
+    "passed": true,
+    "seconds": 5.8,
+    "sources": [
+      "Start | ibc group",
+      "Project-, Programma-& Interimmanagement - Etil",
+      "Over ons - Etil",
+      "SIP-productblad-test.docx"
+    ],
+    "answer": "Ja. ETIL kan interimmanagement leveren voor programma’s. Professionals kunnen, afhankelijk van de expertise, vaak binnen enkele dagen of weken starten. Naast interimondersteuning zijn ook projectmatige ondersteuning en advies mogelijk."
+  },
+  {
+    "id": "fact-dashboards",
+    "category": "factual",
+    "language": "nl",
+    "question": "Wat biedt ETIL op het gebied van dashboards en sturingsinformatie?",
+    "expected": [
+      "Sturingsinformatie"
+    ],
+    "passed": true,
+    "seconds": 7.5,
+    "sources": [
+      "De EconomieAtlas - Etil",
+      "Start | ibc group",
+      "Sturingsinformatie & Dashboards - Etil"
+    ],
+    "answer": "ETIL biedt bestuurlijke dashboards, managementinformatie, KPI- en prestatiemonitoring en realtime rapportages. Daarnaast ontwikkelt en beheert ETIL online inzichtplatforms, interactieve kaarten, factsheets en datavisualisaties. Een voorbeeld is het ArbeidsmarktInZicht-dashboard, waarmee een provincie realtime inzicht krijgt in vacatures, opleidingen en trends voor gerichte beleidsbeslissingen."
+  },
+  {
+    "id": "lang-lowcode-en",
+    "category": "language",
+    "language": "en",
+    "question": "Which low-code platforms does ETIL work with?",
+    "expected": [
+      "Low-Code"
+    ],
+    "passed": true,
+    "seconds": 7.0,
+    "sources": [
+      "Low-Code Platformen - Etil"
+    ],
+    "answer": "ETIL werkt met Microsoft Power Platform, waaronder Power Automate, Power Apps en Dynamics 365."
+  },
+  {
+    "id": "lang-labour-de",
+    "category": "language",
+    "language": "de",
+    "question": "Welche Lösungen hat ETIL für Einblicke in den Arbeitsmarkt?",
+    "expected": [
+      "Arbeidsmarktinzicht"
+    ],
+    "passed": false,
+    "seconds": 6.3,
+    "sources": [
+      "Ga voor SLIM - Etil",
+      "Arbeidsmarkt InZicht - Etil",
+      "Impact & Verantwoording - Etil"
+    ],
+    "answer": "ETIL bietet mit „ArbeidsmarktInZicht“ eine Online-Plattform für Arbeitsmarkteinblicke. Sie bündelt Daten aus zahlreichen Quellen wie CBS, UWV, DUO, ROA, LISA und Jobfeed, aktualisiert sie kontinuierlich und visualisiert sowie interpretiert sie für Regionen und Provinzen. Die Plattform kann unter anderem Einblicke in Vakanzen, Ausbildungen und Trends geben und dadurch gezieltere politische Entscheidungen unterstützen. Zusätzlich übersetzt ETIL Arbeitsmarkt- und Skilldaten in Dashboards, die Skill-Lücken, ungenutztes Potenzial und Risiken sichtbar machen – als Grundlage für konkrete Aktions- und Weiterbildungspläne."
+  },
+  {
+    "id": "lang-cloud-en",
+    "category": "language",
+    "language": "en",
+    "question": "Does ETIL help with cloud architecture?",
+    "expected": [
+      "Cloud"
+    ],
+    "passed": true,
+    "seconds": 5.3,
+    "sources": [
+      "Start | ibc group",
+      "AI-assistent voor burgerservices - Etil",
+      "Cloud & Architectuur - Etil"
+    ],
+    "answer": "Yes. ETIL helps public organizations with cloud and enterprise architecture, including cloud strategy, application architecture, legacy-system modernization, and digital transformation roadmaps. ETIL also supports the integration of systems, data sources, and chain partners."
+  },
+  {
+    "id": "multi-atlases",
+    "category": "multi",
+    "language": "nl",
+    "question": "Wat is het verschil tussen de WoonAtlas en de EconomieAtlas?",
+    "expected": [
+      "WoonAtlas",
+      "EconomieAtlas"
+    ],
+    "passed": true,
+    "seconds": 5.9,
+    "sources": [
+      "De EconomieAtlas - Etil",
+      "De WoonAtlas - Etil",
+      "GEOnavigator - Etil"
+    ],
+    "answer": "De EconomieAtlas richt zich op economische en ruimtelijke analyses, met onder meer dashboards, factsheets en visualisaties over economie en ruimte op lokaal, regionaal en provinciaal niveau. De WoonAtlas is specifiek gericht op woningmarktinformatie, met data-integratie, prognosemodellen en GIS-visualisaties over wonen, bevolking en leefbaarheid. Beide platforms bevatten interactieve dashboards, thematische atlassen en kaarten."
+  },
+  {
+    "id": "multi-citizens",
+    "category": "multi",
+    "language": "nl",
+    "question": "Hoe helpt de AI-assistent voor burgerservices gemeenten, en via welke kanalen werkt hij?",
+    "expected": [
+      "burgerservices"
+    ],
+    "passed": true,
+    "seconds": 7.3,
+    "sources": [
+      "AI-assistent voor burgerservices - Etil"
+    ],
+    "answer": "De AI-assistent helpt gemeenten door als intelligente eerste lijn voor het KCC standaardvragen automatisch en persoonlijk af te handelen. Dit vermindert wachttijden en achterstanden en ondersteunt medewerkers bij overbelaste serviceloketten. De assistent werkt via telefonie met een AI Voice Agent, webchat en e-mailautomatisering. Daarnaast kan hij worden geïntegreerd met zaaksystemen, basisregistraties zoals BRP en BAG, en CRM-systemen."
+  },
+  {
+    "id": "followup-woonatlas",
+    "category": "follow-up",
+    "language": "nl",
+    "history": [
+      "Wat is de WoonAtlas?"
+    ],
+    "question": "Voor wie is die bedoeld?",
+    "expected": [
+      "WoonAtlas"
+    ],
+    "passed": true,
+    "seconds": 4.9,
+    "sources": [
+      "De WoonAtlas - Etil"
+    ],
+    "answer": "De WoonAtlas is bedoeld voor overheden, woningcorporaties en maatschappelijke organisaties. Bestuurders en beleidsmakers gebruiken het platform voor onderbouwd en toekomstbestendig woonbeleid."
+  },
+  {
+    "id": "none-ceo",
+    "category": "unanswerable",
+    "language": "nl",
+    "question": "Wie is de CEO van ETIL?",
+    "expected": [],
+    "passed": true,
+    "seconds": 4.9,
+    "sources": [],
+    "answer": "De beschikbare website-informatie vermeldt niet wie de CEO van ETIL is."
+  },
+  {
+    "id": "none-price",
+    "category": "unanswerable",
+    "language": "nl",
+    "question": "Wat kost een licentie op de WoonAtlas per jaar?",
+    "expected": [],
+    "passed": true,
+    "seconds": 5.9,
+    "sources": [],
+    "answer": "De beschikbare website-informatie vermeldt geen jaarlijkse licentiekosten voor de WoonAtlas."
+  },
+  {
+    "id": "none-staff",
+    "category": "unanswerable",
+    "language": "en",
+    "question": "How many employees does ETIL have?",
+    "expected": [],
+    "passed": true,
+    "seconds": 4.5,
+    "sources": [],
+    "answer": "De beschikbare website-informatie vermeldt niet hoeveel medewerkers Etil heeft."
+  },
+  {
+    "id": "none-offtopic",
+    "category": "unanswerable",
+    "language": "en",
+    "question": "What is the capital of France?",
+    "expected": [],
+    "passed": true,
+    "seconds": 6.1,
+    "sources": [],
+    "answer": "The available website knowledge does not contain the answer."
+  }
+]
