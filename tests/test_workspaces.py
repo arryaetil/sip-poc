@@ -68,3 +68,24 @@ def test_legacy_rows_are_claimed_instead_of_becoming_public():
 
     assert store.get("legacy", "bootstrap") is not None
     assert store.get("legacy", "someone-else") is None
+
+
+def test_deleting_context_removes_its_evidence_but_keeps_workspace_uploads():
+    store = fresh_store()
+    saved = store.create(context("Delete me"), "approved", "alice")
+    evidence = store.create_upload(
+        owner_id="alice", kind="context_evidence", filename="source.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size_bytes=1, storage_path="source.docx", page_count=None,
+        context_id=saved.id,
+    )
+    workspace = store.create_upload(
+        owner_id="alice", kind="workspace", filename="other.txt", media_type="text/plain",
+        size_bytes=1, storage_path="other.txt", page_count=None,
+        context_id=saved.id,
+    )
+    assert store.context_uploads(saved.id, "bob") is None
+    assert store.context_uploads(saved.id, "alice") == [(evidence.id, "source.docx")]
+    assert store.delete_context(saved.id, "alice")
+    assert store.get_upload(evidence.id, "alice") is None
+    assert store.get_upload(workspace.id, "alice") is not None

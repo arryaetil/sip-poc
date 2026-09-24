@@ -582,13 +582,16 @@ def download_upload(upload_id: str, request: Request, inline: bool = False) -> F
 @app.delete("/api/uploads/{upload_id}", status_code=204)
 def delete_upload(upload_id: str, request: Request) -> Response:
     owner_id, is_admin = _actor(request)
-    path = get_context_store().delete_upload(upload_id, owner_id, is_admin)
+    store = get_context_store()
+    path = store.get_owned_upload_storage_path(upload_id, owner_id, is_admin)
     if path is None:
         raise HTTPException(status_code=404, detail="Upload not found")
     try:
         get_assistant().remove_upload(upload_id)
-    except Exception:
+    except Exception as exc:
         logger.error("Removing upload %s from the knowledge index failed:\n%s", upload_id, traceback.format_exc())
+        raise HTTPException(status_code=502, detail="Could not remove upload from the knowledge index") from exc
+    path = store.delete_upload(upload_id, owner_id, is_admin)
     Path(path).unlink(missing_ok=True)
     Path(f"{path}.txt").unlink(missing_ok=True)
     return Response(status_code=204)
@@ -995,10 +998,22 @@ def _publish_selected_evidence(context_id: str, owner_id: str, upload_ids: list[
 
 @app.delete("/api/contexts/{context_id}", status_code=204)
 def delete_context(context_id: str, request: Request) -> Response:
-    if not get_context_store().delete_context(context_id, *_actor(request)):
+    store = get_context_store()
+    owner_id, is_admin = _actor(request)
+    uploads = store.context_uploads(context_id, owner_id, is_admin)
+    if uploads is None:
         raise HTTPException(status_code=404, detail="Business Context not found")
     try:
-        get_assistant().remove_context(context_id)
-    except Exception:
+        assistant = get_assistant()
+        for upload_id, _ in uploads:
+            assistant.remove_upload(upload_id)
+        assistant.remove_context(context_id)
+    except Exception as exc:
         logger.error("Removing Business Context %s from the knowledge index failed:\n%s", context_id, traceback.format_exc())
+        raise HTTPException(status_code=502, detail="Could not remove Business Context from the knowledge index") from exc
+    if not store.delete_context(context_id, owner_id, is_admin):
+        raise HTTPException(status_code=404, detail="Business Context not found")
+    for _, path in uploads:
+        Path(path).unlink(missing_ok=True)
+        Path(f"{path}.txt").unlink(missing_ok=True)
     return Response(status_code=204)

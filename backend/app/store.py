@@ -245,6 +245,15 @@ class ContextStore:
             if exists is None:
                 return False
             connection.execute(
+                "DELETE FROM uploads WHERE id IN (SELECT u.id FROM uploads u "
+                "JOIN upload_links l ON l.upload_id = u.id "
+                "WHERE u.kind = 'context_evidence' AND l.context_id = ?)",
+                (context_id,),
+            )
+            connection.execute(
+                "DELETE FROM upload_links WHERE context_id = ?", (context_id,)
+            )
+            connection.execute(
                 """
                 UPDATE conversations
                 SET portfolio_context_id = NULL, updated_at = CURRENT_TIMESTAMP
@@ -254,6 +263,23 @@ class ContextStore:
             )
             connection.execute("DELETE FROM business_contexts WHERE id = ?", (context_id,))
         return True
+
+    def context_uploads(self, context_id: str, owner_id: str, is_admin: bool = False) -> list[tuple[str, str]] | None:
+        """Return evidence IDs and paths only when the caller owns this context."""
+        with self._connect() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM business_contexts WHERE id = ? AND (? OR owner_id = ?)",
+                (context_id, int(is_admin), owner_id),
+            ).fetchone()
+            if exists is None:
+                return None
+            rows = connection.execute(
+                "SELECT u.id, u.storage_path FROM uploads u "
+                "JOIN upload_links l ON l.upload_id = u.id "
+                "WHERE u.kind = 'context_evidence' AND l.context_id = ?",
+                (context_id,),
+            ).fetchall()
+        return [(row["id"], row["storage_path"]) for row in rows]
 
     def create_conversation(self, owner_id: str, language: str = "en", kind: str = "context") -> ConversationDetail:
         conversation_id = str(uuid4())
@@ -549,6 +575,14 @@ class ContextStore:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT storage_path FROM uploads WHERE id = ? AND (? OR owner_id = ? OR visibility = 'org')",
+                (upload_id, int(is_admin), owner_id),
+            ).fetchone()
+        return row["storage_path"] if row else None
+
+    def get_owned_upload_storage_path(self, upload_id: str, owner_id: str, is_admin: bool = False) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT storage_path FROM uploads WHERE id = ? AND (? OR owner_id = ?)",
                 (upload_id, int(is_admin), owner_id),
             ).fetchone()
         return row["storage_path"] if row else None
