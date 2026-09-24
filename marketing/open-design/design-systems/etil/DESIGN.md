@@ -49,7 +49,8 @@ Use these consistently for service navigation, content clusters, icons, cards, h
 - The spectrum is the bridge between logo and claim. Do not put it inside or behind the logo, integrate it into letters, stretch or rotate it, or overlap it with text.
 
 Assets (in a studio project they are copied to `brand/`, e.g. `brand/etil-logo-slogan-white.svg`):
-- **Dark backgrounds** (LinkedIn posts, title slides): `etil-logo-slogan-white.svg` — the complete light lockup: "Etil" wordmark, spectrum bar and claim. Show it whole, about 26% of the width, never cropped or masked.
+- **Dark backgrounds** (LinkedIn posts, title slides): `etil-logo-lockup-white.png` — the complete light lockup exactly as in the official templates: "Etil" wordmark with "part of ibc group", the spectrum bar and the claim. Show it whole, about 30% of the width, bottom left, never cropped or masked.
+- `etil-claim-only-white.svg` holds only the spectrum bar and claim, **without the Etil wordmark**: never use it as the logo.
 - **Light backgrounds** (one-pagers, content slides): `etil-logo-slogan.png` — the same lockup in black.
 - `etil-logo-black.svg` — black wordmark only; `etil-logo-claim-light.svg` — light wordmark with claim, stacked.
 - **Never draw, recreate, simplify or generate a logo**, and never create logo files. If no official file fits, leave the logo out.
