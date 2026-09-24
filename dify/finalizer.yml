@@ -97,27 +97,21 @@ workflow:
             reasoning_effort: medium
             response_format: json_schema
             json_schema: '{"name": "BusinessContext", "strict": true, "schema": {"properties": {"name":
-              {"title": "Name", "type": "string"}, "offering_type": {"enum": ["product", "service"], "title":
-              "Offering Type", "type": "string"}, "short_summary": {"title": "Short Summary", "type":
-              "string"}, "customer_problems_addressed": {"items": {"type": "string"}, "title": "Customer
-              Problems Addressed", "type": "array"}, "core_capabilities": {"items": {"type": "string"},
-              "title": "Core Capabilities", "type": "array"}, "target_organisations": {"items": {"type":
-              "string"}, "title": "Target Organisations", "type": "array"}, "relevant_industries": {"items":
-              {"type": "string"}, "title": "Relevant Industries", "type": "array"}, "relevant_roles_and_decision_makers":
-              {"items": {"type": "string"}, "title": "Relevant Roles And Decision Makers", "type": "array"},
-              "geographic_focus": {"items": {"type": "string"}, "title": "Geographic Focus", "type": "array"},
-              "value_proposition": {"title": "Value Proposition", "type": "string"}, "differentiators":
-              {"items": {"type": "string"}, "title": "Differentiators", "type": "array"}, "people": {"items":
-              {"type": "string"}, "title": "People", "type": "array"}, "supporting_evidence_or_knowledge_sources":
-              {"items": {"type": "string"}, "title": "Supporting Evidence Or Knowledge Sources", "type":
-              "array"}, "key_marketing_messages": {"items": {"type": "string"}, "title": "Key Marketing
-              Messages", "type": "array"}, "assumptions": {"items": {"type": "string"}, "title": "Assumptions",
-              "type": "array"}, "open_questions": {"items": {"type": "string"}, "title": "Open Questions",
-              "type": "array"}}, "required": ["name", "offering_type", "short_summary", "customer_problems_addressed",
-              "core_capabilities", "target_organisations", "relevant_industries", "relevant_roles_and_decision_makers",
-              "geographic_focus", "value_proposition", "differentiators", "people", "supporting_evidence_or_knowledge_sources",
-              "key_marketing_messages", "assumptions", "open_questions"], "title": "BusinessContext",
-              "type": "object", "additionalProperties": false}}'
+              {"type": "string"}, "offering_type": {"enum": ["product", "service"], "type": "string"},
+              "short_summary": {"type": "string"}, "customer_problems_addressed": {"items": {"type": "string"},
+              "type": "array"}, "core_capabilities": {"items": {"type": "string"}, "type": "array"}, "target_organisations":
+              {"items": {"type": "string"}, "type": "array"}, "relevant_industries": {"items": {"type":
+              "string"}, "type": "array"}, "relevant_roles_and_decision_makers": {"items": {"type": "string"},
+              "type": "array"}, "geographic_focus": {"items": {"type": "string"}, "type": "array"}, "value_proposition":
+              {"type": "string"}, "differentiators": {"items": {"type": "string"}, "type": "array"}, "people":
+              {"items": {"type": "string"}, "type": "array"}, "supporting_evidence_or_knowledge_sources":
+              {"items": {"type": "string"}, "type": "array"}, "key_marketing_messages": {"items": {"type":
+              "string"}, "type": "array"}, "assumptions": {"items": {"type": "string"}, "type": "array"},
+              "open_questions": {"items": {"type": "string"}, "type": "array"}}, "required": ["name",
+              "offering_type", "short_summary", "customer_problems_addressed", "core_capabilities", "target_organisations",
+              "relevant_industries", "relevant_roles_and_decision_makers", "geographic_focus", "value_proposition",
+              "differentiators", "people", "supporting_evidence_or_knowledge_sources", "key_marketing_messages",
+              "assumptions", "open_questions"], "type": "object", "additionalProperties": false}}'
           mode: chat
           name: gpt-5.6-terra
           provider: langgenius/openai/openai

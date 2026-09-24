@@ -307,11 +307,16 @@ workflow:
           completion_params:
             reasoning_effort: low
             response_format: json_schema
-            json_schema: '{"name": "KnowledgeReply", "strict": true, "schema": {"description": "What the
-              Dify knowledge app returns for a grounded (non-general) turn.", "properties": {"message":
-              {"title": "Message", "type": "string"}, "answered_from_sources": {"title": "Answered From
-              Sources", "type": "boolean"}}, "required": ["message", "answered_from_sources"], "title":
-              "KnowledgeReply", "type": "object", "additionalProperties": false}}'
+            json_schema: '{"name": "KnowledgeReply", "strict": true, "schema": {"$defs": {"MarketingRequest":
+              {"description": "A request for marketing material, recognised by the knowledge assistant.",
+              "properties": {"format": {"enum": ["linkedin_post", "one_pager", "presentation"], "type":
+              "string"}, "brief": {"type": "string"}, "title": {"type": "string"}, "brand": {"enum": ["etil",
+              "ibc-group"], "type": "string"}}, "required": ["format", "brief", "title", "brand"], "type":
+              "object", "additionalProperties": false}}, "description": "What the Dify knowledge app returns
+              for a grounded (non-general) turn.", "properties": {"message": {"type": "string"}, "answered_from_sources":
+              {"type": "boolean"}, "marketing_request": {"anyOf": [{"$ref": "#/$defs/MarketingRequest"},
+              {"type": "null"}]}}, "required": ["message", "answered_from_sources", "marketing_request"],
+              "type": "object", "additionalProperties": false}}'
           mode: chat
           name: gpt-5.6-luna
           provider: langgenius/openai/openai
@@ -350,6 +355,15 @@ workflow:
             only when the message states facts taken from the reference material, and false for greetings,
             small talk, or when the reference material does not contain the answer. Never mention `answered_from_sources`
             inside `message`.
+
+
+            `marketing_request`: when the user asks you to make marketing material (a LinkedIn or social
+            post, a one-pager or flyer, a presentation or PowerPoint), fill it in: `format` is linkedin_post,
+            one_pager or presentation; `brief` restates in one or two sentences what to make, for whom
+            and about which offering, in the user''s language; `title` is a short project name; `brand`
+            is etil, or ibc-group only when the user asks for ibc group. Do not produce the material yourself:
+            in `message`, answer briefly with the key facts from the reference material and say it can
+            be designed in the Marketing studio. Otherwise set `marketing_request` to null.
 
 
             Reference material:

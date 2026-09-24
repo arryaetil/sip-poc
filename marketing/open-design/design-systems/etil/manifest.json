@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "od-design-system-project/v1",
+  "id": "etil",
+  "name": "Etil",
+  "category": "Professional Services",
+  "description": "Etil public-sector brand from the 2026-07 brand guideline: Night/Seasalt base, red-orange-yellow spectrum, service colours, Ubuntu.",
+  "source": {
+    "type": "local",
+    "path": "sip-poc/marketing/open-design/design-systems/etil"
+  },
+  "files": {
+    "design": "DESIGN.md",
+    "tokens": "tokens.css"
+  },
+  "importMode": "verbatim",
+  "craft": {
+    "applies": [],
+    "suggested": [
+      "color",
+      "accessibility-baseline"
+    ],
+    "exemptions": []
+  },
+  "assetsDir": "assets",
+  "fonts": [
+    {
+      "family": "Ubuntu",
+      "file": "fonts/Ubuntu-Light.ttf",
+      "weight": 300
+    },
+    {
+      "family": "Ubuntu",
+      "file": "fonts/Ubuntu-Regular.ttf",
+      "weight": 400
+    },
+    {
+      "family": "Ubuntu",
+      "file": "fonts/Ubuntu-Medium.ttf",
+      "weight": 500
+    },
+    {
+      "family": "Ubuntu",
+      "file": "fonts/Ubuntu-Bold.ttf",
+      "weight": 700
+    }
+  ]
+}

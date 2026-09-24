@@ -109,10 +109,9 @@ workflow:
             reasoning_effort: low
             response_format: json_schema
             json_schema: '{"name": "ProductStrategistTurn", "strict": true, "schema": {"properties": {"message":
-              {"title": "Message", "type": "string"}, "is_ready_to_save": {"title": "Is Ready To Save",
-              "type": "boolean"}, "readiness_reason": {"title": "Readiness Reason", "type": "string"}},
-              "required": ["message", "is_ready_to_save", "readiness_reason"], "title": "ProductStrategistTurn",
-              "type": "object", "additionalProperties": false}}'
+              {"type": "string"}, "is_ready_to_save": {"type": "boolean"}, "readiness_reason": {"type":
+              "string"}}, "required": ["message", "is_ready_to_save", "readiness_reason"], "type": "object",
+              "additionalProperties": false}}'
           mode: chat
           name: gpt-5.6-terra
           provider: langgenius/openai/openai

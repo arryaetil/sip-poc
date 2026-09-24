@@ -224,6 +224,46 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   animation: source-panel-in 200ms cubic-bezier(.23,1,.32,1) both;
 }
 @keyframes source-panel-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Offer to continue in the Marketing studio, shown under an assistant answer. */
+.studio-offer-row { padding-left: 44px; }
+.studio-offer {
+  position: relative;
+  width: min(520px, 100%);
+  padding: 18px 20px 16px 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(18, 18, 18, .06);
+  overflow: hidden;
+  animation: studio-offer-in 220ms cubic-bezier(.23,1,.32,1) both;
+}
+/* The Etil spectrum as a thin connector, as the brand guideline prescribes. */
+.studio-offer::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #ff0020 0%, #ff4805 45%, #fea200 75%, #fbfb00 100%);
+}
+@keyframes studio-offer-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.studio-offer-badge { display: inline-block; margin-bottom: 8px; padding: 3px 9px; border-radius: 999px; background: var(--seasal); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.studio-offer h3 { margin: 0 0 6px; font-size: 17px; line-height: 1.3; }
+.studio-offer-brief { margin: 0 0 14px; color: #34373b; font-size: 14px; line-height: 1.55; }
+.studio-offer-actions { display: flex; align-items: center; gap: 14px; }
+.studio-offer-actions .text-button { margin: 0; color: var(--muted); }
+.studio-offer-status { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.studio-offer-status:empty { display: none; }
+.studio-offer.dismissed { opacity: .7; box-shadow: none; }
+
+/* Marketing studio: Open Design embedded full height. */
+body.chat-open #marketing-view { width: 100%; max-width: none; height: 100%; display: flex; flex-direction: column; }
+.studio-header { margin-bottom: 12px; }
+body.chat-open #marketing-view .view-header h1 { font-size: 24px; }
+.studio-frame-wrap { position: relative; flex: 1; min-height: 520px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--seasal); }
+.studio-frame { width: 100%; height: 100%; border: 0; display: block; background: var(--surface); }
+.studio-status { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: 14px; background: var(--seasal); }
+@media (prefers-reduced-motion: reduce) { .studio-offer { animation: none; } }
 .source-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 14px; border-bottom: 1px solid var(--border); }
 .source-panel-kind { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .source-panel-header h2 { margin: 0; font-size: 19px; line-height: 1.3; overflow-wrap: anywhere; }

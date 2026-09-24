@@ -44,6 +44,15 @@ class KnowledgeNearMiss(KnowledgeChatSource):
     score: float
 
 
+class MarketingRequest(BaseModel):
+    """A request for marketing material, recognised by the knowledge assistant."""
+
+    format: Literal["linkedin_post", "one_pager", "presentation"]
+    brief: str
+    title: str = ""
+    brand: Literal["etil", "ibc-group"] = "etil"
+
+
 class KnowledgeChatResponse(BaseModel):
     message: str
     response_id: str | None = None
@@ -51,6 +60,14 @@ class KnowledgeChatResponse(BaseModel):
     near_misses: list[KnowledgeNearMiss] = Field(default_factory=list)
     conversation_id: str
     general_answer_available: bool = False
+    # Set when the user asked for marketing material; the UI offers the studio.
+    marketing_request: MarketingRequest | None = None
+
+
+class StudioProjectRequest(BaseModel):
+    marketing_request: MarketingRequest
+    conversation_id: str | None = None
+    sources: list[KnowledgeChatSource] = Field(default_factory=list, max_length=12)
 
 
 class ConversationCreateRequest(BaseModel):

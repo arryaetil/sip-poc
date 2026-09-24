@@ -268,3 +268,14 @@ def test_foundry_knowledge_path_imports_resolve(monkeypatch):
     monkeypatch.setattr(assistant, "_client", lambda: Client())
     monkeypatch.setattr("app.main._knowledge_prompt_for", lambda language: "prompt", raising=False)
     assert assistant.knowledge_answer([], "Hoi", "nl", "alice", False).message == "ok"
+
+
+def test_marketing_request_reaches_the_ui(dify):
+    assistant, _, reply = dify
+    reply["answer"] = json.dumps({
+        "message": "De WoonAtlas helpt gemeenten.",
+        "answered_from_sources": True,
+        "marketing_request": {"format": "presentation", "brief": "Presentatie over de WoonAtlas", "title": "WoonAtlas", "brand": "etil"},
+    })
+    answer = assistant.knowledge_answer([], "Maak een PowerPoint over de WoonAtlas", "nl", "alice", False)
+    assert answer.marketing_request.format == "presentation"
