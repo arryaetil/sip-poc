@@ -304,7 +304,7 @@ def knowledge() -> dict:
                     },
                 },
             },
-            "query_variable_selector": ["rewrite", "text"],
+            "query_variable_selector": ["query_rewrite", "text"],
             # Dify has no per-user permissions in a knowledge base. SIP labels every
             # document with an owner (see dify/setup_knowledge_metadata.py) and the
             # app only retrieves public documents and those of the asking user.
@@ -365,10 +365,10 @@ def knowledge() -> dict:
             ]
         ),
         branch,
-        # The Dify editor sets this node's reasoning_effort to "minimal" when the app is
-        # published from it, and gpt-5.6 rejects "minimal". gpt-5-mini accepts it, and
-        # a one-line query rewrite needs no more.
-        llm_node("rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", model=REWRITE_MODEL, y=420),
+        # Publishing from the Dify editor restored an old copy of the node once called
+        # "rewrite" (gpt-5.6-luna with reasoning_effort "minimal", which gpt-5.6 rejects).
+        # A new node id avoids that; gpt-5-mini also accepts "minimal" should it recur.
+        llm_node("query_rewrite", 530, "Rewrite query", rewrite, CONVERSATION_BLOCK, effort="minimal", model=REWRITE_MODEL, y=420),
         retrieval,
         llm_node(
             "answer_llm",
@@ -386,8 +386,8 @@ def knowledge() -> dict:
     edges = [
         edge("start", "branch", "start", "if-else"),
         edge("branch", "general_llm", "if-else", "llm", handle="true"),
-        edge("branch", "rewrite", "if-else", "llm", handle="false"),
-        edge("rewrite", "retrieval", "llm", "knowledge-retrieval"),
+        edge("branch", "query_rewrite", "if-else", "llm", handle="false"),
+        edge("query_rewrite", "retrieval", "llm", "knowledge-retrieval"),
         edge("retrieval", "answer_llm", "knowledge-retrieval", "llm"),
         edge("answer_llm", "answer", "llm", "answer"),
         edge("general_llm", "general_answer", "llm", "answer"),

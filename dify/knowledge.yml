@@ -65,10 +65,10 @@ workflow:
         isInLoop: false
         sourceType: if-else
         targetType: llm
-      id: branch-false-rewrite
+      id: branch-false-query_rewrite
       source: branch
       sourceHandle: 'false'
-      target: rewrite
+      target: query_rewrite
       targetHandle: target
       type: custom
       zIndex: 0
@@ -77,8 +77,8 @@ workflow:
         isInLoop: false
         sourceType: llm
         targetType: knowledge-retrieval
-      id: rewrite-source-retrieval
-      source: rewrite
+      id: query_rewrite-source-retrieval
+      source: query_rewrite
       sourceHandle: source
       target: retrieval
       targetHandle: target
@@ -206,7 +206,7 @@ workflow:
           name: gpt-5-mini
           provider: langgenius/openai/openai
         prompt_template:
-        - id: rewrite-system
+        - id: query_rewrite-system
           role: system
           text: You turn the latest user message into one standalone search query for a knowledge base
             about ETIL and the ibc group. Resolve pronouns and references using the conversation. The
@@ -214,7 +214,7 @@ workflow:
             writes in; keep product names and acronyms such as RPA as they are and spell out an acronym
             once in brackets when you know it. Output only the query, nothing else. If the message is
             a greeting or small talk, output it unchanged.
-        - id: rewrite-user
+        - id: query_rewrite-user
           role: user
           text: 'Conversation so far (may be empty):
 
@@ -231,7 +231,7 @@ workflow:
         vision:
           enabled: false
       height: 90
-      id: rewrite
+      id: query_rewrite
       position:
         x: 530
         y: 420
@@ -264,7 +264,7 @@ workflow:
               embedding_provider_name: langgenius/openai/openai
               vector_weight: 0.7
         query_variable_selector:
-        - rewrite
+        - query_rewrite
         - text
         metadata_filtering_mode: manual
         metadata_filtering_conditions:
