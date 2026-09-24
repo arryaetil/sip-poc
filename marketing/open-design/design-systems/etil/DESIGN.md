@@ -54,6 +54,7 @@ Assets (in a studio project they are copied to `brand/`):
 - **Light backgrounds** (one-pagers, content slides): `etil-logo-slogan.png` — the same lockup in black.
 - `etil-logo-black.svg` — black wordmark only; `etil-logo-claim-light.svg` — light wordmark with claim, stacked. For LinkedIn posts use the official `etil-logo-lockup-white.png` instead.
 - **Never draw, recreate, simplify or generate a logo**, and never create logo files. If no official file fits, leave the logo out.
+- The authenticated design system may also contain `assets/private-library/` with the original brand guidelines, Office masters, logos, LinkedIn templates and image library. These are references; select only the files needed for a project. Creative Commons images require a fresh source/licence check and attribution before use. Follow the AI-image guideline: realistic AI imagery in external posts must carry a label directly on the image.
 
 ## 5. Tone of Voice
 

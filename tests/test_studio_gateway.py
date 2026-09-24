@@ -20,6 +20,13 @@ def test_browser_runs_and_chat_use_server_provider():
     received = []
 
     class Daemon(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+            self.send_header("X-Frame-Options", "DENY")
+            self.end_headers()
+            self.wfile.write(b"preview")
+
         def do_POST(self):
             received.append((self.path, self.headers.get("Authorization"),
                              json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
@@ -52,6 +59,11 @@ def test_browser_runs_and_chat_use_server_provider():
                     time.sleep(0.05)
             else:
                 pytest.fail("gateway did not start")
+            preview = client.get("/api/projects/example/raw/post.html",
+                                 headers={"Authorization": "Bearer test-daemon"})
+            assert preview.status_code == 200
+            assert preview.headers["Content-Security-Policy"] == "frame-ancestors 'self' https://sip.example"
+            assert "X-Frame-Options" not in preview.headers
             for route in ("/api/runs", "/api/chat"):
                 assert client.post(route, json={"message": "hello"}).status_code == 401
                 response = client.post(route, headers={"Authorization": "Bearer test-daemon"},

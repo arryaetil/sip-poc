@@ -42,6 +42,8 @@ Apply them to illustrations and infographics, background accents, highlight elem
 
 Assets: `assets/ibc-group-logo.png`, `assets/ibc-group-logo-alt.png`.
 
+The authenticated design system may also contain `assets/private-library/` with the original brand guidelines, Office masters, logos, LinkedIn templates and image library. These are references; select only the files needed for a project. Creative Commons images require a fresh source/licence check and attribution before use. Realistic AI imagery in external posts needs a label directly on the image.
+
 ## 5. Tone of Voice
 
 Precise, human and approachable; not loud, but strong.
