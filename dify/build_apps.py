@@ -28,9 +28,10 @@ from app.models import BusinessContext, ProductStrategistTurn  # noqa: E402
 OUT_DIR = Path(__file__).resolve().parent
 PROVIDER = "langgenius/openai/openai"
 # GPT-5.6 tiers, chosen per job (decided 24-09-2026): the Strategist and the
-# Finalizer shape what lands in the portfolio, so they get the flagship; the
+# Finalizer shape what lands in the portfolio, so they get the mid tier (sol was
+# judged overkill for a POC); the
 # knowledge assistant summarises retrieved passages, where speed matters more.
-QUALITY_MODEL = "gpt-5.6-sol"
+QUALITY_MODEL = "gpt-5.6-terra"
 FAST_MODEL = "gpt-5.6-luna"
 KNOWLEDGE_DATASET_ID = "cc833d3d-e595-41c7-a7ca-1bc1c5b7decd"
 OWNER_FIELD_ID = "4db261db-d0f7-4c92-a5fe-15cb3e02ee70"  # created by setup_knowledge_metadata.py

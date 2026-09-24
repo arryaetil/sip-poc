@@ -37,7 +37,7 @@ schema generated from the same models SIP validates against.
 
 Design choices:
 
-- **Models per job.** The Strategist and the Finalizer run on `gpt-5.6-sol`,
+- **Models per job.** The Strategist and the Finalizer run on `gpt-5.6-terra`,
   because what they produce lands in the portfolio. The knowledge assistant
   (query rewrite and answer) runs on `gpt-5.6-luna`, where speed matters more
   than depth. The Foundry path keeps `MODEL_DEPLOYMENT`.
