@@ -174,3 +174,67 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
   that exist; playback stops off-screen, on other views and with reduced motion.
 - Ubuntu is now loaded from `backend/app/fonts` (woff2, Ubuntu Font Licence),
   which changes the font across all of SIP, not just Home.
+
+## Product Owner assistant (feature/product-owner, 01-10-2026)
+
+Started by Claude Code, which stopped at its usage limit with an uncommitted
+backend skeleton (chat route, a DevOps write without approval checks, models,
+prompt, Dify YAML and the avatars) and a Dify app that was never published.
+Finished in a second session on the same branch.
+
+What it does: a Product Owner card on Home (roles admin and product_owner) and
+a "Product Owner" item in the sidebar open a chat built like Ask ibc group. The
+assistant asks one question at a time, shows an editable story proposal
+(title, As/I want/so that, entry criteria, acceptance criteria, Fibonacci
+points with reason, backlog or sprint, split suggestion for big work) and SIP
+creates the User Story in Azure DevOps only after the owner confirmed that
+exact version. New stories only; refining or managing existing stories,
+Software Developer and OpenCode are not built.
+
+- Code: `backend/app/devops.py` (adapter), routes under `/api/product-owner/*`
+  in `main.py`, table `story_drafts` in `store.py`, models in `models.py`,
+  prompt `product_owner_prompt.txt`, UI in `index.html`/`app.js`/`i18n.js`.
+- Conversations have `kind = product_owner`; they never reach the strategist,
+  the portfolio or the knowledge chat. Admins can read them (like all
+  conversations) but only the owner can continue, edit or confirm.
+- Every model answer or user edit is a new version; confirming sends the
+  version on screen plus a confirmation id. One atomic SQLite update claims
+  the write, so a double click or retry never writes twice. Statuses: draft,
+  ready (shown when complete), creating, created, failed, uncertain.
+- A timeout or 5xx after sending is "uncertain": no retry until the check
+  button ran a WIQL query (title, created by the token owner, since the
+  approval). One match → created; none → failed (confirm again); several →
+  stays uncertain. A write stuck in "creating" for 2 minutes becomes uncertain.
+- Only the backlog (project root) and current/future sprints of
+  `Etil Solutions Team`, read live, are accepted; the model gets that list and
+  any other sprint is dropped. No tags, state, assignee or comments are set.
+- Azure DevOps (verified 01-10 with the real API): org `EtilSolutions`,
+  project `Etil Solutions`, team `Etil Solutions Team`, type User Story,
+  fields as in the skill incl. `Custom.EntryCriteria`, default state New, team
+  area = project root, current sprint Sprint 28 (22-09 to 12-10).
+- Identity: Arrya's PAT (`AZURE_DEVOPS_PAT`, Work Items read & write), so every
+  story is created under her name. `SIP_PRODUCT_OWNER_WRITERS` (comma-separated
+  SIP emails, empty = nobody) limits who may create; set to Arrya's own SIP
+  account only. Drafting works without DevOps or writer rights. Production
+  should use an Entra ID identity instead of a PAT.
+- Dify: app `SIP — Product Owner (Dify)` `08102bff-059c-463c-aad5-b827fbc6bb0d`,
+  `gpt-5.6-terra`, inputs language/history/targets/draft, strict
+  `ProductOwnerTurn` schema, no tools or token. Key `DIFY_PRODUCT_OWNER_API_KEY`
+  is optional: without it only this chat reports it is unavailable.
+  Published by Arrya 01-10 and verified with `difyctl export` (identical to the
+  generated YAML).
+- Tests: `tests/test_product_owner.py` (23 tests, fake Dify and DevOps):
+  roles, ownership, versions, stale confirmation, double click, timeout →
+  check, refusal, expired token, closed sprint, invalid model output, missing
+  key, separation from other features. Full suite 52 passed.
+- Verified for real: DevOps reads (sprints, fields, WIQL), Dify conversation
+  (one question at a time, complete draft with the live sprint, split proposal
+  for ~21 points), browser check of Home (4 cards, desktop/phone), chat,
+  proposal, edit → save required → create disabled, no console errors.
+- Test story created with Arrya's approval through SIP's routes:
+  **#1800** "[SIP-test] Product Owner-assistent maakt story aan" on the backlog
+  (New, 1 point, no tags, unassigned), read back. Not closed or removed.
+- `backend/app/avatars/product-owner-base.webp` (eyes removed, by Claude) is
+  left untracked: the living-eyes animation needs new eye coordinates first.
+- Not tested: Safari; the uncertain/timeout path against the real DevOps
+  (only with fakes); several people at once on Railway.

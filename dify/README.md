@@ -1,7 +1,7 @@
 # Dify apps for SIP
 
 SIP can run its assistants on hosted Dify instead of Azure AI Foundry.
-`SIP_ASSISTANT_PROVIDER=dify` switches every model call to the three apps below;
+`SIP_ASSISTANT_PROVIDER=dify` switches every model call to the apps below;
 the default, `foundry`, keeps the original path. The switch lives in
 `backend/app/assistants.py` and nowhere else.
 
@@ -10,6 +10,7 @@ the default, `foundry`, keeps the original path. The switch lives in
 | SIP — Product Strategist (Dify) | `516e0f3c-866c-42d3-92fb-db0a2b04d0e4` | context chat, discussing an upload | `ProductStrategistTurn` JSON |
 | SIP — Business Context Finalizer (Dify) | `f7d3e6a6-aa5c-4159-93b9-2893b6a8a414` | saving a conversation to the portfolio | `BusinessContext` JSON |
 | SIP — Knowledge Assistant (Dify) | `e1950fd4-7d7e-4840-be5d-e27b71cf6922` | knowledge chat | answer + retriever resources |
+| SIP — Product Owner (Dify) | `08102bff-059c-463c-aad5-b827fbc6bb0d` | Product Owner chat (user story drafts) | `ProductOwnerTurn` JSON |
 
 The knowledge app searches the Dify knowledge base *SIP — ETIL corpus (3-large)*
 (`cc833d3d-e595-41c7-a7ca-1bc1c5b7decd`), filled from `knowledge/markdown/etil`
@@ -25,13 +26,17 @@ python dify/build_apps.py
 difyctl import studio-app -f dify/strategist.yml --app-id 516e0f3c-866c-42d3-92fb-db0a2b04d0e4
 difyctl import studio-app -f dify/finalizer.yml  --app-id f7d3e6a6-aa5c-4159-93b9-2893b6a8a414
 difyctl import studio-app -f dify/knowledge.yml  --app-id e1950fd4-7d7e-4840-be5d-e27b71cf6922
+difyctl import studio-app -f dify/product_owner.yml --app-id 08102bff-059c-463c-aad5-b827fbc6bb0d
 ```
 
 An import only updates the draft. **Publish each app in Studio afterwards**;
-the API always serves the published version.
+the API always serves the published version (an app that was never published
+answers `400 Workflow not published`). After every import: refresh the editor
+tab first (a stale tab can overwrite the import), publish, then check with
+`difyctl export studio-app <id>` that the published draft holds the change.
 
 `build_apps.py` reads `system_prompt.txt`, `finalizer_prompt.txt`,
-`knowledge_assistant_prompt.txt` and the Pydantic models, so a prompt change in
+`knowledge_assistant_prompt.txt`, `product_owner_prompt.txt` and the Pydantic models, so a prompt change in
 SIP reaches Dify on the next build. Structured answers use OpenAI strict JSON
 schema generated from the same models SIP validates against.
 
@@ -61,6 +66,17 @@ Design choices:
   Search can instead trim results by the user's Entra identity. This is a
   criterion for the comparison, not just an implementation detail.
 
+### Product Owner app
+
+One LLM step on `gpt-5.6-terra` with a strict `ProductOwnerTurn` schema
+(`message`, `stage`, `draft`, `open_questions` (max one), `split_suggestion`).
+Inputs from SIP: `language`, `history`, `targets` (backlog and open sprints SIP
+read from Azure DevOps) and `draft` (the saved proposal, including the user's
+edits). The app has no Azure DevOps token and no tools: it only drafts. SIP
+stores each version, checks it and creates the story itself after the user
+confirmed that version. There is deliberately no approved/success field.
+No knowledge base is attached.
+
 ## Configuration
 
 | Variable | Value |
@@ -69,6 +85,7 @@ Design choices:
 | `DIFY_STRATEGIST_API_KEY` | app key of the Product Strategist app |
 | `DIFY_FINALIZER_API_KEY` | app key of the Finalizer app |
 | `DIFY_KNOWLEDGE_API_KEY` | app key of the Knowledge Assistant app |
+| `DIFY_PRODUCT_OWNER_API_KEY` | app key of the Product Owner app; optional, without it only the Product Owner chat reports it is unavailable |
 | `DIFY_DATASET_API_KEY` | knowledge base API key (Knowledge → Service API, starts with `dataset-`) |
 | `DIFY_DATASET_ID` | optional, default the knowledge base above |
 | `DIFY_API_BASE` | optional, default `https://api.dify.ai/v1` |

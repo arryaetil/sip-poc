@@ -47,6 +47,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v12H8l-4 3V5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           <span data-i18n="nav.knowledge">Ask ibc group</span>
         </button>
+        <button id="nav-product-owner" class="nav-item" type="button" data-view="product-owner">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14M15 5v14M6 9h1M11 9h2M11 13h2M17 9h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.product_owner">Product Owner</span>
+        </button>
       </nav>
 
       <p class="nav-label nav-label-spaced" data-i18n="nav.integrations">Integrations</p>
@@ -124,6 +128,29 @@
                 <span data-i18n="home.knowledge.action_share"></span>
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
+              </div>
+            </div>
+          </li>
+          <li class="specialist" data-specialist="product-owner" style="--specialist-accent: #7b4fd6; --specialist-stage: #f8f7fc;">
+            <div class="specialist-stage" aria-hidden="true">
+              <picture>
+                <source srcset="/avatars/product-owner.webp" type="image/webp">
+                <img class="specialist-image" src="/avatars/product-owner.png" alt="" width="720" height="720" decoding="async">
+              </picture>
+              <video class="specialist-video" data-video="/avatars/product-owner.mp4" poster="/avatars/product-owner.webp" muted loop playsinline preload="none" disablepictureinpicture tabindex="-1"></video>
+            </div>
+            <div class="specialist-body">
+              <h2 id="specialist-product-owner-name" class="specialist-name" data-i18n="home.product_owner.name"></h2>
+              <p id="specialist-product-owner-text" class="specialist-text" data-i18n="home.product_owner.text"></p>
+              <div class="specialist-actions">
+              <button class="specialist-action" type="button" data-view="product-owner" data-roles="admin product_owner" aria-describedby="specialist-product-owner-name specialist-product-owner-text">
+                <span data-i18n="home.product_owner.action"></span>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              </div>
+              <div class="specialist-unavailable" hidden>
+                <p class="specialist-status" data-i18n="home.status.role"></p>
+                <p class="specialist-status-copy" data-i18n="home.role_copy"></p>
               </div>
             </div>
           </li>
@@ -469,6 +496,62 @@
             <div class="composer-meta">
               <label class="upload-control"><input id="knowledge-upload" type="file" accept=".pdf,.docx" hidden><span data-i18n="uploads.add_workspace">＋ Add document</span></label>
               <p id="knowledge-status" class="status" role="status"></p>
+              <p class="privacy-note" data-i18n="composer.privacy_note">Do not enter unnecessary personal data.</p>
+            </div>
+          </div>
+        </section>
+        </div>
+      </section>
+
+      <section id="product-owner-view" class="view conversations" aria-labelledby="po-title" hidden>
+        <div id="po-home">
+          <section class="conversation-launcher">
+            <p class="launcher-kicker" data-i18n="po.title">Product Owner</p>
+            <h1 id="po-title" data-i18n="po.prompt_title">Which idea would you like to turn into a user story?</h1>
+            <form id="po-start-form" class="launcher-form">
+              <textarea id="po-start-message" rows="2" data-i18n-placeholder="po.placeholder" placeholder="Describe your idea in your own words…" required></textarea>
+              <div class="launcher-actions">
+                <span data-i18n="conversations.prompt_hint">Start in your own words</span>
+                <button id="po-start-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </form>
+          </section>
+          <header class="history-header">
+            <div>
+              <h2 data-i18n="po.history_title">Your story conversations</h2>
+              <p data-i18n="po.history_subtitle">Continue a proposal where you left off, or start a new one.</p>
+            </div>
+          </header>
+          <div class="conversation-columns" aria-hidden="true">
+            <span data-i18n="conversations.col_conversation">Conversation</span><span></span><span data-i18n="conversations.col_updated">Updated</span><span></span>
+          </div>
+          <div id="po-conversation-list" class="conversation-list" aria-live="polite"></div>
+        </div>
+        <div id="po-chat" class="conversation" hidden>
+        <header class="view-header">
+          <div>
+            <h1 id="po-chat-title" data-i18n="po.title">Product Owner</h1>
+            <p data-i18n="po.subtitle">Turn an idea into a user story. Nothing is created in Azure DevOps until you confirm the proposal.</p>
+          </div>
+          <div class="header-actions">
+            <label class="visually-hidden" for="po-history" data-i18n="knowledge.history">Chat history</label>
+            <select id="po-history" aria-label="Chat history"></select>
+            <button id="new-po-chat" class="secondary-button" type="button" data-i18n="knowledge.new_chat">New chat</button>
+          </div>
+        </header>
+        <section class="chat-surface" aria-label="Product Owner conversation">
+          <div id="po-messages" class="knowledge-messages" aria-live="polite"></div>
+          <div class="composer">
+            <form id="po-chat-form" class="chat-form">
+              <textarea id="po-message" rows="1" data-i18n-aria-label="composer.message" aria-label="Message" data-i18n-placeholder="po.reply_placeholder" placeholder="Answer, or ask for a change…" required></textarea>
+              <button id="po-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </form>
+            <div class="composer-meta">
+              <p id="po-status" class="status" role="status"></p>
               <p class="privacy-note" data-i18n="composer.privacy_note">Do not enter unnecessary personal data.</p>
             </div>
           </div>

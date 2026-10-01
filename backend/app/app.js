@@ -6,6 +6,7 @@ const views = {
   portfolio: document.querySelector("#portfolio-view"),
   source: document.querySelector("#source-view"),
   knowledge: document.querySelector("#knowledge-view"),
+  "product-owner": document.querySelector("#product-owner-view"),
   lead: document.querySelector("#lead-view"),
   marketing: document.querySelector("#marketing-view"),
   team: document.querySelector("#team-view"),
@@ -75,6 +76,20 @@ const knowledgeConversationList = document.querySelector("#knowledge-conversatio
 const knowledgeStartForm = document.querySelector("#knowledge-start-form");
 const knowledgeStartMessage = document.querySelector("#knowledge-start-message");
 const knowledgeStartSend = document.querySelector("#knowledge-start-send");
+const poHome = document.querySelector("#po-home");
+const poChat = document.querySelector("#po-chat");
+const poMessages = document.querySelector("#po-messages");
+const poChatForm = document.querySelector("#po-chat-form");
+const poInput = document.querySelector("#po-message");
+const poSend = document.querySelector("#po-send");
+const poStatus = document.querySelector("#po-status");
+const poHistory = document.querySelector("#po-history");
+const poConversationList = document.querySelector("#po-conversation-list");
+const poStartForm = document.querySelector("#po-start-form");
+const poStartMessage = document.querySelector("#po-start-message");
+const poStartSend = document.querySelector("#po-start-send");
+const newPoChat = document.querySelector("#new-po-chat");
+const navProductOwner = document.querySelector("#nav-product-owner");
 const newConversationButton = document.querySelector("#new-conversation");
 const conversationStartForm = document.querySelector("#conversation-start-form");
 const conversationStartMessage = document.querySelector("#conversation-start-message");
@@ -163,6 +178,9 @@ function applyRolePermissions() {
     if (field.name) field.disabled = !canEdit;
   });
 
+  // Mirrors _role_allows: Sales has no access to the Product Owner.
+  navProductOwner.hidden = currentRole === "sales";
+
   const isAdmin = currentRole === "admin";
   navTeam.hidden = !isAdmin;
   navLabelAdministration.hidden = !isAdmin;
@@ -230,7 +248,12 @@ function showView(name) {
   Object.entries(views).forEach(([viewName, element]) => {
     element.hidden = viewName !== name;
   });
-  document.body.classList.toggle("chat-open", name === "builder" || name === "marketing" || (name === "knowledge" && !knowledgeChat.hidden));
+  document.body.classList.toggle(
+    "chat-open",
+    name === "builder" || name === "marketing"
+      || (name === "knowledge" && !knowledgeChat.hidden)
+      || (name === "product-owner" && !poChat.hidden),
+  );
   // Home is the start screen: the specialists are the navigation, so no sidebar.
   document.body.classList.toggle("home-open", name === "home");
   const navigationView = name === "builder" || (name === "review" && reviewOrigin === "builder")
@@ -1384,6 +1407,10 @@ document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
       await loadKnowledgeHistory();
       showKnowledgeHome();
     }
+    if (item.dataset.view === "product-owner") {
+      await Promise.all([loadPoHistory(), loadPoSettings()]);
+      showPoHome();
+    }
   });
 });
 
@@ -1431,6 +1458,10 @@ confirmDelete.addEventListener("click", async () => {
     if (kind === "conversation") {
       await loadConversations();
       if (!views.knowledge.hidden) await loadKnowledgeHistory();
+      if (!views["product-owner"].hidden) {
+        if (id === poConversationId) showPoHome();
+        await loadPoHistory();
+      }
     }
     else await loadPortfolio();
   } catch (error) {
@@ -1442,6 +1473,516 @@ confirmDelete.addEventListener("click", async () => {
 
 deleteDialog.addEventListener("close", () => {
   pendingDelete = null;
+});
+
+// Product Owner: the Ask ibc group chat, plus a story proposal the user can edit
+// and confirm. The server keeps every version. "Create in Azure DevOps" sends the
+// version on screen with a confirmation id, so an edited, old or repeated click
+// never creates a story the user did not see, and never creates it twice.
+let poConversationId = null;
+let poSettings = { devops_configured: false, can_create: false, targets: [], project: "" };
+
+async function loadPoSettings() {
+  try {
+    poSettings = await api("/api/product-owner/settings");
+  } catch (error) {
+    poSettings = { devops_configured: false, can_create: false, targets: [], project: "" };
+  }
+  return poSettings;
+}
+
+function poNotice() {
+  if (!poSettings.devops_configured) return t("po.notice_not_connected");
+  if (!poSettings.targets.length) return t("po.notice_unreachable");
+  if (!poSettings.can_create) return t("po.notice_no_rights");
+  return "";
+}
+
+function shortDate(value) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.valueOf())
+    ? value
+    : new Intl.DateTimeFormat(getLanguage(), { day: "numeric", month: "short", timeZone: "UTC" }).format(date);
+}
+
+function poTargetLabel(target) {
+  if (target.kind === "backlog") return t("po.target_backlog");
+  const name = target.timeframe === "current" ? t("po.target_current", { name: target.name }) : target.name;
+  return target.start && target.finish ? `${name} (${shortDate(target.start)} – ${shortDate(target.finish)})` : name;
+}
+
+function newConfirmationId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function poField(labelText, control, hint = "") {
+  const label = document.createElement("label");
+  label.className = "field";
+  const caption = document.createElement("span");
+  caption.textContent = labelText;
+  label.append(caption, control);
+  if (hint) {
+    const note = document.createElement("span");
+    note.className = "hint";
+    note.textContent = hint;
+    label.append(note);
+  }
+  return label;
+}
+
+function poTextarea(name, value, rows) {
+  const area = document.createElement("textarea");
+  area.name = name;
+  area.rows = rows;
+  area.value = value;
+  return area;
+}
+
+function storyDraftCard(record) {
+  const editable = record.status === "draft" || record.status === "failed";
+  const content = record.content;
+  const row = document.createElement("div");
+  row.className = "message-row assistant story-draft-row";
+  row.dataset.draftId = record.id;
+
+  const card = document.createElement("form");
+  card.className = "story-draft";
+  card.dataset.status = record.status;
+  card.noValidate = true;
+  card.setAttribute("aria-label", t("po.draft_title"));
+
+  const header = document.createElement("div");
+  header.className = "story-draft-header";
+  const title = document.createElement("h3");
+  title.textContent = t("po.draft_title");
+  const badge = document.createElement("span");
+  badge.className = "story-draft-badge";
+  const ready = editable && !record.missing.length;
+  badge.textContent = t(`po.status_${record.status === "draft" && ready ? "ready" : record.status}`);
+  const version = document.createElement("span");
+  version.className = "story-draft-version";
+  version.textContent = t("po.version", { n: record.version });
+  header.append(title, badge, version);
+  card.append(header);
+
+  if (record.status === "created" && record.devops_id) {
+    const created = document.createElement("p");
+    created.className = "story-draft-created";
+    const link = document.createElement("a");
+    link.href = record.devops_url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = `#${record.devops_id} — ${content.title}`;
+    created.append(t("po.created_in_devops"), " ", link);
+    card.append(created);
+  }
+
+  if (record.description) {
+    const sentence = document.createElement("p");
+    sentence.className = "story-draft-sentence";
+    sentence.textContent = record.description;
+    card.append(sentence);
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "form-grid story-draft-grid";
+  const titleInput = document.createElement("input");
+  titleInput.name = "title";
+  titleInput.maxLength = 255;
+  titleInput.value = content.title;
+  const titleField = poField(t("po.field.title"), titleInput);
+  titleField.classList.add("full-width");
+  const points = document.createElement("select");
+  points.name = "story_points";
+  ["", 1, 2, 3, 5, 8, 13, 21].forEach((value) => {
+    const option = new Option(value === "" ? "—" : String(value), String(value));
+    if (String(content.story_points ?? "") === String(value)) option.selected = true;
+    points.add(option);
+  });
+  const target = document.createElement("select");
+  target.name = "target";
+  target.add(new Option(t("po.target_choose"), ""));
+  poSettings.targets.forEach((item) => {
+    target.add(new Option(poTargetLabel(item), item.kind === "backlog" ? "backlog" : item.iteration_path));
+  });
+  const savedTarget = content.target_kind === "backlog" ? "backlog" : content.iteration_path || "";
+  if (savedTarget && ![...target.options].some((option) => option.value === savedTarget)) {
+    // Keep showing what was chosen even when the live list is unavailable.
+    target.add(new Option(savedTarget === "backlog" ? t("po.target_backlog") : savedTarget, savedTarget));
+  }
+  target.value = savedTarget;
+
+  grid.append(
+    titleField,
+    poField(t("po.field.role"), poTextarea("role", content.role, 2)),
+    poField(t("po.field.capability"), poTextarea("capability", content.capability, 2)),
+    Object.assign(poField(t("po.field.value"), poTextarea("value", content.value, 2)), { className: "field full-width" }),
+    poField(t("po.field.entry_criteria"), poTextarea("entry_criteria", content.entry_criteria.join("\n"), 4), t("review.field.one_per_line")),
+    poField(t("po.field.acceptance_criteria"), poTextarea("acceptance_criteria", content.acceptance_criteria.join("\n"), 4), t("review.field.one_per_line")),
+    poField(t("po.field.story_points"), points),
+    poField(t("po.field.target"), target),
+    Object.assign(poField(t("po.field.estimation_reason"), poTextarea("estimation_reason", content.estimation_reason, 2)), { className: "field full-width" }),
+  );
+  grid.querySelectorAll("input, textarea, select").forEach((control) => { control.disabled = !editable; });
+  card.append(grid);
+
+  const notes = document.createElement("div");
+  notes.className = "story-draft-notes";
+  if (editable && record.missing.length) {
+    const missing = document.createElement("p");
+    missing.textContent = t("po.missing", { fields: record.missing.map((name) => t(`po.field.${name}`)).join(", ") });
+    notes.append(missing);
+  }
+  if (record.status === "failed" || record.status === "uncertain") {
+    const explain = document.createElement("p");
+    explain.className = "story-draft-error";
+    explain.textContent = t(`po.explain_${record.status}`);
+    notes.append(explain);
+    if (record.error) {
+      const detail = document.createElement("p");
+      detail.className = "story-draft-detail";
+      detail.textContent = record.error;
+      notes.append(detail);
+    }
+  }
+  const notice = editable ? poNotice() : "";
+  if (notice) {
+    const info = document.createElement("p");
+    info.textContent = notice;
+    notes.append(info);
+  }
+  card.append(notes);
+
+  const actions = document.createElement("div");
+  actions.className = "story-draft-actions";
+  const status = document.createElement("p");
+  status.className = "story-draft-status";
+  status.setAttribute("role", "status");
+
+  if (editable) {
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "secondary-button";
+    save.textContent = t("po.save");
+    save.disabled = true;
+    const create = document.createElement("button");
+    create.type = "button";
+    create.className = "primary-button";
+    create.textContent = t("po.create");
+    const canCreate = () => !card.classList.contains("is-dirty") && !record.missing.length && poSettings.can_create;
+    create.disabled = !canCreate();
+
+    const confirmBox = document.createElement("div");
+    confirmBox.className = "story-draft-confirm";
+    confirmBox.hidden = true;
+    const confirmText = document.createElement("p");
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "primary-button";
+    yes.textContent = t("po.confirm_yes");
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "text-button";
+    cancel.textContent = t("po.confirm_cancel");
+    confirmBox.append(confirmText, yes, cancel);
+    let confirmationId = null;
+
+    card.addEventListener("input", () => {
+      card.classList.add("is-dirty");
+      save.disabled = false;
+      create.disabled = true;
+      confirmBox.hidden = true;
+      status.textContent = t("po.unsaved");
+    });
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      status.textContent = t("po.saving");
+      try {
+        const updated = await api(`/api/product-owner/drafts/${record.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ version: record.version, content: readStoryForm(card) }),
+        });
+        renderStoryDraft(updated, t("po.saved", { n: updated.version }));
+      } catch (error) {
+        save.disabled = false;
+        status.textContent = error instanceof TypeError ? t("builder.unreachable") : error.message;
+      }
+    });
+    create.addEventListener("click", () => {
+      confirmationId = newConfirmationId();
+      const chosen = target.options[target.selectedIndex]?.textContent || "";
+      confirmText.textContent = t("po.confirm_text", { version: record.version, project: poSettings.project, target: chosen });
+      confirmBox.hidden = false;
+      create.disabled = true;
+      yes.focus();
+    });
+    cancel.addEventListener("click", () => {
+      confirmBox.hidden = true;
+      confirmationId = null;
+      create.disabled = !canCreate();
+      create.focus();
+    });
+    yes.addEventListener("click", async () => {
+      yes.disabled = true;
+      cancel.disabled = true;
+      status.textContent = t("po.creating");
+      try {
+        const result = await api(`/api/product-owner/drafts/${record.id}/create`, {
+          method: "POST",
+          body: JSON.stringify({ version: record.version, confirmation_id: confirmationId }),
+        });
+        renderStoryDraft(result, result.status === "created" ? t("po.created_status", { id: result.devops_id }) : "");
+      } catch (error) {
+        if (error instanceof TypeError) {
+          // The answer was lost, not necessarily the request. Retrying with the
+          // same confirmation id is safe: the server returns the stored outcome.
+          status.textContent = t("po.connection_lost");
+          yes.textContent = t("po.retry_safe");
+          yes.disabled = false;
+          return;
+        }
+        status.textContent = error.message;
+        await reloadStoryDrafts();
+      }
+    });
+    actions.append(save, create);
+    card.append(actions, confirmBox, status);
+  } else if (record.status === "uncertain" || record.status === "creating") {
+    const check = document.createElement("button");
+    check.type = "button";
+    check.className = "secondary-button";
+    check.textContent = t(record.status === "uncertain" ? "po.check" : "po.refresh");
+    check.addEventListener("click", async () => {
+      check.disabled = true;
+      status.textContent = t("po.checking");
+      try {
+        if (record.status === "uncertain") {
+          renderStoryDraft(await api(`/api/product-owner/drafts/${record.id}/check`, { method: "POST" }));
+        } else {
+          await reloadStoryDrafts();
+        }
+      } catch (error) {
+        check.disabled = false;
+        status.textContent = error instanceof TypeError ? t("builder.unreachable") : error.message;
+      }
+    });
+    actions.append(check);
+    card.append(actions, status);
+  } else {
+    card.append(status);
+  }
+  row.append(card);
+  return row;
+}
+
+function readStoryForm(card) {
+  const value = (name) => card.elements[name].value;
+  const lines = (name) => value(name).split("\n").map((line) => line.trim()).filter(Boolean);
+  const target = value("target");
+  return {
+    title: value("title").trim(),
+    role: value("role").trim(),
+    capability: value("capability").trim(),
+    value: value("value").trim(),
+    entry_criteria: lines("entry_criteria"),
+    acceptance_criteria: lines("acceptance_criteria"),
+    story_points: value("story_points") ? Number(value("story_points")) : null,
+    estimation_reason: value("estimation_reason").trim(),
+    target_kind: target === "backlog" ? "backlog" : target ? "sprint" : null,
+    iteration_path: target && target !== "backlog" ? target : null,
+  };
+}
+
+function renderStoryDraft(record, message = "") {
+  // The newest state of a proposal always moves to the end of the conversation.
+  poMessages.querySelector(`.story-draft-row[data-draft-id="${record.id}"]`)?.remove();
+  const row = storyDraftCard(record);
+  poMessages.append(row);
+  if (message) row.querySelector(".story-draft-status").textContent = message;
+  poMessages.scrollTop = poMessages.scrollHeight;
+}
+
+function hasUnsavedStoryEdits() {
+  return Boolean(poMessages.querySelector(".story-draft.is-dirty"));
+}
+
+async function reloadStoryDrafts() {
+  if (!poConversationId) return;
+  const drafts = await api(`/api/product-owner/conversations/${poConversationId}/drafts`);
+  drafts.forEach((record) => renderStoryDraft(record));
+}
+
+function appendSplitSuggestion(titles) {
+  const row = document.createElement("div");
+  row.className = "message-row assistant story-split-row";
+  const block = document.createElement("div");
+  block.className = "story-split";
+  const label = document.createElement("strong");
+  label.textContent = t("po.split_title");
+  const list = document.createElement("ol");
+  titles.forEach((title) => {
+    const item = document.createElement("li");
+    item.textContent = title;
+    list.append(item);
+  });
+  block.append(label, list);
+  row.append(block);
+  poMessages.append(row);
+}
+
+function showPoHome() {
+  poConversationId = null;
+  poHome.hidden = false;
+  poChat.hidden = true;
+  document.body.classList.remove("chat-open");
+  poStartMessage.value = "";
+  poStartMessage.focus();
+}
+
+function showPoConversation() {
+  poHome.hidden = true;
+  poChat.hidden = false;
+  document.body.classList.add("chat-open");
+}
+
+function resetPoChat() {
+  poConversationId = null;
+  poMessages.replaceChildren();
+  setStatus(poStatus, "");
+  poInput.value = "";
+  resizeTextArea(poInput);
+}
+
+async function openPoConversation(conversationId) {
+  const [conversation, drafts] = await Promise.all([
+    api(`/api/conversations/${conversationId}`),
+    api(`/api/product-owner/conversations/${conversationId}/drafts`),
+    loadPoSettings(),
+  ]);
+  resetPoChat();
+  poConversationId = conversation.id;
+  conversation.messages.forEach((message) => appendMessage(poMessages, message.content, message.role, t("po.assistant_name")));
+  drafts.forEach((record) => renderStoryDraft(record));
+  poHistory.value = conversation.id;
+  showPoConversation();
+  poInput.focus();
+}
+
+async function loadPoHistory() {
+  const conversations = await api("/api/conversations?kind=product_owner");
+  poHistory.replaceChildren(new Option(t("knowledge.history"), ""));
+  poConversationList.replaceChildren();
+  conversations.forEach((conversation) => {
+    poHistory.add(new Option(conversation.title, conversation.id));
+    const row = document.createElement("div");
+    row.className = "conversation-row";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "row-open";
+    open.addEventListener("click", () => openPoConversation(conversation.id));
+    const description = document.createElement("span");
+    const title = document.createElement("span");
+    title.className = "conversation-title";
+    title.textContent = conversation.title;
+    const preview = document.createElement("span");
+    preview.className = "conversation-preview";
+    preview.textContent = conversation.preview || t("conversations.no_messages");
+    description.append(title, preview);
+    const updated = document.createElement("span");
+    updated.className = "conversation-date";
+    updated.textContent = formatDate(conversation.updated_at);
+    open.append(description, document.createElement("span"), updated);
+    row.append(open, deleteButton(t("conversations.delete_aria", { title: conversation.title }), () =>
+      requestDelete("conversation", conversation.id, conversation.title)));
+    poConversationList.append(row);
+  });
+  if (!conversations.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = t("conversations.empty_title");
+    poConversationList.append(empty);
+  }
+  poHistory.value = poConversationId || "";
+}
+
+poHistory.addEventListener("change", async () => {
+  if (!poHistory.value) return showPoHome();
+  await openPoConversation(poHistory.value);
+});
+
+poStartForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = poStartMessage.value.trim();
+  if (!message) return;
+  poStartSend.disabled = true;
+  resetPoChat();
+  await loadPoSettings();
+  poInput.value = message;
+  showPoConversation();
+  poChatForm.requestSubmit();
+  poStartSend.disabled = false;
+});
+
+poStartMessage.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    poStartForm.requestSubmit();
+  }
+});
+
+poChatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = poInput.value.trim();
+  if (!message) return;
+  if (hasUnsavedStoryEdits()) {
+    // The assistant works from the saved version; unsaved edits would be lost.
+    setStatus(poStatus, t("po.save_first"));
+    return;
+  }
+  const userRow = appendMessage(poMessages, message, "user");
+  poInput.value = "";
+  resizeTextArea(poInput);
+  poSend.disabled = true;
+  setStatus(poStatus, "");
+  const pendingRow = appendMessage(poMessages, "", "assistant", t("po.assistant_name"));
+  const pendingMessage = pendingRow.querySelector(".message");
+  pendingMessage.classList.add("pending");
+  pendingMessage.append(...Array.from({ length: 3 }, () => document.createElement("span")));
+  pendingMessage.setAttribute("aria-label", t("po.thinking"));
+  try {
+    const data = await api("/api/product-owner/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, conversation_id: poConversationId, language: getLanguage() }),
+    });
+    poConversationId = data.conversation_id;
+    pendingRow.remove();
+    appendMessage(poMessages, data.message, "assistant", t("po.assistant_name"), true);
+    if (data.split_suggestion.length) appendSplitSuggestion(data.split_suggestion);
+    if (data.draft) renderStoryDraft(data.draft);
+    await loadPoHistory();
+  } catch (error) {
+    pendingRow.remove();
+    userRow.remove();
+    poInput.value = message;
+    resizeTextArea(poInput);
+    setStatus(poStatus, error instanceof TypeError ? t("builder.unreachable") : error.message);
+  } finally {
+    poSend.disabled = false;
+    poInput.focus();
+  }
+});
+
+poInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    poChatForm.requestSubmit();
+  }
+});
+poInput.addEventListener("input", () => resizeTextArea(poInput));
+newPoChat.addEventListener("click", () => {
+  showPoHome();
+  loadPoHistory();
 });
 
 // Home: "Your digital team". Each action opens an existing SIP view through its

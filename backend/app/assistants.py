@@ -34,6 +34,7 @@ from app.models import (
     KnowledgeChatSource,
     KnowledgeNearMiss,
     MarketingRequest,
+    ProductOwnerTurn,
     ProductStrategistTurn,
     StoredBusinessContext,
 )
@@ -82,6 +83,16 @@ class Assistant(Protocol):
     ) -> ProductStrategistTurn: ...
 
     def prepare_context(self, history: list[ConversationMessage], owner_id: str) -> BusinessContext: ...
+
+    def product_owner_turn(
+        self,
+        history: list[ConversationMessage],
+        message: str,
+        language: str,
+        owner_id: str,
+        targets: str,
+        draft: str,
+    ) -> ProductOwnerTurn: ...
 
     def knowledge_answer(
         self,
@@ -153,6 +164,23 @@ class FoundryAssistant:
         )
         if response.output_parsed is None:
             raise ValueError("The model did not return a Business Context")
+        return response.output_parsed
+
+    def product_owner_turn(self, history, message, language, owner_id, targets, draft):
+        from app.main import PRODUCT_OWNER_PROMPT
+
+        name = LANGUAGE_NAMES.get(language, "English")
+        response = self._client().responses.parse(
+            model=self._model(),
+            instructions=f"Reply in the language of the user's latest message; if unclear, use {name}.\n\n{PRODUCT_OWNER_PROMPT}",
+            input=[
+                *_as_input(history),
+                {"role": "user", "content": _product_owner_query(message, targets, draft)},
+            ],
+            text_format=ProductOwnerTurn,
+        )
+        if response.output_parsed is None:
+            raise ValueError("The model did not return a valid response")
         return response.output_parsed
 
     def knowledge_answer(self, history, message, language, owner_id, answer_generally):
@@ -240,6 +268,15 @@ def _transcript(history: list[ConversationMessage], limit: int = HISTORY_LIMIT) 
         parts.append(part)
         size += len(part) + 2
     return "\n\n".join(reversed(parts))
+
+
+def _product_owner_query(message: str, targets: str, draft: str) -> str:
+    """Foundry has no Dify inputs: the server-provided facts travel with the message."""
+    return (
+        f"<available_targets>\n{targets}\n</available_targets>\n\n"
+        f"<current_draft>\n{draft or 'none'}\n</current_draft>\n\n"
+        f"Latest user message:\n{message}"
+    )
 
 
 def _parse_json(model: type[BaseModel], text: str) -> BaseModel:
@@ -412,6 +449,9 @@ class DifyAssistant:
         if missing:
             # Fail closed: refuse to start half-configured rather than fail per request.
             raise AssistantUnavailable(f"SIP_ASSISTANT_PROVIDER=dify but {', '.join(missing)} is not set")
+        # Optional: the Product Owner app arrived later. Without its key the rest of
+        # SIP keeps running and only the Product Owner chat reports it is unavailable.
+        self.keys["product_owner"] = os.getenv("DIFY_PRODUCT_OWNER_API_KEY", "").strip()
         self.http = httpx.Client(timeout=httpx.Timeout(180.0, connect=10.0))
         self.knowledge_base = DifyKnowledgeBase(
             self.base_url,
@@ -468,6 +508,22 @@ class DifyAssistant:
             owner_id,
         )
         return _parse_json(BusinessContext, body.get("answer", ""))
+
+    def product_owner_turn(self, history, message, language, owner_id, targets, draft):
+        if not self.keys["product_owner"]:
+            raise AssistantUnavailable("The Product Owner assistant is not available yet.")
+        body = self._run(
+            "product_owner",
+            message,
+            {
+                "language": LANGUAGE_NAMES.get(language, "English"),
+                "history": _transcript(history),
+                "targets": targets,
+                "draft": draft or "none",
+            },
+            owner_id,
+        )
+        return _parse_json(ProductOwnerTurn, body.get("answer", ""))
 
     def knowledge_answer(self, history, message, language, owner_id, answer_generally):
         body = self._run(

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -30,9 +31,12 @@ from app.models import (
     ConversationMessageRequest,
     ConversationSummary,
     ConversationTurnResponse,
+    CreateStoryRequest,
     CreateUserRequest,
     KnowledgeChatResponse,
     PrepareContextRequest,
+    ProductOwnerChatResponse,
+    ProductOwnerSettings,
     PortfolioSolutionCollection,
     PortfolioSourceCollection,
     PortfolioSourceDetail,
@@ -41,14 +45,18 @@ from app.models import (
     PortfolioSourceSummary,
     SaveContextRequest,
     StoredBusinessContext,
+    StoryDraftContent,
+    StoryDraftRecord,
+    StoryTarget,
     StudioProjectRequest,
+    UpdateStoryDraftRequest,
     UpdateUserRequest,
     UploadRecord,
     UserInfo,
     UserRecord,
 )
 from app.assistants import get_assistant
-from app import studio
+from app import devops, studio
 from app.knowledge import (
     create_website_offering_profile,
     get_knowledge_document,
@@ -64,6 +72,7 @@ load_dotenv(APP_DIR.parent / ".env")
 SYSTEM_PROMPT = (APP_DIR / "system_prompt.txt").read_text(encoding="utf-8").strip()
 FINALIZER_PROMPT = (APP_DIR / "finalizer_prompt.txt").read_text(encoding="utf-8").strip()
 KNOWLEDGE_ASSISTANT_PROMPT = (APP_DIR / "knowledge_assistant_prompt.txt").read_text(encoding="utf-8").strip()
+PRODUCT_OWNER_PROMPT = (APP_DIR / "product_owner_prompt.txt").read_text(encoding="utf-8").strip()
 
 LANGUAGE_NAMES = {"en": "English", "nl": "Dutch", "de": "German"}
 
@@ -410,7 +419,7 @@ REVALIDATE = {"Cache-Control": "no-cache"}
 
 AVATAR_DIR = APP_DIR / "avatars"
 FONT_DIR = APP_DIR / "fonts"
-AVATAR_NAMES = {"marketing", "kennis", "kyc"}
+AVATAR_NAMES = {"marketing", "kennis", "kyc", "product-owner"}
 # Eyeless versions under the movable eyes on the home page.
 AVATAR_FILES = AVATAR_NAMES | {f"{name}-base" for name in AVATAR_NAMES}
 AVATAR_TYPES = {".png": "image/png", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm"}
@@ -697,6 +706,305 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
     )
 
 
+# --- Product Owner ---------------------------------------------------------
+#
+# The assistant drafts; SIP stores every version, checks it and writes to Azure
+# DevOps only after the owner confirmed that exact version. Roles: admin and
+# product_owner may use the assistant (_role_allows; sales gets 403). Creating
+# in Azure DevOps happens under one person's token, so it is further limited to
+# the accounts listed in SIP_PRODUCT_OWNER_WRITERS; empty means nobody.
+# Admins can read other people's Product Owner conversations, like all
+# conversations, but only the owner can continue, edit or confirm them.
+
+STALE_CREATE_SECONDS = 120
+
+
+def _story_writers() -> set[str]:
+    return {item.strip().casefold() for item in os.getenv("SIP_PRODUCT_OWNER_WRITERS", "").split(",") if item.strip()}
+
+
+def _can_write_stories(request: Request) -> bool:
+    # Without sign-in (local development) the identity is "local-dev".
+    identity = getattr(request.state, "user_email", None) or "local-dev"
+    return identity.casefold() in _story_writers()
+
+
+def _missing_story_fields(content: StoryDraftContent) -> list[str]:
+    checks = {
+        "title": content.title,
+        "role": content.role,
+        "capability": content.capability,
+        "value": content.value,
+        "acceptance_criteria": content.acceptance_criteria,
+        "story_points": content.story_points,
+        "target": content.target_kind == "backlog" or (content.target_kind == "sprint" and content.iteration_path),
+    }
+    return [name for name, value in checks.items() if not value]
+
+
+def _story_record(row) -> StoryDraftRecord:
+    # The approved copy is what was (or is being) written; otherwise the working copy.
+    raw = row["approved_content"] if row["status"] in ("creating", "created", "uncertain") and row["approved_content"] else row["content"]
+    content = StoryDraftContent.model_validate_json(raw)
+    return StoryDraftRecord(
+        id=row["id"],
+        conversation_id=row["conversation_id"],
+        version=row["version"],
+        status=row["status"],
+        content=content,
+        description=devops.description(content, row["language"]),
+        missing=_missing_story_fields(content),
+        approved_version=row["approved_version"],
+        approved_at=row["approved_at"],
+        devops_id=row["devops_id"],
+        devops_url=row["devops_url"],
+        error=row["error"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _settle_stale_create(row):
+    """A write that has been 'creating' for minutes was cut off; its outcome is unknown."""
+    if row is not None and row["status"] == "creating":
+        store = get_context_store()
+        store.mark_story_uncertain(
+            row["id"], "SIP stopped before Azure DevOps answered.", stale_seconds=STALE_CREATE_SECONDS
+        )
+        return store.get_story_draft(row["id"], row["owner_id"])
+    return row
+
+
+def _story_targets() -> tuple[list[StoryTarget], str | None]:
+    """Live targets, or an empty list and a notice: drafting works without Azure DevOps."""
+    if not devops.configured():
+        return [], "Azure DevOps is not connected to SIP yet. You can still write and save a proposal."
+    try:
+        return devops.list_targets(), None
+    except devops.DevOpsUnavailable as exc:
+        logger.warning("Azure DevOps targets unavailable: %s", exc)
+        return [], f"{exc} You can still write and save a proposal."
+
+
+def _targets_for_model(targets: list[StoryTarget]) -> str:
+    if not targets:
+        return "No targets available from Azure DevOps right now."
+    lines = []
+    for target in targets:
+        if target.kind == "backlog":
+            lines.append(f"- backlog: iteration_path \"{target.iteration_path}\" (the product backlog, no sprint)")
+        else:
+            period = f", {target.start} to {target.finish}" if target.start and target.finish else ""
+            lines.append(f"- sprint {target.name} ({target.timeframe}{period}): iteration_path \"{target.iteration_path}\"")
+    return "\n".join(lines)
+
+
+def _owned_product_owner_conversation(conversation_id: str, owner_id: str) -> ConversationDetail:
+    conversation = get_context_store().get_conversation(conversation_id, owner_id)
+    if conversation is None or conversation.kind != "product_owner":
+        raise HTTPException(status_code=404, detail="Product Owner conversation not found")
+    return conversation
+
+
+@app.get("/api/product-owner/settings", response_model=ProductOwnerSettings)
+def product_owner_settings(request: Request) -> ProductOwnerSettings:
+    targets, notice = _story_targets()
+    can_create = _can_write_stories(request)
+    if not can_create and notice is None:
+        notice = "Your account cannot create stories in Azure DevOps yet. You can write and save a proposal."
+    return ProductOwnerSettings(
+        devops_configured=devops.configured(),
+        can_create=can_create and bool(targets),
+        organisation=devops.organisation(),
+        project=devops.project(),
+        targets=targets,
+        notice=notice,
+    )
+
+
+@app.post("/api/product-owner/chat", response_model=ProductOwnerChatResponse)
+def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOwnerChatResponse:
+    """One turn with the Product Owner assistant. A proposal is stored as a new version."""
+    owner_id, is_admin = _actor(http_request)
+    store = get_context_store()
+    if request.conversation_id:
+        conversation = _owned_product_owner_conversation(request.conversation_id, owner_id)
+    else:
+        conversation = store.create_conversation(owner_id, request.language, "product_owner")
+    current = _settle_stale_create(store.current_story_draft(conversation.id))
+    open_draft = current is not None and current["status"] in ("draft", "failed")
+    targets, _ = _story_targets()
+    try:
+        turn = get_assistant().product_owner_turn(
+            conversation.messages,
+            request.message,
+            conversation.language,
+            owner_id,
+            _targets_for_model(targets),
+            current["content"] if open_draft else "",
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        logger.error("Product Owner returned invalid output:\n%s", traceback.format_exc())
+        raise HTTPException(
+            status_code=502, detail="The Product Owner gave an answer SIP could not read. Your draft is unchanged; please try again."
+        ) from exc
+    except Exception as exc:
+        logger.error("Product Owner request failed:\n%s", traceback.format_exc())
+        raise HTTPException(status_code=502, detail="The Product Owner could not be reached. Your draft is unchanged; please try again.") from exc
+
+    draft_row = current
+    if turn.draft is not None:
+        content = turn.draft
+        if content.target_kind == "backlog":
+            content = content.model_copy(update={"iteration_path": devops.project()})
+        elif content.target_kind == "sprint" and content.iteration_path not in {
+            target.iteration_path for target in targets if target.kind == "sprint"
+        }:
+            # Never keep a sprint SIP did not offer; the user picks one in the proposal.
+            content = content.model_copy(update={"iteration_path": None})
+        saved = store.save_model_story_draft(conversation.id, owner_id, conversation.language, content)
+        draft_row = saved or current
+    updated = store.add_conversation_turn(
+        conversation_id=conversation.id,
+        user_message=request.message,
+        assistant_message=turn.message,
+        is_ready_to_save=False,
+        readiness_reason="Product Owner conversations are not saved as Business Contexts.",
+        owner_id=owner_id,
+        is_admin=False,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Product Owner conversation not found")
+    return ProductOwnerChatResponse(
+        message=turn.message,
+        conversation_id=conversation.id,
+        draft=_story_record(draft_row) if draft_row is not None else None,
+        open_questions=turn.open_questions,
+        split_suggestion=turn.split_suggestion,
+    )
+
+
+@app.get("/api/product-owner/conversations/{conversation_id}/drafts", response_model=list[StoryDraftRecord])
+def list_product_owner_drafts(conversation_id: str, request: Request) -> list[StoryDraftRecord]:
+    owner_id, is_admin = _actor(request)
+    store = get_context_store()
+    conversation = store.get_conversation(conversation_id, owner_id, is_admin)
+    if conversation is None or conversation.kind != "product_owner":
+        raise HTTPException(status_code=404, detail="Product Owner conversation not found")
+    return [_story_record(_settle_stale_create(row)) for row in store.list_story_drafts(conversation_id, owner_id, is_admin)]
+
+
+@app.put("/api/product-owner/drafts/{draft_id}", response_model=StoryDraftRecord)
+def update_product_owner_draft(draft_id: str, body: UpdateStoryDraftRequest, request: Request) -> StoryDraftRecord:
+    """The user's own edit. It becomes a new version, so any earlier confirmation no longer counts."""
+    owner_id, _ = _actor(request)
+    store = get_context_store()
+    row = store.get_story_draft(draft_id, owner_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Story proposal not found")
+    content = body.content
+    if content.target_kind == "backlog":
+        content = content.model_copy(update={"iteration_path": devops.project()})
+    if not store.update_story_draft(draft_id, owner_id, body.version, content):
+        current = store.get_story_draft(draft_id, owner_id)
+        if current["status"] not in ("draft", "failed"):
+            raise HTTPException(status_code=409, detail="This proposal is being created or was created already; it can no longer be changed.")
+        raise HTTPException(status_code=409, detail="The proposal changed in the meantime. Reload it and make your change again.")
+    return _story_record(store.get_story_draft(draft_id, owner_id))
+
+
+@app.post("/api/product-owner/drafts/{draft_id}/create", response_model=StoryDraftRecord)
+def create_product_owner_story(draft_id: str, body: CreateStoryRequest, request: Request) -> StoryDraftRecord:
+    """Create the story in Azure DevOps after the owner confirmed this exact version.
+
+    Checked on every call: role (middleware), writer list, ownership, version,
+    completeness and the live sprint. A repeated request with the same
+    confirmation id returns the stored outcome instead of writing again.
+    """
+    owner_id, _ = _actor(request)
+    store = get_context_store()
+    if not _can_write_stories(request):
+        raise HTTPException(status_code=403, detail="Your account cannot create stories in Azure DevOps.")
+    row = _settle_stale_create(store.get_story_draft(draft_id, owner_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Story proposal not found")
+    if row["confirmation_id"] == body.confirmation_id and row["status"] in ("creating", "created", "uncertain"):
+        return _story_record(row)  # the same click arriving twice
+    if row["status"] == "created":
+        raise HTTPException(status_code=409, detail=f"This story was already created in Azure DevOps as #{row['devops_id']}.")
+    if row["status"] == "creating":
+        raise HTTPException(status_code=409, detail="This story is being created right now.")
+    if row["status"] == "uncertain":
+        raise HTTPException(status_code=409, detail="It is not yet known whether the earlier attempt created this story. Check Azure DevOps first.")
+    if row["version"] != body.version:
+        raise HTTPException(status_code=409, detail="The proposal changed after you confirmed it. Review the new version and confirm again.")
+    content = StoryDraftContent.model_validate_json(row["content"])
+    missing = _missing_story_fields(content)
+    if missing:
+        raise HTTPException(status_code=422, detail=f"The proposal is not complete yet: {', '.join(missing)}.")
+    try:
+        iteration_path = devops.resolve_iteration(content, devops.list_targets())
+    except devops.DevOpsUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    approved = content.model_copy(update={"iteration_path": iteration_path})
+    approved_by = getattr(request.state, "user_email", None) or "local-dev"
+    if not store.begin_story_create(draft_id, owner_id, body.version, body.confirmation_id, approved_by, approved):
+        current = store.get_story_draft(draft_id, owner_id)
+        if current is not None and current["confirmation_id"] == body.confirmation_id:
+            return _story_record(current)
+        raise HTTPException(status_code=409, detail="The proposal changed or is already being created. Reload it first.")
+
+    try:
+        created = devops.create_story(approved, row["language"], iteration_path)
+    except devops.DevOpsUncertain as exc:
+        logger.warning("Azure DevOps outcome uncertain for story proposal %s: %s", draft_id, exc)
+        store.mark_story_uncertain(draft_id, f"{exc} The story may exist; check before trying again.")
+    except (devops.DevOpsRejected, devops.DevOpsUnavailable) as exc:
+        logger.warning("Azure DevOps did not create story proposal %s: %s", draft_id, exc)
+        store.fail_story_create(draft_id, str(exc))
+    except Exception:
+        # Unknown failure halfway: treat as uncertain rather than inviting a duplicate.
+        logger.error("Creating story proposal %s failed:\n%s", draft_id, traceback.format_exc())
+        store.mark_story_uncertain(draft_id, "Something went wrong while creating the story. Check Azure DevOps before trying again.")
+    else:
+        store.finish_story_create(draft_id, created.id, created.url)
+        logger.info("Created Azure DevOps story %s in %s for proposal %s", created.id, created.iteration_path, draft_id)
+    return _story_record(store.get_story_draft(draft_id, owner_id))
+
+
+@app.post("/api/product-owner/drafts/{draft_id}/check", response_model=StoryDraftRecord)
+def check_product_owner_story(draft_id: str, request: Request) -> StoryDraftRecord:
+    """Settle an uncertain outcome by looking in Azure DevOps, never by writing."""
+    owner_id, _ = _actor(request)
+    store = get_context_store()
+    if not _can_write_stories(request):
+        raise HTTPException(status_code=403, detail="Your account cannot create stories in Azure DevOps.")
+    row = _settle_stale_create(store.get_story_draft(draft_id, owner_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Story proposal not found")
+    if row["status"] != "uncertain":
+        return _story_record(row)
+    approved = StoryDraftContent.model_validate_json(row["approved_content"])
+    # A margin for clock differences between SIP and Azure DevOps.
+    since = (datetime.strptime(row["approved_at"], "%Y-%m-%d %H:%M:%S") - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        found = devops.find_created(approved.title, since)
+    except devops.DevOpsUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if len(found) == 1:
+        store.finish_story_create(draft_id, found[0].id, found[0].url)
+    elif not found:
+        store.fail_story_create(draft_id, "Azure DevOps has no story from this attempt, so nothing was created. You can confirm again.")
+    else:
+        numbers = ", ".join(f"#{item.id}" for item in found)
+        store.note_story_uncertainty(draft_id, f"Several matching stories exist ({numbers}). Check them in Azure DevOps.")
+    return _story_record(store.get_story_draft(draft_id, owner_id))
+
+
 @app.get("/api/studio/link")
 def studio_link(request: Request) -> dict[str, str]:
     """A short-lived signed link that opens the marketing studio for this user."""
@@ -765,7 +1073,9 @@ def _prepare_business_context_from_conversation(
 
 
 @app.get("/api/conversations", response_model=list[ConversationSummary])
-def list_conversations(request: Request, kind: Literal["context", "knowledge"] | None = None) -> list[ConversationSummary]:
+def list_conversations(
+    request: Request, kind: Literal["context", "knowledge", "product_owner"] | None = None
+) -> list[ConversationSummary]:
     owner_id, is_admin = _actor(request)
     return get_context_store().list_conversations(owner_id, is_admin, kind)
 
@@ -805,7 +1115,7 @@ def add_conversation_message(
     store = get_context_store()
     owner_id, is_admin = _actor(http_request)
     conversation = store.get_conversation(conversation_id, owner_id, is_admin)
-    if conversation is None:
+    if conversation is None or conversation.kind == "product_owner":
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     try:
@@ -844,7 +1154,7 @@ def save_conversation_to_portfolio(conversation_id: str, request: Request) -> St
     store = get_context_store()
     owner_id, is_admin = _actor(request)
     conversation = store.get_conversation(conversation_id, owner_id, is_admin)
-    if conversation is None:
+    if conversation is None or conversation.kind == "product_owner":
         raise HTTPException(status_code=404, detail="Conversation not found")
     if conversation.portfolio_context_id:
         context = store.get(conversation.portfolio_context_id, owner_id, is_admin)
