@@ -1480,13 +1480,13 @@ deleteDialog.addEventListener("close", () => {
 // version on screen with a confirmation id, so an edited, old or repeated click
 // never creates a story the user did not see, and never creates it twice.
 let poConversationId = null;
-let poSettings = { devops_configured: false, can_create: false, targets: [], project: "" };
+let poSettings = { devops_configured: false, can_create: false, targets: [], people: [], project: "" };
 
 async function loadPoSettings() {
   try {
     poSettings = await api("/api/product-owner/settings");
   } catch (error) {
-    poSettings = { devops_configured: false, can_create: false, targets: [], project: "" };
+    poSettings = { devops_configured: false, can_create: false, targets: [], people: [], project: "" };
   }
   return poSettings;
 }
@@ -1613,6 +1613,14 @@ function storyDraftCard(record) {
     target.add(new Option(savedTarget === "backlog" ? t("po.target_backlog") : savedTarget, savedTarget));
   }
   target.value = savedTarget;
+  const assignee = document.createElement("select");
+  assignee.name = "assigned_to";
+  assignee.add(new Option(t("po.nobody"), ""));
+  poSettings.people.forEach((person) => assignee.add(new Option(person, person)));
+  if (content.assigned_to && !poSettings.people.includes(content.assigned_to)) {
+    assignee.add(new Option(content.assigned_to, content.assigned_to));
+  }
+  assignee.value = content.assigned_to || "";
 
   grid.append(
     titleField,
@@ -1623,6 +1631,7 @@ function storyDraftCard(record) {
     poField(t("po.field.acceptance_criteria"), poTextarea("acceptance_criteria", content.acceptance_criteria.join("\n"), 4), t("review.field.one_per_line")),
     poField(t("po.field.story_points"), points),
     poField(t("po.field.target"), target),
+    poField(t("po.field.assigned_to"), assignee),
     Object.assign(poField(t("po.field.estimation_reason"), poTextarea("estimation_reason", content.estimation_reason, 2)), { className: "field full-width" }),
   );
   grid.querySelectorAll("input, textarea, select").forEach((control) => { control.disabled = !editable; });
@@ -1792,6 +1801,7 @@ function readStoryForm(card) {
     estimation_reason: value("estimation_reason").trim(),
     target_kind: target === "backlog" ? "backlog" : target ? "sprint" : null,
     iteration_path: target && target !== "backlog" ? target : null,
+    assigned_to: value("assigned_to") || null,
     // Not a form field: kept from the proposal so an edit does not change the story's language.
     language: card.dataset.language || null,
   };
@@ -1814,6 +1824,253 @@ async function reloadStoryDrafts() {
   if (!poConversationId) return;
   const drafts = await api(`/api/product-owner/conversations/${poConversationId}/drafts`);
   drafts.forEach((record) => renderStoryDraft(record));
+}
+
+// What SIP read from Azure DevOps: a list per status, or one story, with real links.
+function workItemLink(item) {
+  const link = document.createElement("a");
+  link.href = item.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = `#${item.id}`;
+  return link;
+}
+
+function workItemResultCard(result) {
+  const row = document.createElement("div");
+  row.className = "message-row assistant work-items-row";
+  row.dataset.resultId = result.id;
+  const card = document.createElement("section");
+  card.className = "work-items";
+  card.setAttribute("aria-label", result.label);
+  const title = document.createElement("h3");
+  title.textContent = result.label;
+  card.append(title);
+  if (result.error) {
+    const error = document.createElement("p");
+    error.className = "work-items-error";
+    error.textContent = result.error;
+    card.append(error);
+  } else if (result.detail) {
+    const detail = result.detail;
+    const head = document.createElement("p");
+    head.className = "work-items-head";
+    head.append(workItemLink(detail), ` ${detail.title}`);
+    const meta = document.createElement("p");
+    meta.className = "work-items-meta";
+    meta.textContent = [
+      detail.state,
+      detail.story_points != null ? t("po.points", { n: detail.story_points }) : "",
+      detail.assigned_to || t("po.unassigned"),
+      detail.iteration_path,
+    ].filter(Boolean).join(" · ");
+    card.append(head, meta);
+    [["description", "po.change_field.description"], ["entry_criteria", "po.change_field.entry_criteria"],
+      ["acceptance_criteria", "po.change_field.acceptance_criteria"]].forEach(([name, key]) => {
+      const label = document.createElement("strong");
+      label.textContent = t(key);
+      const text = document.createElement("p");
+      text.className = "work-items-text";
+      text.textContent = detail[name] || "—";
+      card.append(label, text);
+    });
+  } else if (!result.items.length) {
+    const empty = document.createElement("p");
+    empty.className = "work-items-meta";
+    empty.textContent = t("po.no_items");
+    card.append(empty);
+  } else {
+    const groups = new Map();
+    result.items.forEach((item) => {
+      if (!groups.has(item.state)) groups.set(item.state, []);
+      groups.get(item.state).push(item);
+    });
+    groups.forEach((items, state) => {
+      const heading = document.createElement("h4");
+      heading.textContent = `${state} (${items.length})`;
+      const list = document.createElement("ul");
+      items.forEach((item) => {
+        const entry = document.createElement("li");
+        const meta = document.createElement("span");
+        meta.className = "work-items-meta";
+        meta.textContent = [
+          item.story_points != null ? t("po.points", { n: item.story_points }) : "",
+          item.assigned_to || t("po.unassigned"),
+        ].filter(Boolean).join(" · ");
+        entry.append(workItemLink(item), ` ${item.title} `, meta);
+        list.append(entry);
+      });
+      card.append(heading, list);
+    });
+  }
+  row.append(card);
+  return row;
+}
+
+function renderWorkItemResult(result) {
+  poMessages.append(workItemResultCard(result));
+  poMessages.scrollTop = poMessages.scrollHeight;
+}
+
+// A proposed change to an existing story: each field as current -> new, confirmed
+// in two steps like a new story. Changes are made by asking in the chat.
+function workItemChangeCard(record) {
+  const row = document.createElement("div");
+  row.className = "message-row assistant story-draft-row";
+  row.dataset.changeId = record.id;
+  const card = document.createElement("div");
+  card.className = "story-draft work-item-change";
+  card.dataset.status = record.status;
+  card.setAttribute("role", "group");
+
+  const header = document.createElement("div");
+  header.className = "story-draft-header";
+  const title = document.createElement("h3");
+  title.append(t("po.change_title"), " ", workItemLink({ id: record.work_item_id, url: record.url }));
+  const badge = document.createElement("span");
+  badge.className = "story-draft-badge";
+  badge.textContent = t(`po.change_status_${record.status}`);
+  const version = document.createElement("span");
+  version.className = "story-draft-version";
+  version.textContent = t("po.version", { n: record.version });
+  header.append(title, badge, version);
+  const name = document.createElement("p");
+  name.className = "story-draft-sentence";
+  name.textContent = record.title;
+  card.append(header, name);
+
+  const table = document.createElement("table");
+  table.className = "change-table";
+  const head = document.createElement("tr");
+  ["po.change_col_field", "po.change_col_current", "po.change_col_new"].forEach((key) => {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = t(key);
+    head.append(cell);
+  });
+  table.append(head);
+  record.changes.forEach((change) => {
+    const line = document.createElement("tr");
+    const field = document.createElement("th");
+    field.scope = "row";
+    field.textContent = t(`po.change_field.${change.field}`);
+    const before = document.createElement("td");
+    before.textContent = change.before || "—";
+    const after = document.createElement("td");
+    after.textContent = change.after || "—";
+    line.append(field, before, after);
+    table.append(line);
+  });
+  card.append(table);
+
+  const notes = document.createElement("div");
+  notes.className = "story-draft-notes";
+  const warn = (text, error = false) => {
+    const note = document.createElement("p");
+    if (error) note.className = "story-draft-error";
+    note.textContent = text;
+    notes.append(note);
+  };
+  const newState = record.changes.find((change) => change.field === "state")?.after;
+  if (newState === "Active") warn(t("po.warn_active"));
+  if (newState === "Resolved") warn(t("po.warn_resolved"));
+  if (record.status === "failed" || record.status === "uncertain") warn(t(`po.change_explain_${record.status}`), true);
+  if (record.error) warn(record.error);
+  card.append(notes);
+
+  const actions = document.createElement("div");
+  actions.className = "story-draft-actions";
+  const status = document.createElement("p");
+  status.className = "story-draft-status";
+  status.setAttribute("role", "status");
+
+  if (record.status === "draft" || record.status === "failed") {
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "primary-button";
+    apply.textContent = t("po.change_apply");
+    apply.disabled = !poSettings.can_create;
+    const confirmBox = document.createElement("div");
+    confirmBox.className = "story-draft-confirm";
+    confirmBox.hidden = true;
+    const confirmText = document.createElement("p");
+    confirmText.textContent = t("po.change_confirm_text", { id: record.work_item_id, version: record.version });
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "primary-button";
+    yes.textContent = t("po.change_confirm_yes");
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "text-button";
+    cancel.textContent = t("po.confirm_cancel");
+    confirmBox.append(confirmText, yes, cancel);
+    let confirmationId = null;
+    apply.addEventListener("click", () => {
+      confirmationId = newConfirmationId();
+      confirmBox.hidden = false;
+      apply.disabled = true;
+      yes.focus();
+    });
+    cancel.addEventListener("click", () => {
+      confirmBox.hidden = true;
+      confirmationId = null;
+      apply.disabled = false;
+      apply.focus();
+    });
+    yes.addEventListener("click", async () => {
+      yes.disabled = true;
+      cancel.disabled = true;
+      status.textContent = t("po.change_applying");
+      try {
+        const result = await api(`/api/product-owner/changes/${record.id}/apply`, {
+          method: "POST",
+          body: JSON.stringify({ version: record.version, confirmation_id: confirmationId }),
+        });
+        renderWorkItemChange(result, result.status === "applied" ? t("po.change_applied_status", { id: result.work_item_id }) : "");
+      } catch (error) {
+        if (error instanceof TypeError) {
+          status.textContent = t("po.connection_lost");
+          yes.textContent = t("po.retry_safe");
+          yes.disabled = false;
+          return;
+        }
+        status.textContent = error.message;
+        cancel.disabled = false;
+      }
+    });
+    if (!poSettings.can_create) warn(t("po.notice_no_rights"));
+    actions.append(apply);
+    card.append(actions, confirmBox, status);
+  } else if (record.status === "uncertain" || record.status === "applying") {
+    const check = document.createElement("button");
+    check.type = "button";
+    check.className = "secondary-button";
+    check.textContent = t("po.check");
+    check.addEventListener("click", async () => {
+      check.disabled = true;
+      status.textContent = t("po.checking");
+      try {
+        renderWorkItemChange(await api(`/api/product-owner/changes/${record.id}/check`, { method: "POST" }));
+      } catch (error) {
+        check.disabled = false;
+        status.textContent = error instanceof TypeError ? t("builder.unreachable") : error.message;
+      }
+    });
+    actions.append(check);
+    card.append(actions, status);
+  } else {
+    card.append(status);
+  }
+  row.append(card);
+  return row;
+}
+
+function renderWorkItemChange(record, message = "") {
+  poMessages.querySelector(`.story-draft-row[data-change-id="${record.id}"]`)?.remove();
+  const row = workItemChangeCard(record);
+  poMessages.append(row);
+  if (message) row.querySelector(".story-draft-status").textContent = message;
+  poMessages.scrollTop = poMessages.scrollHeight;
 }
 
 function appendSplitSuggestion(titles) {
@@ -1858,15 +2115,23 @@ function resetPoChat() {
 }
 
 async function openPoConversation(conversationId) {
-  const [conversation, drafts] = await Promise.all([
+  const [conversation, timeline] = await Promise.all([
     api(`/api/conversations/${conversationId}`),
-    api(`/api/product-owner/conversations/${conversationId}/drafts`),
+    api(`/api/product-owner/conversations/${conversationId}/timeline`),
     loadPoSettings(),
   ]);
   resetPoChat();
   poConversationId = conversation.id;
-  conversation.messages.forEach((message) => appendMessage(poMessages, message.content, message.role, t("po.assistant_name")));
-  drafts.forEach((record) => renderStoryDraft(record));
+  // Same-second entries keep messages first, so a card follows the answer it belongs to.
+  const entries = [
+    ...conversation.messages.map((message, index) => ({ at: message.created_at, order: 0, index, show: () =>
+      appendMessage(poMessages, message.content, message.role, t("po.assistant_name")) })),
+    ...timeline.results.map((result) => ({ at: result.created_at, order: 1, show: () => renderWorkItemResult(result) })),
+    ...timeline.drafts.map((record) => ({ at: record.updated_at, order: 1, show: () => renderStoryDraft(record) })),
+    ...timeline.changes.map((record) => ({ at: record.updated_at, order: 1, show: () => renderWorkItemChange(record) })),
+  ];
+  entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.order - b.order || (a.index ?? 0) - (b.index ?? 0)));
+  entries.forEach((entry) => entry.show());
   poHistory.value = conversation.id;
   showPoConversation();
   // Built while hidden, so scroll once visible: continue at the latest message.
@@ -1965,6 +2230,8 @@ poChatForm.addEventListener("submit", async (event) => {
     appendMessage(poMessages, data.message, "assistant", t("po.assistant_name"), true);
     if (data.split_suggestion.length) appendSplitSuggestion(data.split_suggestion);
     if (data.draft) renderStoryDraft(data.draft);
+    if (data.result) renderWorkItemResult(data.result);
+    if (data.change) renderWorkItemChange(data.change);
     await loadPoHistory();
   } catch (error) {
     pendingRow.remove();

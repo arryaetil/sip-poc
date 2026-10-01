@@ -271,6 +271,8 @@ class StoryDraftContent(BaseModel):
     # The language the story text is written in; SIP builds "As … I want … so that …"
     # in it, which can differ from the interface language.
     language: Literal["nl", "en", "de"] | None = None
+    # A team member's display name; SIP resolves it to the real account. None = nobody.
+    assigned_to: str | None = None
 
     @field_validator("title")
     @classmethod
@@ -293,12 +295,71 @@ class StoryDraftContent(BaseModel):
         return _clean_text(value, 400) or None if value is not None else None
 
 
+# States SIP may set. Closed (the product owner's acceptance) and Removed cannot
+# even be expressed, so no model answer or edit can ask for them.
+ChangeState = Literal["New", "Refinement", "To Be Planned", "Ready", "Active", "Resolved"]
+
+
+class WorkItemQuery(BaseModel):
+    """A read the assistant asks SIP to do; SIP runs it, the model never calls Azure DevOps."""
+
+    kind: Literal["sprint", "assigned", "story"]
+    # sprint: an iteration path from the available targets, or null for the current sprint.
+    # assigned: optionally limits the list to that sprint.
+    iteration_path: str | None = None
+    # assigned: a display name from the team list, or "me" for the signed-in user.
+    person: str | None = None
+    # story: the work item number.
+    work_item_id: int | None = None
+
+
+class WorkItemChange(BaseModel):
+    """Proposed changes to an existing user story. Null means: leave this field as it is."""
+
+    work_item_id: int
+    title: str | None = None
+    # role, capability and value together rewrite the description as "As … I want … so that …".
+    role: str | None = None
+    capability: str | None = None
+    value: str | None = None
+    entry_criteria: list[str] | None = None
+    acceptance_criteria: list[str] | None = None
+    story_points: StoryPoints | None = None
+    estimation_reason: str | None = None
+    state: ChangeState | None = None
+    target_kind: Literal["backlog", "sprint"] | None = None
+    iteration_path: str | None = None
+    assigned_to: str | None = None
+    language: Literal["nl", "en", "de"] | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, value: str | None) -> str | None:
+        return _clean_text(value, 255) or None if value is not None else None
+
+    @field_validator("role", "capability", "value", "estimation_reason", "iteration_path", "assigned_to")
+    @classmethod
+    def _text(cls, value: str | None) -> str | None:
+        return _clean_text(value, 2000) or None if value is not None else None
+
+    @field_validator("entry_criteria", "acceptance_criteria")
+    @classmethod
+    def _items(cls, value: list[str] | None) -> list[str] | None:
+        return _clean_items(value) if value is not None else None
+
+
 class ProductOwnerTurn(BaseModel):
-    """One answer of the Product Owner app in Dify (or Foundry)."""
+    """One answer of the Product Owner app in Dify (or Foundry).
+
+    At most one of draft (new story), query (read) or change (update an
+    existing story) is filled per turn.
+    """
 
     message: str
-    stage: Literal["clarifying", "draft_ready"]
+    stage: Literal["clarifying", "draft_ready", "answer", "change_ready"]
     draft: StoryDraftContent | None = None
+    query: WorkItemQuery | None = None
+    change: WorkItemChange | None = None
     # At most one current question; the rule is "one question at a time".
     open_questions: list[str] = Field(default_factory=list)
     # Titles of smaller stories when the work is too big for one.
@@ -337,10 +398,77 @@ class StoryDraftRecord(BaseModel):
     updated_at: str
 
 
+class WorkItemSummary(BaseModel):
+    id: int
+    title: str
+    work_item_type: str
+    state: str
+    story_points: float | None = None
+    assigned_to: str | None = None
+    iteration_path: str = ""
+    url: str
+
+
+class WorkItemDetail(WorkItemSummary):
+    rev: int
+    description: str = ""
+    entry_criteria: str = ""
+    acceptance_criteria: str = ""
+
+
+class WorkItemResult(BaseModel):
+    """What SIP read from Azure DevOps for one question, kept with the conversation."""
+
+    id: str
+    conversation_id: str
+    kind: Literal["sprint", "assigned", "story"]
+    label: str
+    items: list[WorkItemSummary] = Field(default_factory=list)
+    detail: WorkItemDetail | None = None
+    error: str | None = None
+    created_at: str
+
+
+class FieldChange(BaseModel):
+    field: Literal[
+        "title", "description", "entry_criteria", "acceptance_criteria",
+        "story_points", "state", "iteration_path", "assigned_to",
+    ]
+    before: str
+    after: str
+
+
+WorkItemChangeStatus = Literal["draft", "applying", "applied", "failed", "uncertain"]
+
+
+class WorkItemChangeRecord(BaseModel):
+    id: str
+    conversation_id: str
+    work_item_id: int
+    title: str
+    url: str
+    version: int
+    status: WorkItemChangeStatus
+    changes: list[FieldChange]
+    base_rev: int
+    approved_version: int | None = None
+    error: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ProductOwnerTimeline(BaseModel):
+    drafts: list[StoryDraftRecord]
+    changes: list[WorkItemChangeRecord]
+    results: list[WorkItemResult]
+
+
 class ProductOwnerChatResponse(BaseModel):
     message: str
     conversation_id: str
     draft: StoryDraftRecord | None = None
+    result: WorkItemResult | None = None
+    change: WorkItemChangeRecord | None = None
     open_questions: list[str] = Field(default_factory=list)
     split_suggestion: list[str] = Field(default_factory=list)
 
@@ -372,6 +500,8 @@ class ProductOwnerSettings(BaseModel):
     organisation: str
     project: str
     targets: list[StoryTarget]
+    # Team members' display names, for assigning; only for accounts that may use Azure DevOps.
+    people: list[str] = Field(default_factory=list)
     notice: str | None = None
 
 

@@ -17,12 +17,21 @@ from __future__ import annotations
 import base64
 import html
 import os
+import re
 from dataclasses import dataclass
 from urllib.parse import quote
 
 import httpx
 
-from app.models import CreatedStory, StoryDraftContent, StoryTarget
+from app.models import (
+    CreatedStory,
+    FieldChange,
+    StoryDraftContent,
+    StoryTarget,
+    WorkItemChange,
+    WorkItemDetail,
+    WorkItemSummary,
+)
 
 API_VERSION = "7.1"
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
@@ -44,6 +53,10 @@ class DevOpsRejected(RuntimeError):
 
 class DevOpsUncertain(RuntimeError):
     """The request may have reached Azure DevOps; the story may exist. Check before retrying."""
+
+
+class DevOpsConflict(RuntimeError):
+    """The story changed since SIP read it (the /rev test failed). Nothing was overwritten."""
 
 
 @dataclass(frozen=True)
@@ -172,12 +185,21 @@ def _list_html(items: list[str]) -> str:
     return f"<ul>{rows}</ul>" if rows else ""
 
 
-def story_patch(content: StoryDraftContent, language: str, iteration_path: str) -> list[dict]:
+def _description_html(sentence: str, reason: str, language: str) -> str:
+    _, reason_label = STORY_SENTENCE.get(language, STORY_SENTENCE["en"])
+    body = f"<p>{html.escape(sentence)}</p>"
+    if reason:
+        body += f"<p><strong>{reason_label}:</strong> {html.escape(reason)}</p>"
+    return body
+
+
+def story_patch(
+    content: StoryDraftContent, language: str, iteration_path: str, assigned_to: str | None = None
+) -> list[dict]:
     """The JSON Patch document for a new User Story. All text is escaped: DevOps stores HTML."""
-    _, reason_label = STORY_SENTENCE.get(_story_language(content, language), STORY_SENTENCE["en"])
-    body = f"<p>{html.escape(description(content, language))}</p>"
-    if content.estimation_reason:
-        body += f"<p><strong>{reason_label}:</strong> {html.escape(content.estimation_reason)}</p>"
+    body = _description_html(
+        description(content, language), content.estimation_reason, _story_language(content, language)
+    )
     fields = {
         "System.Title": content.title,
         "System.Description": body,
@@ -187,6 +209,8 @@ def story_patch(content: StoryDraftContent, language: str, iteration_path: str) 
         # Without an iteration path the story lands on the project root, which is
         # the backlog; a sprint path puts it on that sprint's board.
         "System.IterationPath": iteration_path,
+        # A resolved account (uniqueName), never a guessed name.
+        "System.AssignedTo": assigned_to,
     }
     return [
         {"op": "add", "path": f"/fields/{name}", "value": value}
@@ -195,7 +219,9 @@ def story_patch(content: StoryDraftContent, language: str, iteration_path: str) 
     ]
 
 
-def create_story(content: StoryDraftContent, language: str, iteration_path: str) -> CreatedStory:
+def create_story(
+    content: StoryDraftContent, language: str, iteration_path: str, assigned_to: str | None = None
+) -> CreatedStory:
     """Create the story once. Never retried here: a lost answer does not mean a lost story."""
     settings = _settings()
     url = f"{settings.base}/{quote(settings.project)}/_apis/wit/workitems/$User%20Story"
@@ -205,7 +231,7 @@ def create_story(content: StoryDraftContent, language: str, iteration_path: str)
                 url,
                 params={"api-version": API_VERSION},
                 headers={"Content-Type": "application/json-patch+json"},
-                json=story_patch(content, language, iteration_path),
+                json=story_patch(content, language, iteration_path, assigned_to),
             )
     except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
         # The connection never opened, so the request never arrived.
@@ -280,3 +306,268 @@ def find_created(title: str, since_utc: str) -> list[CreatedStory]:
         )
         for item in details.json().get("value", [])
     ]
+
+
+# --- Reading and changing existing stories (skill routes A, C and E) ----------
+
+LIST_FIELDS = (
+    "System.Id,System.Title,System.WorkItemType,System.State,System.AssignedTo,"
+    "System.IterationPath,Microsoft.VSTS.Scheduling.StoryPoints"
+)
+DETAIL_FIELDS = LIST_FIELDS + (
+    ",System.Rev,System.Description,Custom.EntryCriteria,Microsoft.VSTS.Common.AcceptanceCriteria"
+)
+MAX_LIST = 50
+# Statuses in the order the board shows them.
+STATE_ORDER = ("New", "Refinement", "To Be Planned", "Ready", "Active", "Resolved", "Closed", "Removed")
+BOARD_TYPES = "[System.WorkItemType] IN ('User Story', 'Bug') AND [System.State] <> 'Removed'"
+
+
+def team_members() -> list[tuple[str, str]]:
+    """(display name, account) of the team; the account never goes to the model."""
+    settings = _settings()
+    try:
+        with client_factory(settings) as http:
+            response = http.get(
+                f"{settings.base}/_apis/projects/{quote(settings.project)}/teams/{quote(settings.team)}/members",
+                params={"api-version": API_VERSION, "$top": "200"},
+            )
+    except httpx.HTTPError as exc:
+        raise DevOpsUnavailable("Azure DevOps could not be reached.") from exc
+    _check_auth(response)
+    if response.status_code >= 400:
+        raise DevOpsUnavailable(f"Azure DevOps did not return the team: {_devops_message(response)}")
+    members = [item.get("identity", {}) for item in response.json().get("value", [])]
+    return sorted(
+        ((member["displayName"], member["uniqueName"]) for member in members if member.get("uniqueName")),
+        key=lambda member: member[0].casefold(),
+    )
+
+
+def resolve_person(name: str, members: list[tuple[str, str]]) -> tuple[str, str]:
+    """A team member by (part of) their display name; refuses to guess between several."""
+    wanted = " ".join(name.split()).casefold()
+    exact = [member for member in members if member[0].casefold() == wanted]
+    if exact:
+        return exact[0]
+    partial = [member for member in members if wanted and wanted in member[0].casefold()]
+    if len(partial) == 1:
+        return partial[0]
+    if not partial:
+        raise ValueError(f"'{name}' is not a member of the team in Azure DevOps.")
+    raise ValueError(f"'{name}' matches several team members: {', '.join(member[0] for member in partial)}.")
+
+
+def person_for_email(email: str, members: list[tuple[str, str]]) -> tuple[str, str] | None:
+    return next((member for member in members if member[1].casefold() == email.casefold()), None)
+
+
+def _wiql_text(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _summary(item: dict, settings: Settings) -> WorkItemSummary:
+    fields = item.get("fields", {})
+    assigned = fields.get("System.AssignedTo")
+    return WorkItemSummary(
+        id=item["id"],
+        title=fields.get("System.Title", ""),
+        work_item_type=fields.get("System.WorkItemType", ""),
+        state=fields.get("System.State", ""),
+        story_points=fields.get("Microsoft.VSTS.Scheduling.StoryPoints"),
+        assigned_to=assigned.get("displayName") if isinstance(assigned, dict) else assigned,
+        iteration_path=fields.get("System.IterationPath", ""),
+        url=settings.work_item_url(item["id"]),
+    )
+
+
+def _query(where: str) -> list[WorkItemSummary]:
+    settings = _settings()
+    query = f"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND {where} ORDER BY [System.Id]"
+    try:
+        with client_factory(settings) as http:
+            response = http.post(
+                f"{settings.base}/{quote(settings.project)}/_apis/wit/wiql",
+                params={"api-version": API_VERSION, "$top": str(MAX_LIST)},
+                json={"query": query},
+            )
+            _check_auth(response)
+            if response.status_code >= 400:
+                raise DevOpsUnavailable(f"Azure DevOps could not be searched: {_devops_message(response)}")
+            ids = [int(row["id"]) for row in response.json().get("workItems", [])][:MAX_LIST]
+            if not ids:
+                return []
+            details = http.get(
+                f"{settings.base}/{quote(settings.project)}/_apis/wit/workitems",
+                params={"ids": ",".join(map(str, ids)), "fields": LIST_FIELDS, "api-version": API_VERSION},
+            )
+            _check_auth(details)
+            details.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise DevOpsUnavailable("Azure DevOps could not be reached.") from exc
+    items = [_summary(item, settings) for item in details.json().get("value", [])]
+    rank = {state: index for index, state in enumerate(STATE_ORDER)}
+    return sorted(items, key=lambda item: (rank.get(item.state, len(rank)), item.id))
+
+
+def sprint_items(iteration_path: str) -> list[WorkItemSummary]:
+    return _query(f"[System.IterationPath] = '{_wiql_text(iteration_path)}' AND {BOARD_TYPES}")
+
+
+def assigned_items(account: str, iteration_path: str | None = None) -> list[WorkItemSummary]:
+    where = f"[System.AssignedTo] = '{_wiql_text(account)}' AND [System.State] NOT IN ('Closed', 'Removed')"
+    if iteration_path:
+        where += f" AND [System.IterationPath] = '{_wiql_text(iteration_path)}'"
+    return _query(where)
+
+
+def get_item(item_id: int) -> WorkItemDetail:
+    settings = _settings()
+    try:
+        with client_factory(settings) as http:
+            response = http.get(
+                f"{settings.base}/{quote(settings.project)}/_apis/wit/workitems/{int(item_id)}",
+                params={"fields": DETAIL_FIELDS, "api-version": API_VERSION},
+            )
+    except httpx.HTTPError as exc:
+        raise DevOpsUnavailable("Azure DevOps could not be reached.") from exc
+    _check_auth(response)
+    if response.status_code == 404:
+        raise ValueError(f"Work item {item_id} does not exist in project {settings.project}.")
+    if response.status_code >= 400:
+        raise DevOpsUnavailable(f"Azure DevOps did not return work item {item_id}: {_devops_message(response)}")
+    item = response.json()
+    fields = item.get("fields", {})
+    summary = _summary(item, settings)
+    return WorkItemDetail(
+        **summary.model_dump(),
+        rev=fields.get("System.Rev", item.get("rev", 0)),
+        description=plain_text(fields.get("System.Description", "")),
+        entry_criteria=plain_text(fields.get("Custom.EntryCriteria", "")),
+        acceptance_criteria=plain_text(fields.get("Microsoft.VSTS.Common.AcceptanceCriteria", "")),
+    )
+
+
+def plain_text(value: str | None) -> str:
+    """Readable text from DevOps HTML: list items on their own line, tags removed."""
+    if not value:
+        return ""
+    text = re.sub(r"(?i)<\s*(br|/p|/div|/li)\s*/?>", "\n", value)
+    text = re.sub(r"(?i)<li[^>]*>", "- ", text)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text))
+    return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def _same(a: str, b: str) -> bool:
+    return " ".join(plain_text(a).split()) == " ".join(plain_text(b).split())
+
+
+def plan_change(
+    change: WorkItemChange,
+    current: WorkItemDetail,
+    language: str,
+    targets: list[StoryTarget],
+    members: list[tuple[str, str]],
+) -> tuple[list[dict], list[FieldChange]]:
+    """The JSON Patch operations and the before/after list for a proposed change.
+
+    Only fields that really change are included. Raises ValueError for anything
+    SIP will not do (a person outside the team, a closed sprint, half a
+    description).
+    """
+    ops: list[dict] = []
+    shown: list[FieldChange] = []
+    story_language = change.language or language
+
+    def add(path: str, value, field: str, before: str, after: str) -> None:
+        ops.append({"op": "add", "path": f"/fields/{path}", "value": value})
+        shown.append(FieldChange(field=field, before=before, after=after))
+
+    if change.title and change.title != current.title:
+        add("System.Title", change.title, "title", current.title, change.title)
+    parts = (change.role, change.capability, change.value)
+    if any(parts):
+        if not all(parts):
+            raise ValueError("A new description needs role, capability and value together.")
+        content = StoryDraftContent(role=change.role, capability=change.capability, value=change.value, language=story_language)
+        body = _description_html(description(content, language), change.estimation_reason or "", story_language)
+        if not _same(body, current.description):
+            add("System.Description", body, "description", current.description, plain_text(body))
+    for name, path, before in (
+        ("entry_criteria", "Custom.EntryCriteria", current.entry_criteria),
+        ("acceptance_criteria", "Microsoft.VSTS.Common.AcceptanceCriteria", current.acceptance_criteria),
+    ):
+        items = getattr(change, name)
+        if items is not None:
+            body = _list_html(items)
+            if not _same(body, before):
+                add(path, body, name, before, plain_text(body))
+    if change.story_points is not None and change.story_points != current.story_points:
+        before = "" if current.story_points is None else f"{current.story_points:g}"
+        add("Microsoft.VSTS.Scheduling.StoryPoints", change.story_points, "story_points", before, str(change.story_points))
+    if change.state and change.state != current.state:
+        if current.state in ("Closed", "Removed"):
+            raise ValueError(f"Work item {current.id} is {current.state}; SIP does not reopen it.")
+        add("System.State", change.state, "state", current.state, change.state)
+    if change.target_kind:
+        path = resolve_iteration(
+            StoryDraftContent(target_kind=change.target_kind, iteration_path=change.iteration_path), targets
+        )
+        if path != current.iteration_path:
+            add("System.IterationPath", path, "iteration_path", current.iteration_path, path)
+    if change.assigned_to:
+        display, account = resolve_person(change.assigned_to, members)
+        if display != (current.assigned_to or ""):
+            add("System.AssignedTo", account, "assigned_to", current.assigned_to or "", display)
+    return ops, shown
+
+
+def update_item(item_id: int, base_rev: int, ops: list[dict]) -> int:
+    """Apply the operations only if the story is still at base_rev. Returns the new revision."""
+    settings = _settings()
+    try:
+        with client_factory(settings) as http:
+            response = http.patch(
+                f"{settings.base}/{quote(settings.project)}/_apis/wit/workitems/{int(item_id)}",
+                params={"api-version": API_VERSION},
+                headers={"Content-Type": "application/json-patch+json"},
+                json=[{"op": "test", "path": "/rev", "value": base_rev}, *ops],
+            )
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        raise DevOpsRejected("Azure DevOps could not be reached. Nothing was changed.") from exc
+    except httpx.HTTPError as exc:
+        raise DevOpsUncertain("Azure DevOps did not answer in time.") from exc
+    _check_auth(response)
+    message = _devops_message(response)
+    if response.status_code in (409, 412) or "TF26071" in message:
+        raise DevOpsConflict("Someone changed this story in the meantime. Nothing was overwritten.")
+    if response.status_code >= 500:
+        raise DevOpsUncertain(f"Azure DevOps answered with an error ({response.status_code}).")
+    if response.status_code >= 400:
+        raise DevOpsRejected(f"Azure DevOps refused the change: {message}")
+    try:
+        body = response.json()
+        return int(body.get("rev") or body["fields"]["System.Rev"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise DevOpsUncertain("Azure DevOps answered without a revision.") from exc
+
+
+def change_applied(ops: list[dict], current: WorkItemDetail, members: list[tuple[str, str]]) -> bool:
+    """Whether the story already holds every value of the change (used after an uncertain write)."""
+    accounts = {account.casefold(): display for display, account in members}
+    for op in ops:
+        field = op["path"].removeprefix("/fields/")
+        value = op["value"]
+        checks = {
+            "System.Title": lambda: current.title == value,
+            "System.State": lambda: current.state == value,
+            "System.IterationPath": lambda: current.iteration_path == value,
+            "Microsoft.VSTS.Scheduling.StoryPoints": lambda: current.story_points == value,
+            "System.AssignedTo": lambda: accounts.get(str(value).casefold()) == current.assigned_to,
+            "System.Description": lambda: _same(value, current.description),
+            "Custom.EntryCriteria": lambda: _same(value, current.entry_criteria),
+            "Microsoft.VSTS.Common.AcceptanceCriteria": lambda: _same(value, current.acceptance_criteria),
+        }
+        if not checks.get(field, lambda: False)():
+            return False
+    return True

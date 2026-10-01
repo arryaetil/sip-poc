@@ -187,6 +187,49 @@ class ContextStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_story_drafts_conversation ON story_drafts(conversation_id, created_at)"
             )
+            # What SIP read from Azure DevOps for a question, so it comes back after a reload.
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS work_item_results (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            # Proposed changes to existing stories: versioned like story_drafts, plus the
+            # revision the change was planned against and the before/after list shown.
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS work_item_changes (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    work_item_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft', 'applying', 'applied', 'failed', 'uncertain')),
+                    content TEXT NOT NULL,
+                    ops TEXT NOT NULL,
+                    changes TEXT NOT NULL,
+                    base_rev INTEGER NOT NULL,
+                    approved_version INTEGER,
+                    approved_by TEXT,
+                    approved_at TEXT,
+                    confirmation_id TEXT UNIQUE,
+                    error TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_work_item_changes_conversation ON work_item_changes(conversation_id, created_at)"
+            )
 
     def backfill_owner(self, owner_id: str) -> None:
         """Claim legacy rows for the bootstrap account; NULL must never mean public."""
@@ -339,6 +382,8 @@ class ContextStore:
             )
             # Only SIP's copy goes; a story already created in Azure DevOps stays there.
             connection.execute("DELETE FROM story_drafts WHERE conversation_id = ?", (conversation_id,))
+            connection.execute("DELETE FROM work_item_results WHERE conversation_id = ?", (conversation_id,))
+            connection.execute("DELETE FROM work_item_changes WHERE conversation_id = ?", (conversation_id,))
             connection.execute(
                 "DELETE FROM conversations WHERE id = ?", (conversation_id,)
             )
@@ -659,6 +704,128 @@ class ContextStore:
             connection.execute(
                 "UPDATE story_drafts SET error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'uncertain'",
                 (error, draft_id),
+            )
+
+    # --- Azure DevOps reads and changes to existing stories -------------------
+
+    def save_work_item_result(self, conversation_id: str, owner_id: str, payload: dict) -> sqlite3.Row:
+        result_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO work_item_results (id, conversation_id, owner_id, payload) VALUES (?, ?, ?, ?)",
+                (result_id, conversation_id, owner_id, json.dumps(payload)),
+            )
+            return connection.execute("SELECT * FROM work_item_results WHERE id = ?", (result_id,)).fetchone()
+
+    def list_work_item_results(self, conversation_id: str, owner_id: str, is_admin: bool = False) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM work_item_results WHERE conversation_id = ? AND (? OR owner_id = ?) ORDER BY created_at, rowid",
+                (conversation_id, int(is_admin), owner_id),
+            ).fetchall()
+
+    def save_work_item_change(
+        self, conversation_id: str, owner_id: str, work_item_id: int, title: str, url: str,
+        content: str, ops: list[dict], changes: list[dict], base_rev: int,
+    ) -> sqlite3.Row | None:
+        """A new proposal, or a new version of the open one for the same story.
+
+        Returns None while a change to that story is being applied or its outcome
+        is uncertain: then nothing may be planned on top of it.
+        """
+        with self._connect() as connection:
+            current = connection.execute(
+                "SELECT * FROM work_item_changes WHERE conversation_id = ? AND work_item_id = ? "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (conversation_id, work_item_id),
+            ).fetchone()
+            if current is not None and current["status"] in ("applying", "uncertain"):
+                return None
+            if current is not None and current["status"] in ("draft", "failed"):
+                cursor = connection.execute(
+                    """
+                    UPDATE work_item_changes
+                    SET title = ?, url = ?, content = ?, ops = ?, changes = ?, base_rev = ?, version = version + 1,
+                        status = 'draft', error = NULL, approved_version = NULL, approved_by = NULL,
+                        approved_at = NULL, confirmation_id = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND status IN ('draft', 'failed')
+                    """,
+                    (title, url, content, json.dumps(ops), json.dumps(changes), base_rev, current["id"]),
+                )
+                if not cursor.rowcount:
+                    return None
+                change_id = current["id"]
+            else:
+                change_id = str(uuid4())
+                connection.execute(
+                    "INSERT INTO work_item_changes "
+                    "(id, conversation_id, owner_id, work_item_id, title, url, content, ops, changes, base_rev) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (change_id, conversation_id, owner_id, work_item_id, title, url, content,
+                     json.dumps(ops), json.dumps(changes), base_rev),
+                )
+        return self.get_work_item_change(change_id, owner_id)
+
+    def get_work_item_change(self, change_id: str, owner_id: str, is_admin: bool = False) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM work_item_changes WHERE id = ? AND (? OR owner_id = ?)",
+                (change_id, int(is_admin), owner_id),
+            ).fetchone()
+
+    def list_work_item_changes(self, conversation_id: str, owner_id: str, is_admin: bool = False) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM work_item_changes WHERE conversation_id = ? AND (? OR owner_id = ?) ORDER BY created_at, rowid",
+                (conversation_id, int(is_admin), owner_id),
+            ).fetchall()
+
+    def rebase_work_item_change(self, change_id: str, ops: list[dict], changes: list[dict], base_rev: int, error: str) -> None:
+        """The story moved on: plan again on the new revision; a new confirmation is needed."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE work_item_changes
+                SET ops = ?, changes = ?, base_rev = ?, version = version + 1, status = 'failed', error = ?,
+                    confirmation_id = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status IN ('draft', 'applying', 'failed', 'uncertain')
+                """,
+                (json.dumps(ops), json.dumps(changes), base_rev, error, change_id),
+            )
+
+    def begin_work_item_change(self, change_id: str, owner_id: str, version: int, confirmation_id: str, approved_by: str) -> bool:
+        try:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE work_item_changes
+                    SET status = 'applying', approved_version = version, approved_by = ?,
+                        approved_at = CURRENT_TIMESTAMP, confirmation_id = ?, error = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND owner_id = ? AND version = ? AND status IN ('draft', 'failed')
+                    """,
+                    (approved_by, confirmation_id, change_id, owner_id, version),
+                )
+        except sqlite3.IntegrityError:
+            return False
+        return bool(cursor.rowcount)
+
+    def settle_stale_work_item_change(self, change_id: str, error: str, stale_seconds: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE work_item_changes SET status = 'uncertain', error = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND status = 'applying' AND updated_at <= datetime('now', ?)",
+                (error, change_id, f"-{int(stale_seconds)} seconds"),
+            )
+
+    def set_work_item_change_status(self, change_id: str, status: str, error: str | None = None) -> None:
+        """Move an applying or uncertain change to its outcome."""
+        clear = ", confirmation_id = NULL" if status == "failed" else ""
+        with self._connect() as connection:
+            connection.execute(
+                f"UPDATE work_item_changes SET status = ?, error = ?{clear}, updated_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND status IN ('applying', 'uncertain')",
+                (status, error, change_id),
             )
 
     def list_users(self) -> list[UserRecord]:

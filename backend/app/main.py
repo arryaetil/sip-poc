@@ -28,6 +28,7 @@ from app.models import (
     ContextSummary,
     ConversationCreateRequest,
     ConversationDetail,
+    ConversationMessage,
     ConversationMessageRequest,
     ConversationSummary,
     ConversationTurnResponse,
@@ -37,6 +38,7 @@ from app.models import (
     PrepareContextRequest,
     ProductOwnerChatResponse,
     ProductOwnerSettings,
+    ProductOwnerTimeline,
     PortfolioSolutionCollection,
     PortfolioSourceCollection,
     PortfolioSourceDetail,
@@ -51,6 +53,10 @@ from app.models import (
     StudioProjectRequest,
     UpdateStoryDraftRequest,
     UpdateUserRequest,
+    WorkItemChange,
+    WorkItemChangeRecord,
+    WorkItemQuery,
+    WorkItemResult,
     UploadRecord,
     UserInfo,
     UserRecord,
@@ -712,7 +718,9 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
 # DevOps only after the owner confirmed that exact version. Roles: admin and
 # product_owner may use the assistant (_role_allows; sales gets 403). Creating
 # in Azure DevOps happens under one person's token, so it is further limited to
-# the accounts listed in SIP_PRODUCT_OWNER_WRITERS; empty means nobody.
+# the accounts listed in SIP_PRODUCT_OWNER_WRITERS; empty means nobody. The same
+# list governs reading (overviews, a story) and changing existing stories, as
+# those also run under that token.
 # Admins can read other people's Product Owner conversations, like all
 # conversations, but only the owner can continue, edit or confirm them.
 
@@ -799,6 +807,144 @@ def _targets_for_model(targets: list[StoryTarget]) -> str:
     return "\n".join(lines)
 
 
+def _devops_people(request: Request) -> tuple[list[tuple[str, str]], tuple[str, str] | None]:
+    """Team members and the signed-in user's own membership, for accounts that may use DevOps."""
+    if not (_can_write_stories(request) and devops.configured()):
+        return [], None
+    try:
+        members = devops.team_members()
+    except devops.DevOpsUnavailable as exc:
+        logger.warning("Azure DevOps team unavailable: %s", exc)
+        return [], None
+    email = getattr(request.state, "user_email", None) or ""
+    return members, devops.person_for_email(email, members) if email else None
+
+
+def _people_for_model(members: list[tuple[str, str]], me: tuple[str, str] | None, allowed: bool) -> str:
+    if not allowed:
+        return "Azure DevOps reads and changes are not available for this user; only new story drafts are."
+    if not members:
+        return "Team members: not available right now."
+    # Display names only: accounts (email addresses) stay in SIP.
+    names = ", ".join(display for display, _ in members)
+    signed_in = me[0] if me else "unknown (ask for the user's name when they say 'me')"
+    return f"Team members (display names): {names}\nSigned-in user in Azure DevOps: {signed_in}"
+
+
+def _result_note(payload: dict) -> str:
+    """What the model may know about an earlier read, as plain text."""
+    if payload.get("error"):
+        return f"[Azure DevOps via SIP] {payload['label']}: {payload['error']}"
+    detail = payload.get("detail")
+    if detail:
+        return (
+            f"[Azure DevOps via SIP] Story #{detail['id']} ({detail['state']}, rev {detail['rev']}): {detail['title']}\n"
+            f"Assigned to: {detail.get('assigned_to') or 'nobody'}; iteration: {detail['iteration_path']}; "
+            f"points: {detail.get('story_points')}\nDescription: {detail['description']}\n"
+            f"Entry criteria: {detail['entry_criteria']}\nAcceptance criteria: {detail['acceptance_criteria']}"
+        )
+    lines = [
+        f"#{item['id']} {item['title']} ({item['state']}, {item.get('story_points')} pts, {item.get('assigned_to') or 'unassigned'})"
+        for item in payload.get("items", [])
+    ]
+    return f"[Azure DevOps via SIP] {payload['label']}: " + ("; ".join(lines) if lines else "no items")
+
+
+def _history_for_model(conversation: ConversationDetail, owner_id: str) -> list[ConversationMessage]:
+    """The conversation plus what SIP itself did (reads, changes, created stories), in order."""
+    store = get_context_store()
+    notes: list[tuple[str, str]] = []
+    for row in store.list_work_item_results(conversation.id, owner_id):
+        notes.append((row["created_at"], _result_note(json.loads(row["payload"]))))
+    for row in store.list_work_item_changes(conversation.id, owner_id):
+        if row["status"] == "applied":
+            summary = "; ".join(f"{c['field']}: {c['before'] or '-'} -> {c['after']}" for c in json.loads(row["changes"]))
+            notes.append((row["updated_at"], f"[SIP] Story #{row['work_item_id']} was updated in Azure DevOps: {summary}"))
+    for row in store.list_story_drafts(conversation.id, owner_id):
+        if row["status"] == "created":
+            notes.append((row["updated_at"], f"[SIP] Story #{row['devops_id']} was created in Azure DevOps."))
+    timeline = [(message.created_at, 0, message) for message in conversation.messages]
+    timeline += [
+        (created_at, 1, ConversationMessage(id=0, role="assistant", content=text, created_at=created_at))
+        for created_at, text in notes
+    ]
+    return [entry[2] for entry in sorted(timeline, key=lambda entry: (entry[0], entry[1]))]
+
+
+def _result_record(row) -> WorkItemResult:
+    return WorkItemResult(id=row["id"], conversation_id=row["conversation_id"], created_at=row["created_at"], **json.loads(row["payload"]))
+
+
+def _change_record(row) -> WorkItemChangeRecord:
+    return WorkItemChangeRecord(
+        id=row["id"],
+        conversation_id=row["conversation_id"],
+        work_item_id=row["work_item_id"],
+        title=row["title"],
+        url=row["url"],
+        version=row["version"],
+        status=row["status"],
+        changes=json.loads(row["changes"]),
+        base_rev=row["base_rev"],
+        approved_version=row["approved_version"],
+        error=row["error"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _run_query(
+    query: WorkItemQuery, targets: list[StoryTarget], members: list[tuple[str, str]], me: tuple[str, str] | None
+) -> dict:
+    """Run one read for the assistant; failures become a readable message, not an error page."""
+    sprints = {target.iteration_path: target for target in targets if target.kind == "sprint"}
+    current = next((target for target in sprints.values() if target.timeframe == "current"), None)
+    payload: dict = {"kind": query.kind, "label": "", "items": [], "detail": None, "error": None}
+    try:
+        if query.kind == "story":
+            if not query.work_item_id:
+                raise ValueError("Which story number do you mean?")
+            payload["label"] = f"Story #{query.work_item_id}"
+            detail = devops.get_item(query.work_item_id)
+            payload["detail"] = detail.model_dump()
+            payload["items"] = [detail.model_dump(include=set(type(detail).model_fields) - {"rev", "description", "entry_criteria", "acceptance_criteria"})]
+            return payload
+        sprint = sprints.get(query.iteration_path or "") or (current if query.kind == "sprint" or query.iteration_path else None)
+        if query.kind == "sprint":
+            if sprint is None:
+                raise ValueError("There is no current sprint for the team.")
+            payload["label"] = sprint.name
+            payload["items"] = [item.model_dump() for item in devops.sprint_items(sprint.iteration_path)]
+        else:
+            if not members:
+                raise ValueError("The team list of Azure DevOps is not available right now.")
+            if (query.person or "me").strip().casefold() in ("me", "mij", "ik", "mich", "ich"):
+                if me is None:
+                    raise ValueError("SIP cannot link your sign-in to an Azure DevOps account. Ask again with your name.")
+                person = me
+            else:
+                person = devops.resolve_person(query.person, members)
+            payload["label"] = f"{person[0]} · {sprint.name}" if sprint else f"{person[0]} · open"
+            payload["items"] = [item.model_dump() for item in devops.assigned_items(person[1], sprint.iteration_path if sprint else None)]
+        if len(payload["items"]) >= devops.MAX_LIST:
+            payload["label"] += f" (first {devops.MAX_LIST})"
+    except (ValueError, devops.DevOpsUnavailable) as exc:
+        payload["error"] = str(exc)
+    return payload
+
+
+def _plan_change(
+    change: WorkItemChange, language: str, targets: list[StoryTarget], members: list[tuple[str, str]]
+) -> tuple[object, list[dict], list]:
+    current = devops.get_item(change.work_item_id)
+    if current.work_item_type != "User Story":
+        raise ValueError(f"#{current.id} is a {current.work_item_type}; SIP only changes user stories.")
+    ops, shown = devops.plan_change(change, current, language, targets, members)
+    if not ops:
+        raise ValueError(f"Story #{current.id} already has these values; nothing to change.")
+    return current, ops, shown
+
+
 def _owned_product_owner_conversation(conversation_id: str, owner_id: str) -> ConversationDetail:
     conversation = get_context_store().get_conversation(conversation_id, owner_id)
     if conversation is None or conversation.kind != "product_owner":
@@ -812,12 +958,14 @@ def product_owner_settings(request: Request) -> ProductOwnerSettings:
     can_create = _can_write_stories(request)
     if not can_create and notice is None:
         notice = "Your account cannot create stories in Azure DevOps yet. You can write and save a proposal."
+    members, _ = _devops_people(request)
     return ProductOwnerSettings(
         devops_configured=devops.configured(),
         can_create=can_create and bool(targets),
         organisation=devops.organisation(),
         project=devops.project(),
         targets=targets,
+        people=[display for display, _ in members],
         notice=notice,
     )
 
@@ -834,13 +982,15 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
     current = _settle_stale_create(store.current_story_draft(conversation.id))
     open_draft = current is not None and current["status"] in ("draft", "failed")
     targets, _ = _story_targets()
+    allowed = _can_write_stories(http_request)
+    members, me = _devops_people(http_request)
     try:
         turn = get_assistant().product_owner_turn(
-            conversation.messages,
+            _history_for_model(conversation, owner_id),
             request.message,
             conversation.language,
             owner_id,
-            _targets_for_model(targets),
+            f"{_targets_for_model(targets)}\n\n{_people_for_model(members, me, allowed)}",
             current["content"] if open_draft else "",
         )
     except RuntimeError as exc:
@@ -864,6 +1014,12 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
         }:
             # Never keep a sprint SIP did not offer; the user picks one in the proposal.
             content = content.model_copy(update={"iteration_path": None})
+        if content.assigned_to:
+            # Only a real team member; a name the model made up is dropped.
+            try:
+                content = content.model_copy(update={"assigned_to": devops.resolve_person(content.assigned_to, members)[0]})
+            except ValueError:
+                content = content.model_copy(update={"assigned_to": None})
         saved = store.save_model_story_draft(conversation.id, owner_id, conversation.language, content)
         draft_row = saved or current
     updated = store.add_conversation_turn(
@@ -877,10 +1033,38 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Product Owner conversation not found")
+
+    # Reads and changes run after the turn is stored, so they follow its answer.
+    result_row = change_row = None
+    no_access = "Your account cannot use Azure DevOps through SIP."
+    if turn.query is not None:
+        payload = _run_query(turn.query, targets, members, me) if allowed else {
+            "kind": turn.query.kind, "label": "Azure DevOps", "items": [], "detail": None, "error": no_access,
+        }
+        result_row = store.save_work_item_result(conversation.id, owner_id, payload)
+    if turn.change is not None:
+        error = no_access if not allowed else None
+        if error is None:
+            try:
+                current_item, ops, shown = _plan_change(turn.change, conversation.language, targets, members)
+                change_row = store.save_work_item_change(
+                    conversation.id, owner_id, current_item.id, current_item.title, current_item.url,
+                    turn.change.model_dump_json(), ops, [item.model_dump() for item in shown], current_item.rev,
+                )
+                if change_row is None:
+                    error = f"A change to story #{current_item.id} is still being applied or checked."
+            except (ValueError, devops.DevOpsUnavailable) as exc:
+                error = str(exc)
+        if error is not None:
+            result_row = store.save_work_item_result(conversation.id, owner_id, {
+                "kind": "story", "label": f"Story #{turn.change.work_item_id}", "items": [], "detail": None, "error": error,
+            })
     return ProductOwnerChatResponse(
         message=turn.message,
         conversation_id=conversation.id,
         draft=_story_record(draft_row) if draft_row is not None else None,
+        result=_result_record(result_row) if result_row is not None else None,
+        change=_change_record(change_row) if change_row is not None else None,
         open_questions=turn.open_questions,
         split_suggestion=turn.split_suggestion,
     )
@@ -894,6 +1078,132 @@ def list_product_owner_drafts(conversation_id: str, request: Request) -> list[St
     if conversation is None or conversation.kind != "product_owner":
         raise HTTPException(status_code=404, detail="Product Owner conversation not found")
     return [_story_record(_settle_stale_create(row)) for row in store.list_story_drafts(conversation_id, owner_id, is_admin)]
+
+
+@app.get("/api/product-owner/conversations/{conversation_id}/timeline", response_model=ProductOwnerTimeline)
+def product_owner_timeline(conversation_id: str, request: Request) -> ProductOwnerTimeline:
+    """Everything a conversation produced besides messages, to rebuild it after a reload."""
+    owner_id, is_admin = _actor(request)
+    store = get_context_store()
+    conversation = store.get_conversation(conversation_id, owner_id, is_admin)
+    if conversation is None or conversation.kind != "product_owner":
+        raise HTTPException(status_code=404, detail="Product Owner conversation not found")
+    return ProductOwnerTimeline(
+        drafts=[_story_record(_settle_stale_create(row)) for row in store.list_story_drafts(conversation_id, owner_id, is_admin)],
+        changes=[_change_record(_settle_stale_change(row)) for row in store.list_work_item_changes(conversation_id, owner_id, is_admin)],
+        results=[_result_record(row) for row in store.list_work_item_results(conversation_id, owner_id, is_admin)],
+    )
+
+
+def _settle_stale_change(row):
+    if row is not None and row["status"] == "applying":
+        store = get_context_store()
+        store.settle_stale_work_item_change(row["id"], "SIP stopped before Azure DevOps answered.", STALE_CREATE_SECONDS)
+        return store.get_work_item_change(row["id"], row["owner_id"])
+    return row
+
+
+def _replan(row, language: str, reason: str) -> None:
+    """The story moved on: plan the same intent against its new revision; needs a new confirmation."""
+    store = get_context_store()
+    change = WorkItemChange.model_validate_json(row["content"])
+    try:
+        current, ops, shown = _plan_change(change, language, devops.list_targets(), devops.team_members())
+    except ValueError as exc:
+        store.rebase_work_item_change(row["id"], json.loads(row["ops"]), json.loads(row["changes"]), row["base_rev"], f"{reason} {exc}")
+        return
+    store.rebase_work_item_change(row["id"], ops, [item.model_dump() for item in shown], current.rev, reason)
+
+
+def _conversation_language(conversation_id: str, owner_id: str) -> str:
+    conversation = get_context_store().get_conversation(conversation_id, owner_id)
+    return conversation.language if conversation else "en"
+
+
+@app.post("/api/product-owner/changes/{change_id}/apply", response_model=WorkItemChangeRecord)
+def apply_product_owner_change(change_id: str, body: CreateStoryRequest, request: Request) -> WorkItemChangeRecord:
+    """Change an existing story after the owner confirmed this exact version.
+
+    The write carries a /rev test: if anyone changed the story since SIP read
+    it, Azure DevOps refuses and SIP plans the change again for a new confirmation.
+    """
+    owner_id, _ = _actor(request)
+    store = get_context_store()
+    if not _can_write_stories(request):
+        raise HTTPException(status_code=403, detail="Your account cannot change stories in Azure DevOps.")
+    row = _settle_stale_change(store.get_work_item_change(change_id, owner_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Change proposal not found")
+    if row["confirmation_id"] == body.confirmation_id and row["status"] in ("applying", "applied", "uncertain"):
+        return _change_record(row)
+    if row["status"] == "applied":
+        raise HTTPException(status_code=409, detail="This change was already applied.")
+    if row["status"] == "applying":
+        raise HTTPException(status_code=409, detail="This change is being applied right now.")
+    if row["status"] == "uncertain":
+        raise HTTPException(status_code=409, detail="It is not yet known whether the earlier attempt changed this story. Check first.")
+    if row["version"] != body.version:
+        raise HTTPException(status_code=409, detail="The proposal changed after you confirmed it. Review it and confirm again.")
+    language = _conversation_language(row["conversation_id"], owner_id)
+    try:
+        current = devops.get_item(row["work_item_id"])
+    except devops.DevOpsUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if current.rev != row["base_rev"]:
+        _replan(row, language, "The story changed after this proposal was made; check the updated proposal.")
+        return _change_record(store.get_work_item_change(change_id, owner_id))
+    approved_by = getattr(request.state, "user_email", None) or "local-dev"
+    if not store.begin_work_item_change(change_id, owner_id, body.version, body.confirmation_id, approved_by):
+        latest = store.get_work_item_change(change_id, owner_id)
+        if latest is not None and latest["confirmation_id"] == body.confirmation_id:
+            return _change_record(latest)
+        raise HTTPException(status_code=409, detail="The proposal changed or is already being applied. Reload it first.")
+    try:
+        new_rev = devops.update_item(row["work_item_id"], row["base_rev"], json.loads(row["ops"]))
+    except devops.DevOpsConflict as exc:
+        store.set_work_item_change_status(change_id, "failed", str(exc))
+        _replan(store.get_work_item_change(change_id, owner_id), language, f"{exc} Check the updated proposal.")
+    except devops.DevOpsUncertain as exc:
+        store.set_work_item_change_status(change_id, "uncertain", f"{exc} The change may have been applied; check first.")
+    except (devops.DevOpsRejected, devops.DevOpsUnavailable) as exc:
+        store.set_work_item_change_status(change_id, "failed", str(exc))
+    except Exception:
+        logger.error("Changing story %s failed:\n%s", row["work_item_id"], traceback.format_exc())
+        store.set_work_item_change_status(change_id, "uncertain", "Something went wrong while changing the story. Check first.")
+    else:
+        store.set_work_item_change_status(change_id, "applied")
+        logger.info("Changed Azure DevOps story %s to rev %s (proposal %s)", row["work_item_id"], new_rev, change_id)
+    return _change_record(store.get_work_item_change(change_id, owner_id))
+
+
+@app.post("/api/product-owner/changes/{change_id}/check", response_model=WorkItemChangeRecord)
+def check_product_owner_change(change_id: str, request: Request) -> WorkItemChangeRecord:
+    """Settle an uncertain change by reading the story, never by writing."""
+    owner_id, _ = _actor(request)
+    store = get_context_store()
+    if not _can_write_stories(request):
+        raise HTTPException(status_code=403, detail="Your account cannot change stories in Azure DevOps.")
+    row = _settle_stale_change(store.get_work_item_change(change_id, owner_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Change proposal not found")
+    if row["status"] != "uncertain":
+        return _change_record(row)
+    try:
+        current = devops.get_item(row["work_item_id"])
+        members = devops.team_members()
+    except (devops.DevOpsUnavailable, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if devops.change_applied(json.loads(row["ops"]), current, members):
+        store.set_work_item_change_status(change_id, "applied")
+    elif current.rev == row["base_rev"]:
+        store.set_work_item_change_status(change_id, "failed", "Azure DevOps did not apply the change. You can confirm again.")
+    else:
+        store.set_work_item_change_status(change_id, "failed", "The story changed in the meantime.")
+        _replan(store.get_work_item_change(change_id, owner_id), _conversation_language(row["conversation_id"], owner_id),
+                "The story changed in the meantime; check the updated proposal.")
+    return _change_record(store.get_work_item_change(change_id, owner_id))
 
 
 @app.put("/api/product-owner/drafts/{draft_id}", response_model=StoryDraftRecord)
@@ -946,11 +1256,12 @@ def create_product_owner_story(draft_id: str, body: CreateStoryRequest, request:
         raise HTTPException(status_code=422, detail=f"The proposal is not complete yet: {', '.join(missing)}.")
     try:
         iteration_path = devops.resolve_iteration(content, devops.list_targets())
+        assignee = devops.resolve_person(content.assigned_to, devops.team_members()) if content.assigned_to else None
     except devops.DevOpsUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    approved = content.model_copy(update={"iteration_path": iteration_path})
+    approved = content.model_copy(update={"iteration_path": iteration_path, "assigned_to": assignee[0] if assignee else None})
     approved_by = getattr(request.state, "user_email", None) or "local-dev"
     if not store.begin_story_create(draft_id, owner_id, body.version, body.confirmation_id, approved_by, approved):
         current = store.get_story_draft(draft_id, owner_id)
@@ -959,7 +1270,7 @@ def create_product_owner_story(draft_id: str, body: CreateStoryRequest, request:
         raise HTTPException(status_code=409, detail="The proposal changed or is already being created. Reload it first.")
 
     try:
-        created = devops.create_story(approved, row["language"], iteration_path)
+        created = devops.create_story(approved, row["language"], iteration_path, assignee[1] if assignee else None)
     except devops.DevOpsUncertain as exc:
         logger.warning("Azure DevOps outcome uncertain for story proposal %s: %s", draft_id, exc)
         store.mark_story_uncertain(draft_id, f"{exc} The story may exist; check before trying again.")
