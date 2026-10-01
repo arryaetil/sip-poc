@@ -100,14 +100,17 @@ def create_project(
     """Create a ready-to-run Open Design project; returns the signed link to open it."""
     internal, _, token, _ = _config()
     project_id = f"sip-{uuid4().hex[:16]}"
-    design_system = BRANDS.get(request.brand, BRANDS["etil"])
+    brand = request.brand if request.brand in BRANDS else "etil"
+    design_system = BRANDS[brand]
     headers = {"Authorization": f"Bearer {token}"}
     prompt = (
         f"Create {FORMAT_BRIEFS[request.format]}. Brief: {request.brief}\n\n"
-        "Base every statement on context.md in this project. The official logos, example posts "
-        "and approved images are in the brand/ folder of this project: use them. Load Ubuntu with "
-        "@font-face from brand/fonts/Ubuntu-{Light,Regular,Medium,Bold}.ttf. Use only the official "
-        "logo files in brand/, shown whole and never cropped, and never draw or create a logo."
+        f"Base every statement on context.md in this project. The official logos, example posts "
+        f"and approved images are in the brand/{brand}/ folder of this project: use them, as "
+        f"listed in the image catalogue of the design system. Load Ubuntu with @font-face from "
+        f"brand/{brand}/fonts/Ubuntu-{{Light,Regular,Medium,Bold}}.ttf. Use only the official "
+        f"logo files in brand/{brand}/, shown whole and never cropped, and never draw or create a "
+        "logo. Never download photos from the internet."
     )
     with httpx.Client(base_url=internal, headers=headers, timeout=30) as http:
         created = http.post(
@@ -122,7 +125,7 @@ def create_project(
                     "never invent customers, figures, results or capabilities. Follow the selected "
                     "design system strictly (colours, Ubuntu, logo rules, tone of voice). Write in the "
                     "language of the brief. For imagery, first use the approved images listed in the design "
-                    "system (assets/images) or build the background with CSS; generate a new image only when "
+                    f"system (brand/{brand}/images) or build the background with CSS; generate a new image only when "
                     "none fits, and then label it as AI-generated. Creative Commons images in the private "
                     "reference library require a fresh licence check and attribution before use."
                 ),
@@ -138,36 +141,6 @@ def create_project(
         )
         if uploaded.status_code >= 400:
             raise RuntimeError(f"Open Design refused the context file: {uploaded.status_code} {uploaded.text[:200]}")
-        _copy_brand_assets(http, design_system, project_id)
+        # The gateway has already copied the brand files into brand/<brand>/ while creating the project.
     return signed_link(owner_id, f"/projects/{project_id}")
 
-
-ASSET_TYPES = (".png", ".jpg", ".jpeg", ".svg", ".webp", ".ttf")
-
-
-def _copy_brand_assets(http: httpx.Client, design_system: str, project_id: str) -> None:
-    """Put the house style's logos, examples and images into the project's brand/ folder.
-
-    The design system's prose reaches the model through the prompt, but its files
-    do not: without copies in the project the model has no logo to place.
-    """
-    listing = http.get(f"/api/design-systems/{design_system}/files")
-    listing.raise_for_status()
-    for item in listing.json().get("files", []):
-        path = item.get("path") or ""
-        # The private source library remains available through the authenticated
-        # design system, but copying hundreds of originals into every project
-        # would waste storage and model context.
-        if path.startswith("assets/private-library/"):
-            continue
-        if not path.startswith(("assets/", "fonts/")) or not path.lower().endswith(ASSET_TYPES):
-            continue
-        asset = http.get(f"/api/design-systems/{design_system}/static", params={"path": path})
-        if asset.status_code >= 400:
-            continue
-        name = "brand/" + path.removeprefix("assets/")  # fonts/ keeps its folder: brand/fonts/
-        http.post(
-            f"/api/projects/{project_id}/files",
-            data={"name": name},
-            files={"file": (path.rsplit("/", 1)[-1], asset.content, asset.headers.get("content-type", "application/octet-stream"))},
-        ).raise_for_status()

@@ -1,5 +1,36 @@
 # Handover — SIP POC (Dify provider, knowledge base, Marketing studio)
 
+## Marketing studio images (feature/studio-image-library, 01-10)
+
+Problem: a colleague asked "Verwende das Bildmotiv aus dem People Service Bereich"; the post used a stock
+office photo instead. Found: project `7c2f5b61…` was created in the studio itself (Marketing studio -> new
+project), had `designSystemId: None`, no brand files, and the model fetched a photo from the internet.
+
+Fixed on the branch (tests pass):
+- `DESIGN.md` (etil, ibc-group): image catalogue per file (what it shows, which service/topic, German and
+  Dutch terms) with paths `brand/<brand>/images/…`, and the rule: never download photos from the internet.
+- Live Open Design answers `GET /api/design-systems/<id>/files` with 404 "editable design system not
+  found" (since ~25-09; SIP's handoff failed on it). So nothing uses that endpoint any more: the gateway
+  (`gateway.mjs`, runs in the Open Design container) reads the brand files from disk,
+  `$OD_DATA_DIR/design-systems/<brand>/assets|fonts`, skipping `assets/private-library`, and uploads them to
+  `brand/<brand>/…` on every new `POST /api/projects`, before it answers.
+  - Studio projects without a house style: both brands + DESIGN.md/tokens.css, customInstructions ask
+    "Etil or ibc group?" first. etil / ibc-group / `user:etil` / `user:ibc-group` chosen: that brand's files
+    and FOLLOW_BRAND instructions. Another Open Design style: untouched.
+  - SIP projects (`metadata.source=sip`): the brand files, SIP's own customInstructions kept.
+- `backend/app/studio.py`: `_copy_brand_assets` removed; prompt points at `brand/etil/` (was
+  `brand/user:etil/`, which did not match the catalogue).
+- Session cookie `typ: session` (same fix as the Developer gateway).
+- `marketing/open-design/test-gateway.mjs`: fake Open Design (listing 404 like live) + brand files on disk.
+
+Deploy order: Open Design first (`MSYS_NO_PATHCONV=1 railway up marketing/open-design --path-as-root
+--service open-design`), then SIP (`railway up --service sip-poc`). Check that a new studio project gets
+`brand/…` files and asks Etil/ibc.
+
+Other open items (01-10): Dify PO app publish of the latest import (all work item types) not confirmed by
+Arrya; `OPENAI_API_KEY` missing on `opencode-developer`; no signed-in production test of Developer yet.
+Tip: `railway ssh` from Git Bash needs `MSYS_NO_PATHCONV=1` and only simple commands (no pipes/parentheses).
+
 ## Software developer / OpenCode (feature/opencode-developer, 01-10-2026)
 
 Een aparte `developer/opencode/`-service is voorbereid met OpenCode v1.18.34, een eigen toegangspoort en volume op `/data`. SIP geeft via `/api/developer/link` alleen aan `SIP_DEVELOPER_EMAIL` een kort geldige, ondertekende link. De homepage toont het aangeleverde poppetje als **Software developer** en opent OpenCode in een nieuw tabblad. OpenAI gebruikt een aparte `OPENAI_API_KEY` op de Developer-service; Arrya heeft deze aanbieder gekozen. Zie `developer/opencode/README.md` voor variabelen, opslag, versieafweging, tests en exacte uitrol.

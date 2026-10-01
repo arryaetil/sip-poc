@@ -75,7 +75,26 @@ AI-generated images must carry the label **"AI-GENERATED VISUAL — provided by 
 
 ## Image library and AI labels
 
-Prefer these approved images over generating new ones: `assets/images/case-1.jpg`, `assets/images/case-2.jpg`, `assets/images/case-3.jpg`, `assets/images/case-4.jpg`, `assets/images/case-5.jpg`, `assets/images/case-6.jpg`, `assets/images/etil-etil-header-2.jpg`, `assets/images/etil-header-v1-1.jpg`, `assets/images/etil-ibc-beleid-2.jpg`, `assets/images/etil-ibc-group-process-teaser-2.jpg`, `assets/images/etil-ibc-menskracht-3.jpg`, `assets/images/etil-services-hero.jpg`. They already carry the AI notice where needed.
+Every project has copies of these files in its own `brand/etil/` folder (images, examples, logos and fonts); use those paths in HTML. When someone refers to a service, topic, colour or "Bildmotiv"/"beeldmotief" (for example "das Bildmotiv aus dem People Service Bereich"), use the matching image below as it is: do not swap it for something similar. Never download or hotlink photos from the internet (stock photos, Unsplash and the like): they are not part of the brand and their licence is unknown. If nothing below fits, build the background with the brand colours in CSS, or generate an image and label it as AI-generated.
+
+| File in the project | What it shows | Use it for |
+|---|---|---|
+| `brand/etil/images/etil-ibc-menskracht-3.jpg` | Silhouettes of several people in profile against warm orange light | Menskracht / mensen, teams, expertise, transformatie begint bij mensen |
+| `brand/etil/images/etil-ibc-beleid-2.jpg` | Flowing silver-white wave on a light grey background | Beleid / governance, besluitvorming, rust en overzicht |
+| `brand/etil/images/etil-ibc-group-process-teaser-2.jpg` | The same silver-white wave, portrait format | Beleid or process topics in a tall layout |
+| `brand/etil/images/etil-header-v1-1.jpg` | A person in front of an open door of warm orange-red light, in the dark | Header, vision, a new step, "connecting insights to impact" |
+| `brand/etil/images/etil-etil-header-2.jpg` | Fast light trails in orange, pink and blue on black | Header, speed, data in motion |
+| `brand/etil/images/etil-services-hero.jpg` | Four panels: data light trails, blue glass prisms, silver wave, people silhouettes | All Etil services together |
+| `brand/etil/images/case-1.jpg` | Blue glowing glass cubes on dark blue | Technology, software, architecture |
+| `brand/etil/images/case-2.jpg` | Gold-green waveform lines with a blue light beam on black | Data, signals, measuring, analysis |
+| `brand/etil/images/case-3.jpg` | Blue wireframe cubes in a network, with a small car | Mobility, infrastructure, smart cities, digital twin |
+| `brand/etil/images/case-4.jpg` | Pink-red glowing ring of particles on black | Data, a central source of truth, connection |
+| `brand/etil/images/case-5.jpg` | Network of grey and red dots, from light to dark | Networks, data relations, insight |
+| `brand/etil/images/case-6.jpg` | Orange glowing glass panels in a row | Energy, transparency, layers, policy in practice |
+
+Finished LinkedIn posts in the house style, to copy the pattern (not to reuse as images): `brand/etil/examples/linkedin-menskracht.jpg` (MENSKRACHT), `brand/etil/examples/linkedin-data.jpg` (DATA), `brand/etil/examples/linkedin-beleid.jpg` (BELEID), `brand/etil/examples/linkedin-technologie.jpg` (TECHNOLOGIE).
+
+The images above already carry the AI notice where needed.
 
 From the *AI-Generated Images Guideline*: always label an image when someone could think it is real (photo-like, used in marketing, social media or external communication, or shareable on its own). Place the label directly on the image, small and discreet, bottom right: **"AI-generated image – created by IBC Group Marketing"** (short: "AI-generated | IBC Group Marketing"). When in doubt, label. Do not use Creative Commons images without the author attribution from the licence library; ask marketing instead.
 

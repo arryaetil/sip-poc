@@ -56,7 +56,21 @@ Never invent customers, results, figures or capabilities: only state what the su
 
 ## Image library and AI labels
 
-Prefer these approved images over generating new ones: `assets/images/service-ibc-group-all-services-black-ai-notice.jpg`, `assets/images/service-ibc-group-all-services.jpg`, `assets/images/service-ibc-group-data-service.jpg`, `assets/images/service-ibc-group-ibc-spectrum-motiv.jpg`, `assets/images/service-ibc-group-people-service.jpg`, `assets/images/service-ibc-group-process-service.jpg`, `assets/images/service-ibc-group-technology-service.jpg`. They already carry the AI notice where needed.
+Every project has copies of these files in its own `brand/ibc-group/` folder (images, examples, logos and fonts); use those paths in HTML. When someone refers to a service, topic, colour or "Bildmotiv"/"beeldmotief" (for example "das Bildmotiv aus dem People Service Bereich"), use the matching image below as it is: do not swap it for something similar. Never download or hotlink photos from the internet (stock photos, Unsplash and the like): they are not part of the brand and their licence is unknown. If nothing below fits, build the background with the brand colours in CSS, or generate an image and label it as AI-generated.
+
+| File in the project | What it shows | Use it for |
+|---|---|---|
+| `brand/ibc-group/images/service-ibc-group-people-service.jpg` | Woman in profile, silhouette with a glowing orange-yellow light line, on orange | People Service / Bereich People / Personal, Expertise, Talent, HR (colour PEOPLE `#ff6600`) |
+| `brand/ibc-group/images/service-ibc-group-data-service.jpg` | Streams of red and pink light particles on black | Data Service / Bereich Data / Daten, Analytics (colour DATA `#ff3333`) |
+| `brand/ibc-group/images/service-ibc-group-process-service.jpg` | Two green-turquoise curved shapes on dark blue-black | Process Service / Bereich Process / Prozesse, Abläufe (colour PROCESS `#009966`) |
+| `brand/ibc-group/images/service-ibc-group-technology-service.jpg` | Blue-purple glass cubes and prisms with light flares | Technology Service / Bereich Technology / Technologie, IT, Architektur (colour TECHNOLOGY `#0066cc`) |
+| `brand/ibc-group/images/service-ibc-group-ibc-spectrum-motiv.jpg` | A person facing a tall vertical beam in the spectrum colours, in the dark | ibc spectrum motif; ibc group as a whole, vision, "connecting performance" |
+| `brand/ibc-group/images/service-ibc-group-all-services.jpg` | Four panels side by side: data particles, technology cubes, process shape, people profile; light background | All services together, overview of ibc group |
+| `brand/ibc-group/images/service-ibc-group-all-services-black-ai-notice.jpg` | The same four panels on black, with the AI notice | All services together, on a dark layout |
+
+Finished LinkedIn posts in the house style, to copy the pattern (not to reuse as images): `brand/ibc-group/examples/linkedin-people.jpg` (PEOPLE, orange profile), `brand/ibc-group/examples/linkedin-data.jpg` (DATA), `brand/ibc-group/examples/linkedin-process.jpg` (PROCESS), `brand/ibc-group/examples/linkedin-technology.jpg` (TECHNOLOGY).
+
+The images above already carry the AI notice where needed.
 
 From the *AI-Generated Images Guideline*: always label an image when someone could think it is real (photo-like, used in marketing, social media or external communication, or shareable on its own). Place the label directly on the image, small and discreet, bottom right: **"AI-generated image – created by IBC Group Marketing"** (short: "AI-generated | IBC Group Marketing"). When in doubt, label. Do not use Creative Commons images without the author attribution from the licence library; ask marketing instead.
 

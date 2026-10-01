@@ -13,6 +13,8 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import nodePath from 'node:path';
 
 const PORT = Number(process.env.PORT || 8080);
 const UPSTREAM_PORT = Number(process.env.OD_INTERNAL_PORT || 7456);
@@ -69,7 +71,8 @@ function deny(res) {
 function enter(req, res, url) {
   const claims = verify(url.searchParams.get('t'));
   if (!claims) return deny(res);
-  const session = b64(JSON.stringify({ sub: claims.sub, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS }));
+  if (claims.typ === 'session') return deny(res); // a session cookie is not an entry link
+  const session = b64(JSON.stringify({ typ: 'session', sub: claims.sub, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS }));
   const next = typeof claims.next === 'string' && claims.next.startsWith('/') && !claims.next.startsWith('//') ? claims.next : '/';
   securityHeaders(res);
   res.writeHead(302, {
@@ -83,7 +86,8 @@ function enter(req, res, url) {
 
 function authorised(req) {
   if (req.headers.authorization === `Bearer ${TOKEN}`) return true;
-  return verify(cookieValue(req.headers.cookie, COOKIE)) !== null;
+  // Only a session cookie counts; an entry link set as a cookie would skip the link's purpose.
+  return verify(cookieValue(req.headers.cookie, COOKIE))?.typ === 'session';
 }
 
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
@@ -106,8 +110,114 @@ function withServerModel(body) {
   }
 }
 
+// --- House style for projects created in the studio ----------------------------
+//
+// A project started from the SIP chat gets its instructions from SIP. A project
+// created in the studio itself (Marketing studio -> new project) used to get
+// nothing, so the model knew no brand and fetched stock photos. Now the gateway
+// gives every new project the brand files under brand/<brand>/, and when no
+// house style was chosen it gives both and the model asks which one first.
+
+const BRANDS = ['etil', 'ibc-group'];
+const ASSET_TYPES = /\.(png|jpe?g|svg|webp|ttf)$/i;
+const NO_INVENTION = 'Never invent customers, figures, results or capabilities. Never download or hotlink photos from the internet: '
+  + 'use the brand images, CSS in the brand colours, or a generated image labelled as AI-generated.';
+const ASK_BRAND = 'This project was started in the studio without a house style. Before you design anything, ask the user one short '
+  + 'question in their language: should this use the Etil or the ibc group house style? Then follow brand/etil/DESIGN.md or '
+  + 'brand/ibc-group/DESIGN.md strictly (colours, Ubuntu, logo rules, tone of voice and the image catalogue) and use only the files '
+  + 'in that brand folder: images, examples, logos and fonts (load Ubuntu with @font-face from brand/<brand>/fonts/). ' + NO_INVENTION;
+const FOLLOW_BRAND = (brand) => `Follow the selected ${brand} design system strictly. Its images, examples, logos and fonts are in `
+  + `brand/${brand}/ in this project; when the user refers to a service, topic or image motif, use the matching image from the `
+  + `image catalogue of the design system. ` + NO_INVENTION;
+
+function upstream(path, init = {}) {
+  return fetch(`http://127.0.0.1:${UPSTREAM_PORT}${path}`, { ...init, headers: { ...(init.headers || {}), authorization: `Bearer ${TOKEN}` } });
+}
+
+// Read from disk, not through Open Design's API: its design-system file listing
+// answers 404 for these packages, while the files are right here on the volume
+// (entrypoint.sh installs them in OD_DATA_DIR/design-systems).
+const DESIGN_SYSTEMS = nodePath.join(process.env.OD_DATA_DIR || '/app/.od', 'design-systems');
+const MEDIA_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+  '.ttf': 'font/ttf', '.md': 'text/markdown', '.css': 'text/css' };
+
+// Open Design names the packages user:etil and user:ibc-group; the folders are etil and ibc-group.
+const brandOf = (designSystemId) => String(designSystemId || '').replace(/^user:/, '');
+
+async function brandFiles(root) {
+  const found = [];
+  async function walk(relative) {
+    for (const entry of await fs.readdir(nodePath.join(root, relative), { withFileTypes: true })) {
+      const path = `${relative}/${entry.name}`;
+      // The private source library stays in the design system: hundreds of originals per project would waste space and context.
+      if (path === 'assets/private-library') continue;
+      if (entry.isDirectory()) await walk(path);
+      else if (ASSET_TYPES.test(path)) found.push(path);
+    }
+  }
+  for (const folder of ['assets', 'fonts']) {
+    try { await walk(folder); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  return found.sort();
+}
+
+async function copyBrand(projectId, brand, withNotes) {
+  const root = nodePath.join(DESIGN_SYSTEMS, brand);
+  const files = await brandFiles(root);
+  if (!files.length) throw new Error(`design system ${brand} has no brand files in ${root}`);
+  if (withNotes) files.push('DESIGN.md', 'tokens.css');
+  for (const path of files) {
+    let content;
+    try { content = await fs.readFile(nodePath.join(root, path)); } catch { continue; }
+    const form = new FormData();
+    form.append('name', `brand/${brand}/${path.replace(/^assets\//, '')}`);
+    form.append('file', new Blob([content], { type: MEDIA_TYPES[nodePath.extname(path).toLowerCase()] || 'application/octet-stream' }), nodePath.basename(path));
+    const saved = await upstream(`/api/projects/${encodeURIComponent(projectId)}/files`, { method: 'POST', body: form });
+    if (!saved.ok) throw new Error(`upload ${path}: ${saved.status}`);
+  }
+}
+
+async function createProject(req, res, body) {
+  let project;
+  try { project = JSON.parse(body.toString('utf8') || '{}'); } catch { return forward(req, res, body); }
+  const chosen = project.designSystemId ? brandOf(project.designSystemId) : null;
+  // Another of Open Design's styles was a deliberate choice: leave that project alone.
+  if (chosen && !BRANDS.includes(chosen)) return forward(req, res, body);
+  // SIP writes its own instructions; it only needs the brand files.
+  if (project.metadata?.source !== 'sip') {
+    project.customInstructions = [project.customInstructions, chosen ? FOLLOW_BRAND(chosen) : ASK_BRAND].filter(Boolean).join('\n\n');
+  }
+  let status = 502;
+  let text = '{"error":"Open Design is not reachable"}';
+  let type = 'application/json';
+  try {
+    const created = await upstream('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(project) });
+    status = created.status;
+    text = await created.text();
+    type = created.headers.get('content-type') || type;
+    if (created.ok) {
+      let id = project.id;
+      try { const parsed = JSON.parse(text); id = parsed.project?.id || parsed.id || id; } catch {}
+      // Copied before answering, so the files are there when the first run starts.
+      if (id) for (const brand of chosen ? [chosen] : BRANDS) await copyBrand(id, brand, !chosen);
+    }
+  } catch (error) {
+    console.error('gateway: preparing the project failed', error.message);
+  }
+  securityHeaders(res);
+  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
+  res.end(text);
+}
+
 function proxy(req, res) {
-  if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(new URL(req.url || '/', 'http://gateway').pathname)) {
+  const pathname = new URL(req.url || '/', 'http://gateway').pathname;
+  if (req.method === 'POST' && pathname === '/api/projects') {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => createProject(req, res, Buffer.concat(chunks)));
+    return;
+  }
+  if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(pathname)) {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => forward(req, res, withServerModel(Buffer.concat(chunks))));
