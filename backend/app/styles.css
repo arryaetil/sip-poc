@@ -733,3 +733,49 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 @media (prefers-contrast: more) {
   .specialist { border-color: #121212; }
 }
+
+/* Living robots — see bringRobotToLife in app.js */
+.robot-live { position: absolute; inset: 0; opacity: 0; pointer-events: none; transform-origin: 50% 90%; }
+.specialist-stage.is-alive .robot-live { opacity: 1; animation: robot-breathe 4.8s ease-in-out infinite; animation-delay: var(--breath-delay, 0s); }
+.specialist-stage.is-alive picture { visibility: hidden; }
+.specialist-stage.is-alive.is-still .robot-live, .specialist-stage.has-video .robot-live { opacity: 0; animation: none; }
+.specialist-stage.is-alive.is-still picture, .specialist-stage.has-video picture { visibility: visible; }
+.specialist-stage.is-alive { cursor: pointer; }
+.robot-body, .robot-base { position: absolute; inset: 0; width: 100%; height: 100%; }
+.robot-body { transform-origin: 50% 90%; transition: transform 260ms cubic-bezier(.34, 1.56, .64, 1); }
+.robot-eye {
+  position: absolute;
+  left: calc((var(--cx) - var(--r)) / 1254 * 100%);
+  top: calc((var(--cy) - var(--r)) / 1254 * 100%);
+  width: calc(var(--r) * 2 / 1254 * 100%);
+  aspect-ratio: 1;
+  transition: transform 220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.robot-eye-gaze { position: absolute; inset: 0; transform: translate(var(--gx, 0%), var(--gy, 0%)); }
+.robot-eye-lid {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
+}
+.robot-eye-lid img {
+  position: absolute;
+  max-width: none;
+  width: calc(1254 / (var(--r) * 2) * 100%);
+  left: calc(-1 * (var(--cx) - var(--r)) / (var(--r) * 2) * 100%);
+  top: calc(-1 * (var(--cy) - var(--r)) / (var(--r) * 2) * 100%);
+}
+.specialist-stage.is-blinking .robot-eye-lid { animation: robot-blink 170ms ease-in-out; }
+.specialist-stage.is-happy .robot-eye-lid { animation: robot-squint 650ms ease-in-out; }
+.specialist-stage.is-happy .robot-body { transform: scale(1.03, 1.05); }
+.specialist.is-perked .robot-body { transform: scale(1.015, 1.03); }
+.specialist.is-perked .robot-eye { transform: scale(1.07); }
+@keyframes robot-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.008, 1.016); } }
+@keyframes robot-blink { 0%, 100% { transform: scaleY(1); } 45%, 55% { transform: scaleY(.08); } }
+@keyframes robot-squint { 0%, 100% { transform: scaleY(1); } 25%, 70% { transform: scaleY(.45) translateY(8%); } }
+@media (prefers-reduced-motion: reduce) {
+  .robot-live { display: none; }
+  .specialist-stage.is-alive picture { visibility: visible; }
+}

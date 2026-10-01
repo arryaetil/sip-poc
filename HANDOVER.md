@@ -160,6 +160,13 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
   Actions carry `data-roles` mirroring `_role_allows`; Sales sees the studio and
   create-context actions as unavailable.
 - Images: `backend/app/avatars/{marketing,kennis,kyc}.{webp,png}`, 720 px.
+- Living robots (`bringRobotToLife` in `app.js`): `<name>-base.webp` is the robot
+  with its eyes painted out; the eyes are cut from `<name>.webp` as two layers
+  (coordinates in `data-eyes`, on the 1254 px source grid). They follow the
+  pointer, blink, wander when idle, glance at neighbours, perk up on hover and
+  squint when the robot is tapped. Until both images have loaded, and always with
+  "reduce motion", the original still image is shown. New robot images need new
+  eye coordinates and a new base image.
 - Optional animations: drop `marketing.mp4`, `kennis.mp4`, `kyc.mp4` (square,
   muted, H.264) in the same folder and deploy. `index()` only advertises videos
   that exist; playback stops off-screen, on other views and with reduced motion.

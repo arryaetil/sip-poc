@@ -13,6 +13,7 @@ def test_home_images_are_served_and_unknown_files_are_refused(monkeypatch):
     for name in ("marketing", "kennis", "kyc"):
         assert http.get(f"/avatars/{name}.webp").status_code == 200
         assert http.get(f"/avatars/{name}.png").headers["content-type"] == "image/png"
+        assert http.get(f"/avatars/{name}-base.webp").status_code == 200
     assert http.get("/avatars/../main.py").status_code == 404
     assert http.get("/avatars/marketing.exe").status_code == 404
     assert http.get("/avatars/other.png").status_code == 404
