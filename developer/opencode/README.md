@@ -40,4 +40,4 @@ De OpenCode-webinterface wordt door de eigen server aangeboden. De modelaanvraag
 
 ## Controle
 
-De Python-tests controleren SIP-aanmelding, het exacte account, ontbrekende configuratie, de linkvorm en de homepage: 71 tests geslaagd. `node developer/opencode/test-gateway.mjs` test de werkelijke poort met een nagebootste OpenCode-server op directe toegang, verlopen/aangepaste/hergebruikte links, cookies en herkomst. Een werkende modelopdracht, browserterminal en blijvende opslag kunnen pas na het instellen en uitrollen op Railway worden bevestigd.
+De Python-tests controleren SIP-aanmelding, het exacte account, ontbrekende configuratie, de linkvorm en de homepage: 77 tests geslaagd voor de gecombineerde main-code. `node developer/opencode/test-gateway.mjs` test de werkelijke poort met een nagebootste OpenCode-server op directe toegang, verlopen/aangepaste/hergebruikte links, cookies en herkomst. Online zijn beide services uitgerold en gezond; rechtstreekse Developer-toegang en een SIP-link zonder aanmelding leveren 401. Een werkende modelopdracht, browserterminal en blijvende opslag kunnen pas na het instellen van de aparte `OPENAI_API_KEY` worden bevestigd.
