@@ -16,6 +16,25 @@ const I18N = {
     "nav.lead": "Lead intelligence",
     "nav.marketing": "Marketing studio",
 
+    "nav.home": "Home",
+    "home.kicker": "Your digital team",
+    "home.title": "Who would you like to work with?",
+    "home.subtitle": "Choose the specialist who can help you further.",
+    "home.list_label": "Specialists",
+    "home.marketing.name": "Marketing specialist",
+    "home.marketing.text": "Create marketing content in your organisation's house style.",
+    "home.marketing.action": "Open Marketing studio",
+    "home.knowledge.name": "Knowledge assistant",
+    "home.knowledge.text": "Get answers grounded in your organisation's knowledge, or add to it yourself.",
+    "home.knowledge.action_ask": "Ask your question",
+    "home.knowledge.action_share": "Share your knowledge",
+    "home.kyc.name": "KYC researcher",
+    "home.kyc.text": "Get a clear picture of a customer or organisation.",
+    "home.kyc.note": "Opens KYCX in a new tab, with its own sign-in.",
+    "home.kyc.action": "Start customer research",
+    "home.status.role": "Not available for your role",
+    "home.role_copy": "Ask an administrator if you need this.",
+
     "conversations.title": "Your conversations",
     "conversations.kicker": "Create a Business Context",
     "conversations.prompt_title": "What Business Context would you like to create?",
@@ -254,6 +273,25 @@ const I18N = {
     "nav.lead": "Lead intelligence",
     "nav.marketing": "Marketing studio",
 
+    "nav.home": "Home",
+    "home.kicker": "Jouw digitale team",
+    "home.title": "Met wie ga je aan de slag?",
+    "home.subtitle": "Kies de specialist die je verder helpt.",
+    "home.list_label": "Specialisten",
+    "home.marketing.name": "Marketing-specialist",
+    "home.marketing.text": "Maak marketingcontent in de huisstijl van jouw organisatie.",
+    "home.marketing.action": "Open Marketing studio",
+    "home.knowledge.name": "Kennisassistent",
+    "home.knowledge.text": "Vind onderbouwde antwoorden in de kennis van jouw organisatie, of vul die zelf aan.",
+    "home.knowledge.action_ask": "Stel je vraag",
+    "home.knowledge.action_share": "Deel je kennis",
+    "home.kyc.name": "KYC-onderzoeker",
+    "home.kyc.text": "Breng een klant of organisatie in beeld.",
+    "home.kyc.note": "Opent KYCX in een nieuw tabblad, met een eigen login.",
+    "home.kyc.action": "Start klantonderzoek",
+    "home.status.role": "Niet beschikbaar voor jouw rol",
+    "home.role_copy": "Vraag een beheerder als je dit nodig hebt.",
+
     "conversations.title": "Jouw gesprekken",
     "conversations.kicker": "Business Context aanmaken",
     "conversations.prompt_title": "Welke Business Context wil je aanmaken?",
@@ -491,6 +529,25 @@ const I18N = {
     "nav.integrations": "Integrationen",
     "nav.lead": "Lead Intelligence",
     "nav.marketing": "Marketing Studio",
+
+    "nav.home": "Startseite",
+    "home.kicker": "Dein digitales Team",
+    "home.title": "Mit wem möchtest du arbeiten?",
+    "home.subtitle": "Wähle die Fachkraft, die dir weiterhilft.",
+    "home.list_label": "Fachkräfte",
+    "home.marketing.name": "Marketing-Spezialist",
+    "home.marketing.text": "Erstelle Marketing-Inhalte im Corporate Design deiner Organisation.",
+    "home.marketing.action": "Marketing Studio öffnen",
+    "home.knowledge.name": "Wissensassistent",
+    "home.knowledge.text": "Finde fundierte Antworten im Wissen deiner Organisation oder ergänze es selbst.",
+    "home.knowledge.action_ask": "Frage stellen",
+    "home.knowledge.action_share": "Wissen teilen",
+    "home.kyc.name": "KYC-Rechercheur",
+    "home.kyc.text": "Verschaffe dir ein Bild von einem Kunden oder einer Organisation.",
+    "home.kyc.note": "Öffnet KYCX in einem neuen Tab, mit eigener Anmeldung.",
+    "home.kyc.action": "Kundenprüfung starten",
+    "home.status.role": "Für deine Rolle nicht verfügbar",
+    "home.role_copy": "Wende dich an eine Administratorin oder einen Administrator, wenn du das brauchst.",
 
     "conversations.title": "Deine Unterhaltungen",
     "conversations.kicker": "Business Context erstellen",
@@ -748,6 +805,8 @@ function t(key, vars) {
 }
 
 function applyTranslations() {
+  // Also on page load, so screen readers use the right pronunciation.
+  document.documentElement.lang = getLanguage();
   document.querySelectorAll("[data-i18n]").forEach((element) => {
     element.textContent = t(element.dataset.i18n);
   });

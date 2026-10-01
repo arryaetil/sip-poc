@@ -1,4 +1,5 @@
 const views = {
+  home: document.querySelector("#home-view"),
   conversations: document.querySelector("#conversations-view"),
   builder: document.querySelector("#builder-view"),
   review: document.querySelector("#review-view"),
@@ -165,6 +166,7 @@ function applyRolePermissions() {
   const isAdmin = currentRole === "admin";
   navTeam.hidden = !isAdmin;
   navLabelAdministration.hidden = !isAdmin;
+  applySpecialistAvailability();
 }
 
 function deleteButton(label, onClick) {
@@ -211,6 +213,7 @@ function showView(name) {
     else item.removeAttribute("aria-current");
   });
   window.scrollTo({ top: 0, behavior: "smooth" });
+  syncHomeMedia();
 }
 
 function resizeTextArea(textarea) {
@@ -1411,7 +1414,247 @@ deleteDialog.addEventListener("close", () => {
   pendingDelete = null;
 });
 
+// Home: "Your digital team". Each action opens an existing SIP view through its
+// navigation item, so the home page adds no second route into any feature.
+// data-roles on each action mirrors _role_allows in main.py.
+const specialistCards = [...document.querySelectorAll(".specialist[data-specialist]")];
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function applySpecialistAvailability() {
+  specialistCards.forEach((card) => {
+    const actions = [...card.querySelectorAll(".specialist-action")];
+    actions.forEach((action) => {
+      action.hidden = !action.dataset.roles.split(" ").includes(currentRole);
+    });
+    const usable = actions.filter((action) => !action.hidden);
+    const notice = card.querySelector(".specialist-unavailable");
+    if (notice && actions.length) notice.hidden = usable.length > 0;
+    card.classList.toggle("is-unavailable", usable.length === 0);
+    // With exactly one action the whole card is its hit area; with two, each button is its own.
+    card.classList.toggle("is-single-action", usable.length === 1);
+  });
+}
+
+document.querySelectorAll(".specialist-action[data-view]").forEach((action) => {
+  action.addEventListener("click", () => {
+    const navItem = document.querySelector(`.nav-item[data-view="${action.dataset.view}"]`);
+    if (navItem) navItem.click();
+  });
+});
+
+// Optional animation per specialist: drop <name>.mp4 next to the PNG in
+// backend/app/avatars. Without a file, or when it fails, blocked autoplay or
+// "reduce motion" apply, the still image stays and everything keeps working.
+const homeVideoState = new Map(); // video element -> "failed" | "ready"
+const homeVideoObserver = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries) => entries.forEach((entry) => {
+    entry.target.dataset.inView = entry.isIntersecting ? "true" : "false";
+    updateHomeVideo(entry.target);
+  }), { threshold: 0.35 })
+  : null;
+
+function updateHomeVideo(video) {
+  const shouldPlay = !views.home.hidden
+    && !document.hidden
+    && !reducedMotion.matches
+    && video.dataset.inView === "true"
+    && homeVideoState.get(video) !== "failed";
+  if (!shouldPlay) {
+    if (!video.paused) video.pause();
+    return;
+  }
+  if (!video.getAttribute("src")) video.src = video.dataset.video;
+  const attempt = video.play();
+  if (attempt) attempt.catch(() => video.pause()); // autoplay blocked: keep the still image
+}
+
+const homeVideos = [...document.querySelectorAll(".specialist-video[data-video]")];
+
+function syncHomeMedia() {
+  homeVideos.forEach(updateHomeVideo);
+  if (typeof requestRobotFrame === "function" && robotsActive()) {
+    startRobots();
+    requestRobotFrame();
+  }
+}
+
+homeVideos.forEach((video) => {
+  video.addEventListener("playing", () => video.closest(".specialist-stage").classList.add("has-video"));
+  video.addEventListener("pause", () => video.closest(".specialist-stage").classList.remove("has-video"));
+  video.addEventListener("error", () => {
+    homeVideoState.set(video, "failed");
+    video.closest(".specialist-stage").classList.remove("has-video");
+    video.removeAttribute("src");
+  });
+  if (homeVideoObserver) homeVideoObserver.observe(video);
+});
+document.addEventListener("visibilitychange", syncHomeMedia);
+reducedMotion.addEventListener?.("change", () => {
+  document.querySelectorAll(".specialist-stage.is-alive").forEach((stage) => stage.classList.toggle("is-still", reducedMotion.matches));
+  syncHomeMedia();
+});
+
+// Living robots: the eyes follow the pointer, blink, wander when nothing happens and
+// now and then glance at a neighbour. Each robot is its still image with the eyes
+// removed, plus the two eyes cut from the original as separate layers. Until both
+// images have loaded, and always with "reduce motion", the original PNG stays.
+const ROBOT_SIZE = 1254; // pixel grid of the source images the eye coordinates use
+const GAZE_REACH = 15; // furthest an eye moves, in source pixels
+const robots = [];
+let pointer = null;
+let lastPointerMove = 0;
+let robotFrame = 0;
+
+function loadImage(src) {
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  return image.decode().then(() => image);
+}
+
+async function bringRobotToLife(live) {
+  const stage = live.closest(".specialist-stage");
+  const card = live.closest(".specialist");
+  const eyes = live.dataset.eyes.split(";").map((eye) => eye.split(",").map(Number));
+  try {
+    await Promise.all([loadImage(live.dataset.base), loadImage(live.dataset.eyesSrc)]);
+  } catch (error) {
+    return; // keep the original still image
+  }
+  const body = document.createElement("div");
+  body.className = "robot-body";
+  const base = document.createElement("img");
+  base.className = "robot-base";
+  base.src = live.dataset.base;
+  base.alt = "";
+  body.append(base);
+  const eyeElements = eyes.map(([cx, cy, r]) => {
+    const eye = document.createElement("div");
+    eye.className = "robot-eye";
+    eye.style.cssText = `--cx: ${cx}; --cy: ${cy}; --r: ${r};`;
+    eye.innerHTML = `<div class="robot-eye-gaze"><div class="robot-eye-lid"><img alt="" src="${live.dataset.eyesSrc}"></div></div>`;
+    body.append(eye);
+    return eye;
+  });
+  live.append(body);
+  stage.classList.add("is-alive");
+
+  const robot = {
+    card,
+    stage,
+    eyeElements,
+    centre: [
+      eyes.reduce((sum, eye) => sum + eye[0], 0) / eyes.length / ROBOT_SIZE,
+      eyes.reduce((sum, eye) => sum + eye[1], 0) / eyes.length / ROBOT_SIZE,
+    ],
+    radius: eyes.map((eye) => eye[2]),
+    gaze: [0, 0],
+    target: [0, 0],
+    wanderUntil: 0,
+  };
+  robots.push(robot);
+  scheduleBlink(robot);
+  card.addEventListener("pointerenter", () => card.classList.add("is-perked"));
+  card.addEventListener("pointerleave", () => card.classList.remove("is-perked"));
+  card.addEventListener("focusin", () => card.classList.add("is-perked"));
+  card.addEventListener("focusout", () => card.classList.remove("is-perked"));
+  // Tapping the robot itself gets a happy squint; it does not navigate.
+  stage.addEventListener("click", () => {
+    stage.classList.remove("is-happy");
+    void stage.offsetWidth;
+    stage.classList.add("is-happy");
+    window.setTimeout(() => stage.classList.remove("is-happy"), 700);
+  });
+  requestRobotFrame();
+}
+
+function robotsActive() {
+  return !views.home.hidden && !document.hidden && !reducedMotion.matches;
+}
+
+function scheduleBlink(robot) {
+  const wait = 2200 + Math.random() * 4200;
+  window.setTimeout(() => {
+    if (robotsActive()) {
+      robot.stage.classList.remove("is-blinking");
+      void robot.stage.offsetWidth;
+      robot.stage.classList.add("is-blinking");
+      // Sometimes a quick double blink.
+      if (Math.random() < 0.2) window.setTimeout(() => {
+        robot.stage.classList.remove("is-blinking");
+        void robot.stage.offsetWidth;
+        robot.stage.classList.add("is-blinking");
+      }, 260);
+    }
+    scheduleBlink(robot);
+  }, wait);
+}
+
+function chooseTargets(now) {
+  const idle = !pointer || now - lastPointerMove > 3500;
+  robots.forEach((robot, index) => {
+    if (!idle) {
+      const rect = robot.stage.getBoundingClientRect();
+      const x = rect.left + robot.centre[0] * rect.width;
+      const y = rect.top + robot.centre[1] * rect.height;
+      const dx = pointer[0] - x;
+      const dy = pointer[1] - y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const strength = Math.min(1, distance / 260);
+      robot.target = [(dx / distance) * strength, (dy / distance) * strength * 0.75];
+      return;
+    }
+    if (now < robot.wanderUntil) return;
+    const roll = Math.random();
+    if (roll < 0.3 && robots.length > 1) {
+      // Glance at a neighbour.
+      const neighbour = robots[(index + (Math.random() < 0.5 ? 1 : robots.length - 1)) % robots.length];
+      const direction = Math.sign(robots.indexOf(neighbour) - index) || 1;
+      robot.target = [0.85 * direction, 0.1];
+    } else if (roll < 0.55) {
+      robot.target = [0, 0]; // straight at the viewer
+    } else {
+      robot.target = [(Math.random() * 2 - 1) * 0.7, (Math.random() * 2 - 1) * 0.45];
+    }
+    robot.wanderUntil = now + 1400 + Math.random() * 2600;
+  });
+}
+
+function requestRobotFrame() {
+  if (!robotFrame) robotFrame = window.requestAnimationFrame(animateRobots);
+}
+
+function animateRobots(now) {
+  robotFrame = 0;
+  if (!robotsActive() || !robots.length) return;
+  chooseTargets(now);
+  robots.forEach((robot) => {
+    robot.gaze = robot.gaze.map((value, axis) => value + (robot.target[axis] - value) * 0.16);
+    robot.eyeElements.forEach((eye, index) => {
+      const scale = GAZE_REACH / (2 * robot.radius[index]) * 100;
+      eye.style.setProperty("--gx", `${(robot.gaze[0] * scale).toFixed(2)}%`);
+      eye.style.setProperty("--gy", `${(robot.gaze[1] * scale).toFixed(2)}%`);
+    });
+  });
+  requestRobotFrame();
+}
+
+document.addEventListener("pointermove", (event) => {
+  pointer = [event.clientX, event.clientY];
+  lastPointerMove = performance.now();
+  requestRobotFrame();
+}, { passive: true });
+
+function startRobots() {
+  if (reducedMotion.matches) return;
+  document.querySelectorAll(".robot-live").forEach((live) => {
+    if (!live.closest(".specialist-stage").classList.contains("is-alive")) bringRobotToLife(live);
+  });
+}
+
 applyTranslations();
+applySpecialistAvailability();
 resetKnowledgeChat();
 loadCurrentUser();
 loadConversations();
+window.addEventListener("load", startRobots);

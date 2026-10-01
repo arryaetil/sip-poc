@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SIP · ibc group Portfolio</title>
+  <link rel="preload" href="/fonts/ubuntu-regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
   <script src="/i18n.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <img class="brand-logo" src="/ibc-group-lockup.png?v=2" alt="ibc group — connecting performance">
+    <a class="brand-link" href="/"><img class="brand-logo" src="/ibc-group-lockup.png?v=2" alt="ibc group — connecting performance"></a>
     <span class="product-name">Solution Intelligence Platform</span>
     <div class="topbar-actions">
       <span id="user-role-badge" class="role-badge" hidden></span>
@@ -31,7 +32,11 @@
     <aside class="sidebar" aria-label="SIP modules">
       <p class="nav-label" data-i18n="nav.workspace">Workspace</p>
       <nav class="nav-list">
-        <button id="nav-create-context" class="nav-item active" type="button" data-view="conversations" aria-current="page">
+        <button id="nav-home" class="nav-item active" type="button" data-view="home" aria-current="page">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5M6.5 9.5V19h11V9.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.home">Home</span>
+        </button>
+        <button id="nav-create-context" class="nav-item" type="button" data-view="conversations">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span data-i18n="nav.create_context">Create context</span>
         </button>
@@ -67,7 +72,86 @@
     </aside>
 
     <main class="workspace">
-      <section id="conversations-view" class="view conversations" aria-labelledby="conversations-title">
+      <section id="home-view" class="view home" aria-labelledby="home-title">
+        <header class="home-header">
+          <p class="launcher-kicker" data-i18n="home.kicker">Your digital team</p>
+          <h1 id="home-title" data-i18n="home.title">Who would you like to work with?</h1>
+          <p class="home-subtitle" data-i18n="home.subtitle">Choose the specialist who can help you further.</p>
+        </header>
+        <ul class="specialists" data-i18n-aria-label="home.list_label" aria-label="Specialists">
+          <li class="specialist" data-specialist="marketing" style="--specialist-accent: #ff6600; --specialist-stage: #f7f8fa;">
+            <div class="specialist-stage" aria-hidden="true">
+              <picture>
+                <source srcset="/avatars/marketing.webp" type="image/webp">
+                <img class="specialist-image" src="/avatars/marketing.png" alt="" width="720" height="720" decoding="async">
+              </picture>
+              <div class="robot-live" data-base="/avatars/marketing-base.webp" data-eyes-src="/avatars/marketing.webp" data-eyes="564,319,64;745,360,64" style="--breath-delay: -0.4s;"></div>
+              <video class="specialist-video" data-video="/avatars/marketing.mp4" poster="/avatars/marketing.webp" muted loop playsinline preload="none" disablepictureinpicture tabindex="-1"></video>
+            </div>
+            <div class="specialist-body">
+              <h2 id="specialist-marketing-name" class="specialist-name" data-i18n="home.marketing.name"></h2>
+              <p id="specialist-marketing-text" class="specialist-text" data-i18n="home.marketing.text"></p>
+              <div class="specialist-actions">
+              <button class="specialist-action" type="button" data-view="marketing" data-roles="admin product_owner" aria-describedby="specialist-marketing-name specialist-marketing-text">
+                <span data-i18n="home.marketing.action"></span>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              </div>
+              <div class="specialist-unavailable" hidden>
+                <p class="specialist-status" data-i18n="home.status.role"></p>
+                <p class="specialist-status-copy" data-i18n="home.role_copy"></p>
+              </div>
+            </div>
+          </li>
+          <li class="specialist" data-specialist="knowledge" style="--specialist-accent: #c9a54e; --specialist-stage: #f8fafc;">
+            <div class="specialist-stage" aria-hidden="true">
+              <picture>
+                <source srcset="/avatars/kennis.webp" type="image/webp">
+                <img class="specialist-image" src="/avatars/kennis.png" alt="" width="720" height="720" decoding="async">
+              </picture>
+              <div class="robot-live" data-base="/avatars/kennis-base.webp" data-eyes-src="/avatars/kennis.webp" data-eyes="560,316,64;741,359,64" style="--breath-delay: -1.9s;"></div>
+              <video class="specialist-video" data-video="/avatars/kennis.mp4" poster="/avatars/kennis.webp" muted loop playsinline preload="none" disablepictureinpicture tabindex="-1"></video>
+            </div>
+            <div class="specialist-body">
+              <h2 id="specialist-knowledge-name" class="specialist-name" data-i18n="home.knowledge.name"></h2>
+              <p id="specialist-knowledge-text" class="specialist-text" data-i18n="home.knowledge.text"></p>
+              <div class="specialist-actions">
+              <button class="specialist-action" type="button" data-view="knowledge" data-roles="admin product_owner sales" aria-describedby="specialist-knowledge-name specialist-knowledge-text">
+                <span data-i18n="home.knowledge.action_ask"></span>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="specialist-action specialist-action-secondary" type="button" data-view="conversations" data-roles="admin product_owner" aria-describedby="specialist-knowledge-name specialist-knowledge-text">
+                <span data-i18n="home.knowledge.action_share"></span>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              </div>
+            </div>
+          </li>
+          <li class="specialist" data-specialist="kyc" style="--specialist-accent: #0066cc; --specialist-stage: #f7f9fb;">
+            <div class="specialist-stage" aria-hidden="true">
+              <picture>
+                <source srcset="/avatars/kyc.webp" type="image/webp">
+                <img class="specialist-image" src="/avatars/kyc.png" alt="" width="720" height="720" decoding="async">
+              </picture>
+              <div class="robot-live" data-base="/avatars/kyc-base.webp" data-eyes-src="/avatars/kyc.webp" data-eyes="562,321,64;744,361,58" style="--breath-delay: -3.1s;"></div>
+              <video class="specialist-video" data-video="/avatars/kyc.mp4" poster="/avatars/kyc.webp" muted loop playsinline preload="none" disablepictureinpicture tabindex="-1"></video>
+            </div>
+            <div class="specialist-body">
+              <h2 id="specialist-kyc-name" class="specialist-name" data-i18n="home.kyc.name"></h2>
+              <p id="specialist-kyc-text" class="specialist-text" data-i18n="home.kyc.text"></p>
+              <div class="specialist-actions">
+                <a class="specialist-action" href="https://kycx-adverse-media-production.up.railway.app/" target="_blank" rel="noopener noreferrer" data-roles="admin product_owner sales" aria-describedby="specialist-kyc-name specialist-kyc-text specialist-kyc-note">
+                  <span data-i18n="home.kyc.action"></span>
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 5h5v5m0-5-8 8M17 14v5H5V7h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+              </div>
+              <p id="specialist-kyc-note" class="specialist-note" data-i18n="home.kyc.note"></p>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <section id="conversations-view" class="view conversations" aria-labelledby="conversations-title" hidden>
         <section class="conversation-launcher">
           <p class="launcher-kicker" data-i18n="conversations.kicker">Create a Business Context</p>
           <h1 id="conversations-title" data-i18n="conversations.prompt_title">What Business Context would you like to create?</h1>
