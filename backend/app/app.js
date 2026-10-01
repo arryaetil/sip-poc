@@ -1866,6 +1866,8 @@ async function openPoConversation(conversationId) {
   drafts.forEach((record) => renderStoryDraft(record));
   poHistory.value = conversation.id;
   showPoConversation();
+  // Built while hidden, so scroll once visible: continue at the latest message.
+  poMessages.scrollTo({ top: poMessages.scrollHeight, behavior: "instant" });
   poInput.focus();
 }
 

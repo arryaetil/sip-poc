@@ -507,3 +507,9 @@ def test_home_offers_the_product_owner_to_the_right_roles(monkeypatch):
     assert 'data-video="/avatars/product-owner.mp4"' not in page  # still image until a video exists
     assert http.get("/avatars/product-owner.webp").status_code == 200
     assert http.get("/avatars/product-owner.png").headers["content-type"] == "image/png"
+    # The living robot: the eyeless base image plus eye positions on the 1254 px grid.
+    assert 'data-base="/avatars/product-owner-base.webp"' in page and 'data-eyes="551,298,64;730,353,64"' in page
+    assert http.get("/avatars/product-owner-base.webp").status_code == 200
+    # Product Owner is the fourth card, so it starts the second row of three.
+    order = [page.index(f'data-specialist="{name}"') for name in ("marketing", "knowledge", "kyc", "product-owner")]
+    assert order == sorted(order)
