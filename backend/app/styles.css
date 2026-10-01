@@ -360,6 +360,9 @@ body.sidebar-collapsed .sidebar-note { display: none; }
 .story-split ol { margin: 8px 0 0; padding-left: 20px; line-height: 1.6; }
 /* What SIP read from Azure DevOps, and changes to existing stories. */
 .work-items-row { padding-left: 44px; }
+/* Cards are replaced and moved; a smooth scroll would visibly travel up and down. */
+#po-messages { scroll-behavior: auto; }
+.story-draft .field[hidden] { display: none; }
 .work-items { width: min(760px, 100%); padding: 16px 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 14px; }
 .work-items h3 { margin: 0 0 8px; font-size: 16px; }
 .work-items h4 { margin: 14px 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }

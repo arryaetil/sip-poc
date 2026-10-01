@@ -51,6 +51,13 @@ class FakeDevOps:
             1700: {"System.Title": "Oude bug", "System.WorkItemType": "Bug", "System.State": "Closed",
                    "System.IterationPath": SPRINT, "System.Rev": 9},
         }
+        self.items[1810] = {"System.Title": "Export bouwen", "System.WorkItemType": "Task", "System.State": "New",
+                            "System.IterationPath": SPRINT, "System.Rev": 1, "Microsoft.VSTS.Scheduling.RemainingWork": 4.0}
+        self.items[1600] = {"System.Title": "Rapportage", "System.WorkItemType": "Feature", "System.State": "Active",
+                            "System.IterationPath": "Etil Solutions", "System.Rev": 3}
+        self.relations = {1810: [{"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://x/_apis/wit/workItems/1798"}],
+                          1798: [{"rel": "System.LinkTypes.Hierarchy-Forward", "url": "https://x/_apis/wit/workItems/1810"}]}
+        self.comments: dict[int, list[str]] = {}
         self.patch_mode = "ok"
         self.patches: list[list[dict]] = []
         self.posts: list[list[dict]] = []
@@ -61,6 +68,11 @@ class FakeDevOps:
         self.calls.append(f"{request.method} {request.url.path}")
         if url.split("?")[0].endswith("/teams/Etil%20Solutions%20Team/members"):
             return httpx.Response(200, json={"value": [{"identity": {"displayName": d, "uniqueName": u}} for d, u in MEMBERS]})
+        if "/workitemtypes/" in url and url.split("?")[0].endswith("/states"):
+            work_item_type = request.url.path.split("/workitemtypes/")[1].split("/")[0]
+            states = {"User Story": ["New", "Refinement", "To Be Planned", "Ready", "Active", "Resolved", "Closed", "Removed"],
+                      "Task": ["New", "Active", "Closed", "Removed"], "Bug": ["New", "Active", "Resolved", "Closed"]}
+            return httpx.Response(200, json={"value": [{"name": n} for n in states.get(work_item_type, ["New", "Active", "Resolved", "Closed", "Removed"])]})
         if url.split("?")[0].endswith("/_apis/wit/tags"):
             return httpx.Response(200, json={"value": [{"name": n} for n in ("AI", "Arrya", "Demo")]})
         if "teamsettings/iterations" in url:
@@ -72,11 +84,14 @@ class FakeDevOps:
             query = json.loads(request.content)["query"]
             ids = [i for i, f in self.items.items() if self._matches(query, f)]
             return httpx.Response(200, json={"workItems": [{"id": i} for i in ids]})
+        if request.method == "GET" and url.split("?")[0].endswith("/comments"):
+            item_id = int(request.url.path.split("/workItems/")[1].split("/")[0])
+            return httpx.Response(200, json={"comments": [{"text": t} for t in self.comments.get(item_id, [])]})
         if request.method == "GET" and "_apis/wit/workitems/" in url:
             item_id = int(request.url.path.rsplit("/", 1)[1])
             if item_id not in self.items:
                 return httpx.Response(404, json={"message": "not found"})
-            return httpx.Response(200, json={"id": item_id, "fields": self.items[item_id]})
+            return httpx.Response(200, json={"id": item_id, "fields": self.items[item_id], "relations": self.relations.get(item_id, [])})
         if request.method == "GET" and "_apis/wit/workitems" in url:
             ids = [int(i) for i in request.url.params["ids"].split(",")]
             return httpx.Response(200, json={"value": [{"id": i, "fields": self.items[i]} for i in ids]})
@@ -91,7 +106,7 @@ class FakeDevOps:
                 return httpx.Response(412, json={"message": "TF26071: This work item has been changed by someone else"})
             self._apply(item_id, ops)
             return httpx.Response(200, json={"id": item_id, "rev": self.items[item_id]["System.Rev"], "fields": self.items[item_id]})
-        if request.method == "POST" and "workitems/$User" in url:
+        if request.method == "POST" and "workitems/$" in url:
             self.posts.append(json.loads(request.content))
             return httpx.Response(200, json={"id": 1801, "fields": {}, "_links": {"html": {"href": "https://x/1801"}}})
         return httpx.Response(404, json={"message": f"unexpected {url}"})
@@ -99,6 +114,16 @@ class FakeDevOps:
     def _apply(self, item_id: int, ops: list[dict]) -> None:
         fields = self.items[item_id]
         for op in ops[1:]:
+            if op["path"].startswith("/relations/"):
+                links = self.relations.setdefault(item_id, [])
+                if op["op"] == "remove":
+                    links.pop(int(op["path"].rsplit("/", 1)[1]))
+                else:
+                    links.append(op["value"])
+                continue
+            if op["path"] == "/fields/System.History":
+                self.comments.setdefault(item_id, []).append(op["value"])
+                continue
             name = op["path"].removeprefix("/fields/")
             value = op["value"]
             if name == "System.AssignedTo":
@@ -121,6 +146,14 @@ class FakeDevOps:
                 return False
         if "IN ('User Story', 'Bug')" in query and fields["System.WorkItemType"] not in ("User Story", "Bug"):
             return False
+        if "[System.Title] CONTAINS '" in query:
+            if query.split("CONTAINS '")[1].split("'")[0].casefold() not in fields["System.Title"].casefold():
+                return False
+        if "[System.WorkItemType] = '" in query:
+            if fields["System.WorkItemType"] != query.split("[System.WorkItemType] = '")[1].split("'")[0]:
+                return False
+        if "NOT IN ('Closed', 'Removed')" in query and fields["System.State"] in ("Closed", "Removed"):
+            return False
         return True
 
 
@@ -141,6 +174,7 @@ def env(monkeypatch):
     monkeypatch.setattr(main, "get_context_store", lambda: store)
     monkeypatch.setattr(main, "get_assistant", lambda: assistant)
     monkeypatch.setattr(devops, "client_factory", lambda settings: httpx.Client(transport=httpx.MockTransport(fake.handler)))
+    monkeypatch.setattr(devops, "_STATE_CACHE", {})
     return store, assistant, fake
 
 
@@ -214,7 +248,7 @@ def test_a_story_shows_its_fields_and_the_model_sees_them_next_turn(env):
     assert notes and "Story #1798" in notes[0] and "Werkt" in notes[0]
 
     timeline = http.get(f"/api/product-owner/conversations/{body['conversation_id']}/timeline").json()
-    assert [r["label"] for r in timeline["results"]] == ["Story #1798"]
+    assert [r["label"] for r in timeline["results"]] == ["User Story #1798"]
 
 
 def test_accounts_not_on_the_list_cannot_read_through_the_token(env):
@@ -280,17 +314,17 @@ def test_unsafe_or_empty_changes_are_refused_before_writing(env):
         (change_turn(work_item_id=1798, target_kind="sprint", iteration_path="Etil Solutions\\Sprint 1"), "not an open sprint"),
         (change_turn(work_item_id=1798, role="alleen een rol"), "role, capability and value"),
         (change_turn(work_item_id=1798, state="New"), "nothing to change"),
-        (change_turn(work_item_id=1700, state="Active"), "Bug"),
+        (change_turn(work_item_id=1700, state="Active"), "does not reopen"),
         (change_turn(work_item_id=4242, state="Active"), "does not exist"),
+        # Closed and Removed are refused by SIP itself, whatever the model says.
+        (change_turn(work_item_id=1798, state="Closed"), "does not set Closed"),
+        (change_turn(work_item_id=1798, state="Removed"), "does not set Removed"),
+        (change_turn(work_item_id=1798, state="Done"), "cannot be 'Done'"),
     ]
     for turn, expected in cases:
         body = say(http, assistant, turn)
         assert body["change"] is None and expected in body["result"]["error"], expected
     assert fake.patches == []
-
-    # The schema itself cannot express Closed or Removed.
-    with pytest.raises(ValueError):
-        WorkItemChange(work_item_id=1798, state="Closed")
 
 
 def test_a_story_changed_by_someone_else_is_planned_again_not_overwritten(env):
@@ -320,7 +354,7 @@ def test_a_rev_conflict_at_write_time_overwrites_nothing(env, monkeypatch):
     monkeypatch.setattr(devops, "get_item", stale_then_real)
     result = apply(http, change).json()
     assert len(fake.patches) == 1 and fake.items[1798]["System.State"] == "New"
-    assert result["status"] == "failed" and result["base_rev"] == 6 and "changed this story" in result["error"]
+    assert result["status"] == "failed" and result["base_rev"] == 6 and "changed this work item" in result["error"]
 
 
 def test_a_timeout_is_checked_by_reading_the_story(env):
@@ -369,6 +403,21 @@ def test_new_story_assignee_is_a_real_team_member(env):
     assert invented["content"]["assigned_to"] is None
 
 
+def test_dropped_names_are_reported_and_connecting_words_removed(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    content = StoryDraftContent(
+        title="Demo", role="Als demo-gebruiker voor Obvion", capability="wil ik stories opstellen",
+        value="zodat zodat ik kan zien hoe het werkt", acceptance_criteria=["Werkt"], story_points=3,
+        target_kind="backlog", assigned_to="Piet", tags=["Arrya", "Verzonnen"],
+    )
+    body = say(http, assistant, ProductOwnerTurn(message="Gedaan.", stage="draft_ready", draft=content))
+    draft = body["draft"]
+    assert draft["description"] == "Als demo-gebruiker voor Obvion wil ik stories opstellen, zodat ik kan zien hoe het werkt."
+    assert draft["content"]["assigned_to"] is None and draft["content"]["tags"] == ["Arrya"]
+    assert "SIP heeft dit niet in het voorstel gezet" in body["message"] and "Piet, Verzonnen" in body["message"]
+
+
 # --- Tags: existing ones only -------------------------------------------------------
 
 
@@ -409,3 +458,89 @@ def test_new_story_tags_must_already_exist(env):
     http.post(f"/api/product-owner/drafts/{draft['id']}/create", json={"version": fixed["version"], "confirmation_id": "confirm-0008"})
     fields = {op["path"]: op["value"] for op in fake.posts[0]}
     assert fields["/fields/System.Tags"] == "AI; Demo"
+
+
+# --- All work item types: tasks, bugs, features; comments, parents, search -------------
+
+
+def test_a_task_is_created_under_a_story_with_remaining_work(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    content = StoryDraftContent(work_item_type="Task", title="Tests schrijven", description="Unit tests voor de export",
+                                remaining_work=6, parent_id=1798, target_kind="sprint", iteration_path=SPRINT)
+    draft = say(http, assistant, ProductOwnerTurn(message="Taak", stage="draft_ready", draft=content))["draft"]
+    assert draft["missing"] == [] and draft["description"] == "Unit tests voor de export"
+
+    created = http.post(f"/api/product-owner/drafts/{draft['id']}/create", json={"version": 1, "confirmation_id": "confirm-0010"}).json()
+    assert created["status"] == "created"
+    ops = fake.posts[0]
+    fields = {op["path"]: op["value"] for op in ops if op["path"].startswith("/fields/")}
+    assert fields["/fields/Microsoft.VSTS.Scheduling.RemainingWork"] == 6
+    assert "/fields/Microsoft.VSTS.Scheduling.StoryPoints" not in fields
+    assert {"op": "add", "path": "/relations/-", "value": {"rel": "System.LinkTypes.Hierarchy-Reverse",
+            "url": "https://dev.azure.com/EtilSolutions/_apis/wit/workItems/1798"}} in ops
+    assert any("$Task" in call for call in fake.calls)
+
+
+def test_a_bug_description_goes_to_repro_steps_and_types_have_their_own_rules(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    bug = StoryDraftContent(work_item_type="Bug", title="Export faalt", description="Klik op export\nFoutmelding 500",
+                            priority=1, target_kind="backlog")
+    draft = say(http, assistant, ProductOwnerTurn(message="Bug", stage="draft_ready", draft=bug))["draft"]
+    assert draft["missing"] == []
+    http.post(f"/api/product-owner/drafts/{draft['id']}/create", json={"version": 1, "confirmation_id": "confirm-0011"})
+    fields = {op["path"]: op["value"] for op in fake.posts[0]}
+    assert fields["/fields/Microsoft.VSTS.TCM.ReproSteps"] == "<p>Klik op export</p><p>Foutmelding 500</p>"
+    assert fields["/fields/Microsoft.VSTS.Common.Priority"] == 1
+
+    epic = StoryDraftContent(work_item_type="Epic", title="Platform", description="Groot thema", target_kind="backlog")
+    epic_draft = say(http, assistant, ProductOwnerTurn(message="Epic", stage="draft_ready", draft=epic), conversation_id=None)["draft"]
+    assert epic_draft["missing"] == ["priority"]
+
+    refused = say(http, assistant, change_turn(work_item_id=1810, story_points=3))
+    assert "no story points" in refused["result"]["error"]
+    refused = say(http, assistant, change_turn(work_item_id=1810, state="Ready"))
+    assert "cannot be 'Ready'" in refused["result"]["error"] and "New, Active" in refused["result"]["error"]
+
+
+def test_a_comment_and_a_new_parent_are_written_with_the_rev_check(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    change = say(http, assistant, change_turn(work_item_id=1810, parent_id=1600, remaining_work=2,
+                                             comment="Export is bijna klaar"))["change"]
+    assert change["work_item_type"] == "Task"
+    assert [c["field"] for c in change["changes"]] == ["remaining_work", "parent", "comment"]
+    assert change["changes"][1] == {"field": "parent", "before": "#1798", "after": "#1600 Rapportage"}
+
+    assert apply(http, change).json()["status"] == "applied"
+    ops = fake.patches[0]
+    assert ops[0] == {"op": "test", "path": "/rev", "value": 1}
+    assert {"op": "remove", "path": "/relations/0"} in ops  # one parent: the old link goes
+    assert fake.relations[1810][-1]["url"].endswith("/workItems/1600")
+    assert fake.comments[1810] == ["<p>Export is bijna klaar</p>"]
+
+
+def test_an_uncertain_comment_is_found_by_reading_the_comments(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    change = say(http, assistant, change_turn(work_item_id=1798, comment="Graag review"))["change"]
+    fake.patch_mode = "timeout"
+    assert apply(http, change).json()["status"] == "uncertain"
+    assert http.post(f"/api/product-owner/changes/{change['id']}/check").json()["status"] == "applied"
+
+
+def test_search_and_children(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    found = say(http, assistant, query_turn(kind="search", text="export"))["result"]
+    assert sorted(i["id"] for i in found["items"]) == [1798, 1810] and found["label"] == '"export"'
+
+    tasks = say(http, assistant, query_turn(kind="search", work_item_type="Task"))["result"]
+    assert [i["id"] for i in tasks["items"]] == [1810]
+
+    children = say(http, assistant, query_turn(kind="children", work_item_id=1798))["result"]
+    assert children["label"] == "#1798 · children" and [i["id"] for i in children["items"]] == [1810]
+
+    detail = say(http, assistant, query_turn(kind="story", work_item_id=1810))["result"]
+    assert detail["label"] == "Task #1810" and detail["detail"]["parent_id"] == 1798 and detail["detail"]["remaining_work"] == 4.0

@@ -264,6 +264,20 @@ Software Developer and OpenCode are not built.
     SIP). Reads and changes are limited to `SIP_PRODUCT_OWNER_WRITERS`.
   - Verified for real (reads only): current sprint, Arrya's work in Sprint 28,
     story #1800, and a change proposal "New → Refinement" for #1800 (not applied).
-  - Not built: route D (implementing a story) and comments.
+  - All work item types (01-10, later): user stories, bugs, tasks, features and
+    epics can be created and changed. `devops.TYPE_RULES` holds what each type
+    has in this project (bug description = repro steps, tasks have remaining
+    work instead of points, features/epics use Effort, epics need a priority);
+    states are read live per type. Also: priority, parent link ("belongs
+    under", an existing parent is replaced), comments (System.History in the
+    same /rev-checked write; an uncertain write is checked via the comments
+    API), search (title text, type, state, person, sprint or backlog only) and
+    the children of an item. Existing tags only. Arrya chose: never Closed or
+    Removed via SIP (refused by the server, whatever the model says). Deleting
+    is not possible with a Read & write token.
+  - SIP strips "As/Als", "I want/wil ik" and "so that/zodat" from the story
+    parts (no more "zodat zodat") and says so visibly when it drops a person,
+    tag or sprint the model proposed.
+  - Not built: route D (implementing a story).
 - Not tested: Safari; the uncertain/timeout path against the real DevOps
   (only with fakes); several people at once on Railway.

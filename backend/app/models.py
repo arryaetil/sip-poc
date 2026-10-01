@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -234,12 +235,32 @@ class UploadRecord(BaseModel):
 
 FIBONACCI_POINTS = (1, 2, 3, 5, 8, 13, 21)
 StoryPoints = Literal[1, 2, 3, 5, 8, 13, 21]
+WorkItemType = Literal["User Story", "Bug", "Task", "Feature", "Epic"]
+Priority = Literal[1, 2, 3, 4]
 
 
 def _clean_text(value: str, limit: int) -> str:
     value = (value or "").strip()
     if len(value) > limit:
         raise ValueError(f"must be at most {limit} characters")
+    return value
+
+
+# SIP writes "As … I want … so that …" itself; a part that repeats those words
+# would read "zodat zodat". Stripped for model output and user edits alike.
+_LEADING_WORDS = {
+    "role": re.compile(r"^\s*(als|as)\s+", re.IGNORECASE),
+    "capability": re.compile(r"^\s*(wil ik|i want|ich möchte|möchte ich)\s+", re.IGNORECASE),
+    "value": re.compile(r"^\s*(zodat|so that|damit)\s+", re.IGNORECASE),
+}
+
+
+def _strip_leading(part: str, value: str | None) -> str | None:
+    if not value:
+        return value
+    pattern = _LEADING_WORDS[part]
+    while pattern.match(value):
+        value = pattern.sub("", value, count=1)
     return value
 
 
@@ -270,14 +291,22 @@ class StoryDraftContent(BaseModel):
     model can serve as an OpenAI strict schema.
     """
 
+    work_item_type: WorkItemType = "User Story"
     title: str = ""
     role: str = ""
     capability: str = ""
     value: str = ""
+    # Plain text for every type except a user story (repro steps for a bug).
+    description: str = ""
     entry_criteria: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     story_points: StoryPoints | None = None
     estimation_reason: str = ""
+    # Hours of work left, for a task or a bug.
+    remaining_work: float | None = None
+    priority: Priority | None = None
+    # The work item this one belongs under (a task under a story, a story under a feature).
+    parent_id: int | None = None
     target_kind: Literal["backlog", "sprint"] | None = None
     iteration_path: str | None = None
     # The language the story text is written in; SIP builds "As … I want … so that …"
@@ -300,8 +329,21 @@ class StoryDraftContent(BaseModel):
 
     @field_validator("role", "capability", "value", "estimation_reason")
     @classmethod
-    def _text(cls, value: str) -> str:
-        return _clean_text(value, 2000)
+    def _text(cls, value: str, info) -> str:
+        value = _clean_text(value, 2000)
+        return _strip_leading(info.field_name, value) if info.field_name in _LEADING_WORDS else value
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value: str) -> str:
+        return _clean_text(value, 8000)
+
+    @field_validator("remaining_work")
+    @classmethod
+    def _hours(cls, value: float | None) -> float | None:
+        if value is not None and not 0 <= value <= 1000:
+            raise ValueError("remaining work must be between 0 and 1000 hours")
+        return value
 
     @field_validator("entry_criteria", "acceptance_criteria")
     @classmethod
@@ -314,26 +356,31 @@ class StoryDraftContent(BaseModel):
         return _clean_text(value, 400) or None if value is not None else None
 
 
-# States SIP may set. Closed (the product owner's acceptance) and Removed cannot
-# even be expressed, so no model answer or edit can ask for them.
-ChangeState = Literal["New", "Refinement", "To Be Planned", "Ready", "Active", "Resolved"]
+# SIP never sets these: Closed is the product owner's acceptance step in Azure
+# DevOps itself and Removed takes work away. Checked on every change.
+FORBIDDEN_STATES = ("Closed", "Removed")
 
 
 class WorkItemQuery(BaseModel):
     """A read the assistant asks SIP to do; SIP runs it, the model never calls Azure DevOps."""
 
-    kind: Literal["sprint", "assigned", "story"]
+    kind: Literal["sprint", "assigned", "story", "search", "children"]
     # sprint: an iteration path from the available targets, or null for the current sprint.
     # assigned: optionally limits the list to that sprint.
     iteration_path: str | None = None
     # assigned: a display name from the team list, or "me" for the signed-in user.
     person: str | None = None
-    # story: the work item number.
+    # story / children: the work item number.
     work_item_id: int | None = None
+    # search: words in the title, a type, a status, or only items not planned in a sprint.
+    text: str | None = None
+    work_item_type: WorkItemType | None = None
+    state: str | None = None
+    unplanned: bool | None = None
 
 
 class WorkItemChange(BaseModel):
-    """Proposed changes to an existing user story. Null means: leave this field as it is."""
+    """Proposed changes to an existing work item. Null means: leave this field as it is."""
 
     work_item_id: int
     title: str | None = None
@@ -341,11 +388,19 @@ class WorkItemChange(BaseModel):
     role: str | None = None
     capability: str | None = None
     value: str | None = None
+    # Plain text description for every type except a user story (repro steps for a bug).
+    description: str | None = None
     entry_criteria: list[str] | None = None
     acceptance_criteria: list[str] | None = None
     story_points: StoryPoints | None = None
     estimation_reason: str | None = None
-    state: ChangeState | None = None
+    remaining_work: float | None = None
+    priority: Priority | None = None
+    parent_id: int | None = None
+    # A comment for the item's discussion, written together with the change.
+    comment: str | None = None
+    # Checked by SIP against the item type's live states; never Closed or Removed.
+    state: str | None = None
     target_kind: Literal["backlog", "sprint"] | None = None
     iteration_path: str | None = None
     assigned_to: str | None = None
@@ -364,10 +419,16 @@ class WorkItemChange(BaseModel):
     def _title(cls, value: str | None) -> str | None:
         return _clean_text(value, 255) or None if value is not None else None
 
-    @field_validator("role", "capability", "value", "estimation_reason", "iteration_path", "assigned_to")
+    @field_validator("role", "capability", "value", "estimation_reason", "iteration_path", "assigned_to", "state")
     @classmethod
-    def _text(cls, value: str | None) -> str | None:
-        return _clean_text(value, 2000) or None if value is not None else None
+    def _text(cls, value: str | None, info) -> str | None:
+        value = _clean_text(value, 2000) or None if value is not None else None
+        return _strip_leading(info.field_name, value) if info.field_name in _LEADING_WORDS else value
+
+    @field_validator("description", "comment")
+    @classmethod
+    def _long_text(cls, value: str | None) -> str | None:
+        return _clean_text(value, 8000) or None if value is not None else None
 
     @field_validator("entry_criteria", "acceptance_criteria")
     @classmethod
@@ -439,6 +500,12 @@ class WorkItemSummary(BaseModel):
 class WorkItemDetail(WorkItemSummary):
     rev: int
     tags: list[str] = Field(default_factory=list)
+    priority: int | None = None
+    remaining_work: float | None = None
+    parent_id: int | None = None
+    # Position of the parent link among the item's relations (to replace it).
+    parent_relation: int | None = None
+    child_ids: list[int] = Field(default_factory=list)
     description: str = ""
     entry_criteria: str = ""
     acceptance_criteria: str = ""
@@ -449,7 +516,7 @@ class WorkItemResult(BaseModel):
 
     id: str
     conversation_id: str
-    kind: Literal["sprint", "assigned", "story"]
+    kind: Literal["sprint", "assigned", "story", "search", "children"]
     label: str
     items: list[WorkItemSummary] = Field(default_factory=list)
     detail: WorkItemDetail | None = None
@@ -461,6 +528,7 @@ class FieldChange(BaseModel):
     field: Literal[
         "title", "description", "entry_criteria", "acceptance_criteria",
         "story_points", "state", "iteration_path", "assigned_to", "tags",
+        "remaining_work", "priority", "parent", "comment",
     ]
     before: str
     after: str
@@ -473,6 +541,7 @@ class WorkItemChangeRecord(BaseModel):
     id: str
     conversation_id: str
     work_item_id: int
+    work_item_type: str = "User Story"
     title: str
     url: str
     version: int
