@@ -62,7 +62,7 @@ from app.models import (
     UserRecord,
 )
 from app.assistants import get_assistant
-from app import devops, studio
+from app import devops, studio, developer
 from app.knowledge import (
     create_website_offering_profile,
     get_knowledge_document,
@@ -240,6 +240,8 @@ def _session_identity(request: Request, secret: str) -> tuple[str, str] | None:
 
 
 def _role_allows(role: str, method: str, path: str) -> bool:
+    if path in ("/api/developer/link", "/api/developer/availability"):
+        return True  # The route checks the exact account, regardless of role.
     if path == "/api/auth/logout":
         return True
     if path.startswith("/api/users"):
@@ -425,9 +427,9 @@ REVALIDATE = {"Cache-Control": "no-cache"}
 
 AVATAR_DIR = APP_DIR / "avatars"
 FONT_DIR = APP_DIR / "fonts"
-AVATAR_NAMES = {"marketing", "kennis", "kyc", "product-owner"}
+AVATAR_NAMES = {"marketing", "kennis", "kyc", "product-owner", "developer"}
 # Eyeless versions under the movable eyes on the home page.
-AVATAR_FILES = AVATAR_NAMES | {f"{name}-base" for name in AVATAR_NAMES}
+AVATAR_FILES = AVATAR_NAMES | {f"{name}-base" for name in AVATAR_NAMES - {"developer"}}
 AVATAR_TYPES = {".png": "image/png", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm"}
 FONT_FILES = {"ubuntu-regular.woff2", "ubuntu-medium.woff2", "ubuntu-bold.woff2"}
 
@@ -1343,6 +1345,26 @@ def check_product_owner_story(draft_id: str, request: Request) -> StoryDraftReco
         numbers = ", ".join(f"#{item.id}" for item in found)
         store.note_story_uncertainty(draft_id, f"Several matching stories exist ({numbers}). Check them in Azure DevOps.")
     return _story_record(store.get_story_draft(draft_id, owner_id))
+
+
+@app.get("/api/developer/link")
+def developer_link(request: Request) -> dict[str, str]:
+    # A SIP session is mandatory even when the rest of SIP runs in local-dev mode.
+    if not _session_secret() or not getattr(request.state, "user_email", None):
+        raise HTTPException(status_code=401, detail="Meld je eerst aan bij SIP.")
+    try:
+        return {"url": developer.signed_link(request.state.user_email)}
+    except developer.DeveloperUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.get("/api/developer/availability")
+def developer_availability(request: Request) -> dict[str, bool]:
+    allowed = os.getenv("SIP_DEVELOPER_EMAIL", "").strip().casefold()
+    email = getattr(request.state, "user_email", "").casefold()
+    return {"available": bool(_session_secret() and allowed and email == allowed)}
 
 
 @app.get("/api/studio/link")

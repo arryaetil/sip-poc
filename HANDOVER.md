@@ -1,5 +1,11 @@
 # Handover — SIP POC (Dify provider, knowledge base, Marketing studio)
 
+## Software developer / OpenCode (feature/opencode-developer, 01-10-2026)
+
+Een aparte `developer/opencode/`-service is voorbereid met OpenCode v1.18.34, een eigen toegangspoort en volume op `/data`. SIP geeft via `/api/developer/link` alleen aan `SIP_DEVELOPER_EMAIL` een kort geldige, ondertekende link. De homepage toont het aangeleverde poppetje als **Software developer** en opent OpenCode in een nieuw tabblad. OpenAI gebruikt een aparte `OPENAI_API_KEY` op de Developer-service; Arrya heeft deze aanbieder gekozen. Zie `developer/opencode/README.md` voor variabelen, opslag, versieafweging, tests en exacte uitrol.
+
+De bestaande checkout op `feature/po-all-work-items` had onafgemaakt Product Owner-werk. Daarom is dit werk in een aparte werkboom vanaf `main` gemaakt. Lokaal: 71 Python-tests geslaagd; de Node-poort is met een nagebootste OpenCode-server getest op ontbrekende sessie, verlopen/aangepaste/hergebruikte link, cookie en herkomst. Online zijn `opencode-developer`, het eigen volume en de publieke URL aangemaakt. Het eigen interne wachtwoord en gedeelde ondertekeningsgeheim zijn zonder uitlezen in de uitvoer ingesteld. De aparte `OPENAI_API_KEY` ontbreekt nog; daarom is nog geen modelopdracht, browserterminal of herstartproef online uitgevoerd. Verwar lokale tests niet met online verificatie.
+
 Written 24-09-2026 for continuing in another agent (Codex). Repository:
 `C:\Users\ArryaWillems\source\repos\sip-poc` (GitHub `arryaetil/sip-poc`, branch
 `main`). Owner: Arrya (intern); explain technical terms in Dutch, work step by
