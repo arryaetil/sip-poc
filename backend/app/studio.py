@@ -104,10 +104,12 @@ def create_project(
     headers = {"Authorization": f"Bearer {token}"}
     prompt = (
         f"Create {FORMAT_BRIEFS[request.format]}. Brief: {request.brief}\n\n"
-        "Base every statement on context.md in this project. The official logos, example posts "
-        "and approved images are in the brand/ folder of this project: use them. Load Ubuntu with "
-        "@font-face from brand/fonts/Ubuntu-{Light,Regular,Medium,Bold}.ttf. Use only the official "
-        "logo files in brand/, shown whole and never cropped, and never draw or create a logo."
+        f"Base every statement on context.md in this project. The official logos, example posts "
+        f"and approved images are in the brand/{design_system}/ folder of this project: use them, as "
+        f"listed in the image catalogue of the design system. Load Ubuntu with @font-face from "
+        f"brand/{design_system}/fonts/Ubuntu-{{Light,Regular,Medium,Bold}}.ttf. Use only the official "
+        f"logo files in brand/{design_system}/, shown whole and never cropped, and never draw or create a "
+        "logo. Never download photos from the internet."
     )
     with httpx.Client(base_url=internal, headers=headers, timeout=30) as http:
         created = http.post(
@@ -146,7 +148,7 @@ ASSET_TYPES = (".png", ".jpg", ".jpeg", ".svg", ".webp", ".ttf")
 
 
 def _copy_brand_assets(http: httpx.Client, design_system: str, project_id: str) -> None:
-    """Put the house style's logos, examples and images into the project's brand/ folder.
+    """Put the house style's logos, examples and images into the project's brand/<design system>/ folder.
 
     The design system's prose reaches the model through the prompt, but its files
     do not: without copies in the project the model has no logo to place.
@@ -165,7 +167,8 @@ def _copy_brand_assets(http: httpx.Client, design_system: str, project_id: str) 
         asset = http.get(f"/api/design-systems/{design_system}/static", params={"path": path})
         if asset.status_code >= 400:
             continue
-        name = "brand/" + path.removeprefix("assets/")  # fonts/ keeps its folder: brand/fonts/
+        # brand/<design system>/…, the paths the image catalogue in DESIGN.md uses; fonts/ keeps its folder.
+        name = f"brand/{design_system}/" + path.removeprefix("assets/")
         http.post(
             f"/api/projects/{project_id}/files",
             data={"name": name},
