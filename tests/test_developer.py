@@ -57,6 +57,11 @@ def test_home_has_developer_avatar_and_new_tab_action(monkeypatch):
         assert 'data-developer-open' in page
         assert client.get("/avatars/developer.webp").status_code == 200
         assert client.get("/avatars/developer.png").status_code == 200
+        # Living eyes like the other robots, the same arrow on every card, no extra note.
+        assert client.get("/avatars/developer-base.webp").status_code == 200
+        assert 'data-base="/avatars/developer-base.webp"' in page
+        assert "M14 5h5v5" not in page and "M8 5h11v11" not in page
+        assert "home.developer.new_tab" not in page
 
 
 def test_link_signing_refuses_unconfigured_or_wrong_account(monkeypatch):

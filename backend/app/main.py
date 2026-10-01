@@ -430,7 +430,7 @@ AVATAR_DIR = APP_DIR / "avatars"
 FONT_DIR = APP_DIR / "fonts"
 AVATAR_NAMES = {"marketing", "kennis", "kyc", "product-owner", "developer"}
 # Eyeless versions under the movable eyes on the home page.
-AVATAR_FILES = AVATAR_NAMES | {f"{name}-base" for name in AVATAR_NAMES - {"developer"}}
+AVATAR_FILES = AVATAR_NAMES | {f"{name}-base" for name in AVATAR_NAMES}
 AVATAR_TYPES = {".png": "image/png", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm"}
 FONT_FILES = {"ubuntu-regular.woff2", "ubuntu-medium.woff2", "ubuntu-bold.woff2"}
 
