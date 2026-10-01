@@ -156,7 +156,9 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
   the ibc group logo (the only way back on phones, where the sidebar is hidden).
 - Three specialists: Marketing (opens the existing studio view with its signed
   link), Kennisassistent (two actions: Ask ibc group, and Create context), and
-  KYC-onderzoeker, shown as "coming soon" because SIP has no KYC function.
+  KYC-onderzoeker, a plain link opening the separate KYCX adverse media app
+  (https://kycx-adverse-media-production.up.railway.app/) in a new tab. KYCX
+  has its own sign-in; SIP passes no session or data to it.
   Actions carry `data-roles` mirroring `_role_allows`; Sales sees the studio and
   create-context actions as unavailable.
 - Images: `backend/app/avatars/{marketing,kennis,kyc}.{webp,png}`, 720 px.

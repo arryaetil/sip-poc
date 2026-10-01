@@ -127,7 +127,7 @@
               </div>
             </div>
           </li>
-          <li class="specialist is-unavailable" data-specialist="kyc" style="--specialist-accent: #0066cc; --specialist-stage: #f7f9fb;">
+          <li class="specialist" data-specialist="kyc" style="--specialist-accent: #0066cc; --specialist-stage: #f7f9fb;">
             <div class="specialist-stage" aria-hidden="true">
               <picture>
                 <source srcset="/avatars/kyc.webp" type="image/webp">
@@ -139,10 +139,13 @@
             <div class="specialist-body">
               <h2 id="specialist-kyc-name" class="specialist-name" data-i18n="home.kyc.name"></h2>
               <p id="specialist-kyc-text" class="specialist-text" data-i18n="home.kyc.text"></p>
-              <div class="specialist-unavailable">
-                <p class="specialist-status" data-i18n="home.status.soon"></p>
-                <p class="specialist-status-copy" data-i18n="home.kyc.soon_copy"></p>
+              <div class="specialist-actions">
+                <a class="specialist-action" href="https://kycx-adverse-media-production.up.railway.app/" target="_blank" rel="noopener noreferrer" data-roles="admin product_owner sales" aria-describedby="specialist-kyc-name specialist-kyc-text specialist-kyc-note">
+                  <span data-i18n="home.kyc.action"></span>
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 5h5v5m0-5-8 8M17 14v5H5V7h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
               </div>
+              <p id="specialist-kyc-note" class="specialist-note" data-i18n="home.kyc.note"></p>
             </div>
           </li>
         </ul>

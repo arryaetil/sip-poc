@@ -672,6 +672,7 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 .specialist-text { margin: 0 0 12px; color: var(--muted); font-size: 15px; line-height: 1.45; }
 .specialist-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px 22px; }
 .specialist-action {
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -701,6 +702,7 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 }
 .specialist-unavailable { margin-top: auto; }
 .specialist-status { display: inline-block; margin: 0 0 8px; padding: 4px 10px; border-radius: 999px; background: #eef0f3; color: #34373b; font-size: 13px; font-weight: 500; }
+.specialist-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .specialist-status-copy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
 .specialist.is-unavailable .specialist-stage { filter: saturate(.75); }
 

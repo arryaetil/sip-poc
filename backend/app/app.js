@@ -1435,7 +1435,7 @@ function applySpecialistAvailability() {
   });
 }
 
-document.querySelectorAll(".specialist-action").forEach((action) => {
+document.querySelectorAll(".specialist-action[data-view]").forEach((action) => {
   action.addEventListener("click", () => {
     const navItem = document.querySelector(`.nav-item[data-view="${action.dataset.view}"]`);
     if (navItem) navItem.click();
