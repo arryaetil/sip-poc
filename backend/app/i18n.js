@@ -805,6 +805,8 @@ function t(key, vars) {
 }
 
 function applyTranslations() {
+  // Also on page load, so screen readers use the right pronunciation.
+  document.documentElement.lang = getLanguage();
   document.querySelectorAll("[data-i18n]").forEach((element) => {
     element.textContent = t(element.dataset.i18n);
   });
