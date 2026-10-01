@@ -1,5 +1,7 @@
 # Handover — SIP POC (Dify provider, knowledge base, Marketing studio)
 
+> Lessons for the Azure/C# build: [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md). Add new pitfalls there.
+
 ## Marketing studio images (feature/studio-image-library, 01-10)
 
 Problem: a colleague asked "Verwende das Bildmotiv aus dem People Service Bereich"; the post used a stock

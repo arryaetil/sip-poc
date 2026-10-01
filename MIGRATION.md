@@ -9,6 +9,10 @@ be rediscovered the hard way during the Azure migration or the C# port.
 
 Last updated: 21 September 2026.
 
+Everything that went wrong while building the POC, and what it means for the Azure/C#
+build, is in [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md). Read both before configuring
+production.
+
 ## Target decision: Foundry IQ
 
 **Decision, 21 September 2026.** SIP will use **Microsoft Foundry IQ** as its
