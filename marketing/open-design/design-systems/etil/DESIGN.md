@@ -48,7 +48,7 @@ Use these consistently for service navigation, content clusters, icons, cards, h
 - Never place the logo on busy or low-contrast backgrounds.
 - The spectrum is the bridge between logo and claim. Do not put it inside or behind the logo, integrate it into letters, stretch or rotate it, or overlap it with text.
 
-Assets (in a studio project they are copied to `brand/`):
+Assets (in a studio project they are copied to `brand/etil/`):
 - **Dark backgrounds** (LinkedIn posts, title slides): `etil-logo-lockup-white.png` — the complete light lockup exactly as in the official templates: "Etil" wordmark with "part of ibc group", the spectrum bar and the claim. Show it whole, about 30% of the width, bottom left, never cropped or masked.
 - `etil-claim-only-white.svg` holds only the spectrum bar and claim, **without the Etil wordmark**: never use it as the logo.
 - **Light backgrounds** (one-pagers, content slides): `etil-logo-slogan.png` — the same lockup in black.
@@ -94,18 +94,30 @@ Every project has copies of these files in its own `brand/etil/` folder (images,
 
 Finished LinkedIn posts in the house style, to copy the pattern (not to reuse as images): `brand/etil/examples/linkedin-menskracht.jpg` (MENSKRACHT), `brand/etil/examples/linkedin-data.jpg` (DATA), `brand/etil/examples/linkedin-beleid.jpg` (BELEID), `brand/etil/examples/linkedin-technologie.jpg` (TECHNOLOGIE).
 
-The images above already carry the AI notice where needed.
+All images above are AI-generated and come **without** a label on purpose: every design that uses one gets the official AI label from the LinkedIn post pattern (HTML and CSS below), bottom right. Never write the label as plain text and never leave it out.
 
-From the *AI-Generated Images Guideline*: always label an image when someone could think it is real (photo-like, used in marketing, social media or external communication, or shareable on its own). Place the label directly on the image, small and discreet, bottom right: **"AI-generated image – created by IBC Group Marketing"** (short: "AI-generated | IBC Group Marketing"). When in doubt, label. Do not use Creative Commons images without the author attribution from the licence library; ask marketing instead.
+From the *AI-Generated Images Guideline*: always label an image when someone could think it is real (photo-like, used in marketing, social media or external communication, or shareable on its own). Place the label directly on the image, small and discreet, bottom right. In LinkedIn posts and slides use the official label from the LinkedIn post pattern below (outlined pill "AI-GENERATED VISUAL" with "provided by ibc group marketing" under it), never a plain line of text. When in doubt, label. Do not use Creative Commons images without the author attribution from the licence library; ask marketing instead.
 
 ## 7. LinkedIn post pattern (from the official templates)
 
-Portrait 4:5 (1080×1350). Examples in `assets/examples/linkedin-*.jpg` — match them closely.
+Portrait 4:5 (1080×1350). **Before you design, open the example for the domain** (`brand/etil/examples/linkedin-menskracht.jpg`, `-data`, `-beleid`, `-technologie`) and look at it; before you finish, compare your post with it side by side and fix every difference in logo, label, type and spacing.
 - Full-bleed dark image in the colour world of the domain (Data red/pink, Technologie blue, Beleid silver/soft peach, Menskracht orange), darker on the left so text reads.
-- Top left: a short thin white rule, then "Perspective on" in Ubuntu Light, then the domain name in capitals in its service colour (BELEID `#F1D490`, DATA `#ff3333`, MENSKRACHT `#ff6600`, TECHNOLOGIE `#0066cc`).
-- Below: one short statement in white Ubuntu Bold, large (about 7% of the width), three to four lines, ending with a full stop. One idea, no hashtags on the image.
-- Bottom left: the light Etil logo with the claim "connecting insights to impact." and "part of ibc group".
-- Bottom right: the AI-generated visual label when the image is AI-generated.
+- Top left (about 55px from the left, 120px from the top): a short thin white rule (about 95×2px), then "Perspective on" in Ubuntu Light (about 36px), then the domain name in capitals in Ubuntu Medium in its service colour (BELEID `#F1D490`, DATA `#ff3333`, MENSKRACHT `#ff6600`, TECHNOLOGIE `#0066cc`).
+- Below: one short statement in white Ubuntu Bold, large (about 76px, line height 1.15), three to four lines, ending with a full stop. One idea, no hashtags on the image.
+- Bottom left (55px from the left and bottom): `brand/etil/etil-logo-lockup-white.png`, about 30% of the width, whole, with its **spectrum bar** in colour.
+- Bottom right (55px from the right and bottom): the AI label below. All images in `brand/etil/images/` are AI-generated, so a post with one of them carries the label.
+
+AI label, exactly as in the examples (copy this HTML and CSS; do not replace it by plain text):
+
+```html
+<div class="ai-label"><span class="ai-label-pill">AI-GENERATED VISUAL</span><span class="ai-label-by">provided by ibc group marketing</span></div>
+```
+
+```css
+.ai-label { position: absolute; right: 55px; bottom: 55px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: #fff; font-family: Ubuntu, Arial, sans-serif; }
+.ai-label-pill { border: 2px solid #fff; border-radius: 999px; padding: 3px 14px; font-size: 17px; font-weight: 500; letter-spacing: .01em; line-height: 1.3; }
+.ai-label-by { font-size: 15px; font-weight: 300; }
+```
 
 ## 8. Fonts
 

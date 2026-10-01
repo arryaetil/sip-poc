@@ -110,7 +110,12 @@ def create_project(
         f"listed in the image catalogue of the design system. Load Ubuntu with @font-face from "
         f"brand/{brand}/fonts/Ubuntu-{{Light,Regular,Medium,Bold}}.ttf. Use only the official "
         f"logo files in brand/{brand}/, shown whole and never cropped, and never draw or create a "
-        "logo. Never download photos from the internet."
+        "logo. Never download photos from the internet.\n\n"
+        f"Before you design, open the matching finished example in brand/{brand}/examples/ and look at it; "
+        "before you finish, compare your design with it and fix every difference. In particular: the official "
+        "logo PNG for the background (the white one on dark) whole, with its colour spectrum bar (never a white bar), and the AI label HTML and CSS "
+        "from the design system (an outlined pill \"AI-GENERATED VISUAL\" with \"provided by ibc group marketing\" "
+        "under it), never a plain line of text."
     )
     with httpx.Client(base_url=internal, headers=headers, timeout=30) as http:
         created = http.post(

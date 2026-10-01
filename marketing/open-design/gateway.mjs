@@ -121,7 +121,11 @@ function withServerModel(body) {
 const BRANDS = ['etil', 'ibc-group'];
 const ASSET_TYPES = /\.(png|jpe?g|svg|webp|ttf)$/i;
 const NO_INVENTION = 'Never invent customers, figures, results or capabilities. Never download or hotlink photos from the internet: '
-  + 'use the brand images, CSS in the brand colours, or a generated image labelled as AI-generated.';
+  + 'use the brand images, CSS in the brand colours, or a generated image labelled as AI-generated. '
+  + 'Before you design, open the matching finished example in brand/<brand>/examples/ and look at it; before you finish, compare '
+  + 'your design with it and fix every difference. In particular: place the official logo PNG for the background (the white one on dark) whole, with its colour spectrum '
+  + 'bar (never a white bar, never a logo drawn in HTML), and use the AI label HTML and CSS from the design system (an outlined '
+  + 'pill "AI-GENERATED VISUAL" with "provided by ibc group marketing" under it), never a plain line of text.';
 const ASK_BRAND = 'This project was started in the studio without a house style. Before you design anything, ask the user one short '
   + 'question in their language: should this use the Etil or the ibc group house style? Then follow brand/etil/DESIGN.md or '
   + 'brand/ibc-group/DESIGN.md strictly (colours, Ubuntu, logo rules, tone of voice and the image catalogue) and use only the files '

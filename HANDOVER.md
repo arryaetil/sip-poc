@@ -23,6 +23,16 @@ Fixed on the branch (tests pass):
 - Session cookie `typ: session` (same fix as the Developer gateway).
 - `marketing/open-design/test-gateway.mjs`: fake Open Design (listing 404 like live) + brand files on disk.
 
+Follow-up (01-10, fix/studio-follow-examples): posts had a white logo bar and a plain-text AI label.
+- ibc group had no light logo with the spectrum bar: added `ibc-group-logo-white.png` (official "Seasalt +
+  connecting performance"); `ibc-group-logo-alt.png` (white bar) is marked "not for posts".
+- All service/case images had an old AI notice baked in: swapped for the "Images without AI notice"
+  originals (ibc 6, Etil case-1..6); Etil headers/beleid/menskracht/teaser had no clean original, so the
+  bottom 20% with the notice was cropped off. Dropped `service-ibc-group-all-services-black-ai-notice.jpg`.
+- Both DESIGN.md: exact AI label HTML/CSS (pill "AI-GENERATED VISUAL" + "provided by ibc group marketing"),
+  measured positions from the examples, and "open the example first, compare before finishing"; the same
+  instruction in the gateway (studio projects) and studio.py (SIP projects).
+
 Deploy order: Open Design first (`MSYS_NO_PATHCONV=1 railway up marketing/open-design --path-as-root
 --service open-design`), then SIP (`railway up --service sip-poc`). Check that a new studio project gets
 `brand/…` files and asks Etil/ibc.
