@@ -203,6 +203,8 @@ function showView(name) {
     element.hidden = viewName !== name;
   });
   document.body.classList.toggle("chat-open", name === "builder" || name === "marketing" || (name === "knowledge" && !knowledgeChat.hidden));
+  // Home is the start screen: the specialists are the navigation, so no sidebar.
+  document.body.classList.toggle("home-open", name === "home");
   const navigationView = name === "builder" || (name === "review" && reviewOrigin === "builder")
     ? "conversations"
     : name === "review" || name === "source" ? "portfolio" : name;
