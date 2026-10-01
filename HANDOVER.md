@@ -1,32 +1,31 @@
 # Handover — SIP POC (Dify provider, knowledge base, Marketing studio)
 
-## IN PROGRESS — Marketing studio images (branch feature/studio-image-library, 01-10 ~15:45, NOT merged, NOT deployed)
+## Marketing studio images (feature/studio-image-library, 01-10)
 
 Problem: a colleague asked "Verwende das Bildmotiv aus dem People Service Bereich"; the post used a stock
 office photo instead. Found: project `7c2f5b61…` was created in the studio itself (Marketing studio -> new
 project), had `designSystemId: None`, no brand files, and the model fetched a photo from the internet.
 
-Done on the branch (tests pass, see below):
+Fixed on the branch (tests pass):
 - `DESIGN.md` (etil, ibc-group): image catalogue per file (what it shows, which service/topic, German and
   Dutch terms) with paths `brand/<brand>/images/…`, and the rule: never download photos from the internet.
-- `backend/app/studio.py`: SIP chat projects copy brand files to `brand/<design system>/` (was `brand/`).
-- `marketing/open-design/gateway.mjs`: on `POST /api/projects` from the studio (not `metadata.source=sip`,
-  not another Open Design style): no house style -> both brands + DESIGN.md/tokens.css into
-  `brand/etil/` and `brand/ibc-group/` and customInstructions to ask "Etil or ibc group?" first; ibc-group or
-  etil chosen -> that brand's files. Arrya chose ibc group as default wish but then asked: ask the user first
-  (implemented). Also session cookie `typ: session` (same fix as the Developer gateway).
-- `marketing/open-design/test-gateway.mjs`: fake Open Design test, passes.
+- Live Open Design answers `GET /api/design-systems/<id>/files` with 404 "editable design system not
+  found" (since ~25-09; SIP's handoff failed on it). So nothing uses that endpoint any more: the gateway
+  (`gateway.mjs`, runs in the Open Design container) reads the brand files from disk,
+  `$OD_DATA_DIR/design-systems/<brand>/assets|fonts`, skipping `assets/private-library`, and uploads them to
+  `brand/<brand>/…` on every new `POST /api/projects`, before it answers.
+  - Studio projects without a house style: both brands + DESIGN.md/tokens.css, customInstructions ask
+    "Etil or ibc group?" first. etil / ibc-group / `user:etil` / `user:ibc-group` chosen: that brand's files
+    and FOLLOW_BRAND instructions. Another Open Design style: untouched.
+  - SIP projects (`metadata.source=sip`): the brand files, SIP's own customInstructions kept.
+- `backend/app/studio.py`: `_copy_brand_assets` removed; prompt points at `brand/etil/` (was
+  `brand/user:etil/`, which did not match the catalogue).
+- Session cookie `typ: session` (same fix as the Developer gateway).
+- `marketing/open-design/test-gateway.mjs`: fake Open Design (listing 404 like live) + brand files on disk.
 
-BLOCKER found just before stopping: live Open Design answers `GET /api/design-systems/<id>/files` with
-404 "editable design system not found", while `/static?path=…` works (DESIGN.md, tokens.css, images 200).
-So the listing that both the gateway and SIP's `_copy_brand_assets` rely on fails now (SIP calls
-`raise_for_status()`: a chat -> studio handoff may currently fail; last SIP project with brand files is
-from 25-09). Next step: stop depending on that endpoint. The gateway runs in the Open Design container, so
-read the brand files from disk (`/app/.od/design-systems/<brand>/assets|fonts`, skip private-library) and
-let the gateway prepare SIP projects too (then drop the copy in studio.py), or use a fixed file list from
-the repo. Then: run `node marketing/open-design/test-gateway.mjs` and pytest, merge --no-ff, deploy with
-`railway up marketing/open-design --path-as-root --service open-design` (MSYS_NO_PATHCONV=1 in Git Bash),
-check a new studio project gets `brand/…` files and asks Etil/ibc, then deploy SIP.
+Deploy order: Open Design first (`MSYS_NO_PATHCONV=1 railway up marketing/open-design --path-as-root
+--service open-design`), then SIP (`railway up --service sip-poc`). Check that a new studio project gets
+`brand/…` files and asks Etil/ibc.
 
 Other open items (01-10): Dify PO app publish of the latest import (all work item types) not confirmed by
 Arrya; `OPENAI_API_KEY` missing on `opencode-developer`; no signed-in production test of Developer yet.

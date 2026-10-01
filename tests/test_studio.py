@@ -49,23 +49,23 @@ def test_context_document_carries_only_supplied_facts():
     assert "https://etil.nl/de-woonatlas/" in text
 
 
-def test_private_brand_library_is_not_copied_into_every_project():
+def test_project_points_at_the_brand_folder_the_gateway_fills(configured, monkeypatch):
+    # The gateway copies the brand files (gateway.mjs, test-gateway.mjs); SIP only
+    # creates the project and its context file, and names the same brand/etil/ folder.
     requested = []
 
     def handle(request):
-        requested.append((request.method, request.url.path, request.url.params.get("path")))
-        if request.url.path.endswith("/files") and request.method == "GET":
-            return httpx.Response(200, json={"files": [
-                {"path": "assets/private-library/large-original.jpg"},
-                {"path": "assets/images/approved.jpg"},
-            ]})
-        if request.url.path.endswith("/static"):
-            return httpx.Response(200, content=b"image", headers={"content-type": "image/jpeg"})
-        return httpx.Response(201)
+        requested.append((request.method, request.url.path, request.content))
+        return httpx.Response(201, json={})
 
-    with httpx.Client(base_url="https://studio.example", transport=httpx.MockTransport(handle)) as client:
-        studio._copy_brand_assets(client, "user:etil", "example")
+    real_client = httpx.Client
+    monkeypatch.setattr(studio.httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(handle), **kwargs))
+    link = studio.create_project("alice", MarketingRequest(format="linkedin_post", brief="People Service"), [], [])
 
-    assert ("GET", "/api/design-systems/user:etil/static", "assets/private-library/large-original.jpg") not in requested
-    assert ("GET", "/api/design-systems/user:etil/static", "assets/images/approved.jpg") in requested
-    assert sum(method == "POST" for method, _, _ in requested) == 1
+    assert link.startswith("https://studio.example/__sip/enter?t=")
+    assert [(method, path) for method, path, _ in requested][0] == ("POST", "/api/projects")
+    assert [path for _, path, _ in requested[1:]] == [f"{requested[0][1]}/{json.loads(requested[0][2])['id']}/files"]
+    project = json.loads(requested[0][2])
+    assert project["designSystemId"] == "user:etil"
+    assert "brand/etil/fonts/Ubuntu-" in project["pendingPrompt"]
+    assert "user:etil" not in project["pendingPrompt"]
