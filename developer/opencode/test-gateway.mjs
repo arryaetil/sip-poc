@@ -43,8 +43,9 @@ try {
   const valid = link(Math.floor(Date.now() / 1000) + 120);
   assert.equal((await fetch(`${valid}altered`)).status, 401);
   const admitted = await fetch(valid, { redirect: 'manual' });
-  assert.equal(admitted.status, 303);
-  assert.equal(admitted.headers.get('location'), '/');
+  // A page that continues from the Developer site, not a redirect (SameSite=Strict, see gateway.mjs).
+  assert.equal(admitted.status, 200);
+  assert.match(await admitted.text(), /http-equiv="refresh" content="0;url=\/"/);
   assert.match(admitted.headers.get('set-cookie'), /HttpOnly; Secure; SameSite=Strict/);
   assert.equal((await fetch(valid, { redirect: 'manual' })).status, 401);
   const cookie = admitted.headers.get('set-cookie').split(';')[0];
