@@ -151,8 +151,13 @@ def resolve_iteration(content: StoryDraftContent, targets: list[StoryTarget]) ->
     raise ValueError("Choose the backlog or a sprint first.")
 
 
+def _story_language(content: StoryDraftContent, fallback: str) -> str:
+    """The language the story is written in wins over the conversation's interface language."""
+    return content.language or fallback
+
+
 def description(content: StoryDraftContent, language: str) -> str:
-    sentence, _ = STORY_SENTENCE.get(language, STORY_SENTENCE["en"])
+    sentence, _ = STORY_SENTENCE.get(_story_language(content, language), STORY_SENTENCE["en"])
     if not (content.role and content.capability and content.value):
         return ""
     return sentence.format(
@@ -169,7 +174,7 @@ def _list_html(items: list[str]) -> str:
 
 def story_patch(content: StoryDraftContent, language: str, iteration_path: str) -> list[dict]:
     """The JSON Patch document for a new User Story. All text is escaped: DevOps stores HTML."""
-    _, reason_label = STORY_SENTENCE.get(language, STORY_SENTENCE["en"])
+    _, reason_label = STORY_SENTENCE.get(_story_language(content, language), STORY_SENTENCE["en"])
     body = f"<p>{html.escape(description(content, language))}</p>"
     if content.estimation_reason:
         body += f"<p><strong>{reason_label}:</strong> {html.escape(content.estimation_reason)}</p>"

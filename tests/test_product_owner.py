@@ -186,6 +186,25 @@ def test_proposal_is_saved_versioned_and_comes_back_after_reload(po):
     assert fake.posts == []  # drafting never writes to Azure DevOps
 
 
+def test_the_story_sentence_follows_the_story_language_not_the_interface(po):
+    store, assistant, fake = po
+    http = signed_in("po@test.nl", "po-pass")
+    assistant.turns.append(draft_turn(COMPLETE.model_copy(update={"language": "nl"})))
+    # English interface, Dutch story text.
+    body = http.post("/api/product-owner/chat", json={"message": "Excel-export", "language": "en"}).json()
+    assert body["draft"]["description"].startswith("Als beleidsmedewerker wil ik")
+
+    edited = http.put(
+        f"/api/product-owner/drafts/{body['draft']['id']}",
+        json={"version": 1, "content": {**body["draft"]["content"], "title": "Nieuwe titel"}},
+    ).json()
+    assert edited["content"]["language"] == "nl" and edited["description"].startswith("Als ")
+    create(http, edited)
+    fields = {item["path"]: item["value"] for item in fake.posts[0]}
+    assert "Als beleidsmedewerker wil ik" in fields["/fields/System.Description"]
+    assert "Onderbouwing schatting" in fields["/fields/System.Description"]
+
+
 def test_a_sprint_the_server_did_not_offer_is_dropped_from_the_model_draft(po):
     store, assistant, fake = po
     http = signed_in("po@test.nl", "po-pass")

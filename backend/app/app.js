@@ -1549,6 +1549,7 @@ function storyDraftCard(record) {
   const card = document.createElement("form");
   card.className = "story-draft";
   card.dataset.status = record.status;
+  card.dataset.language = content.language || "";
   card.noValidate = true;
   card.setAttribute("aria-label", t("po.draft_title"));
 
@@ -1791,6 +1792,8 @@ function readStoryForm(card) {
     estimation_reason: value("estimation_reason").trim(),
     target_kind: target === "backlog" ? "backlog" : target ? "sprint" : null,
     iteration_path: target && target !== "backlog" ? target : null,
+    // Not a form field: kept from the proposal so an edit does not change the story's language.
+    language: card.dataset.language || null,
   };
 }
 
