@@ -79,6 +79,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .language-field select:focus { border-color: var(--focus); outline: 3px solid rgba(0, 102, 204, .16); outline-offset: 0; }
 .app-shell { min-height: calc(100vh - 100px); display: flex; }
 
+/* Home is the start screen: the specialist cards are the navigation. */
+body.home-open .sidebar { display: none; }
+
 .sidebar {
   flex: 0 0 252px;
   padding: 30px 20px;
