@@ -165,6 +165,13 @@ async function loadCurrentUser() {
   roleBadge.textContent = t(`role.${currentRole}`);
   roleBadge.hidden = false;
   applyRolePermissions();
+  try {
+    const { available } = await api("/api/developer/availability");
+    document.querySelector("[data-developer-open]").dataset.available = String(available);
+  } catch {
+    document.querySelector("[data-developer-open]").dataset.available = "false";
+  }
+  applySpecialistAvailability();
 }
 
 function applyRolePermissions() {
@@ -2367,7 +2374,7 @@ function applySpecialistAvailability() {
   specialistCards.forEach((card) => {
     const actions = [...card.querySelectorAll(".specialist-action")];
     actions.forEach((action) => {
-      action.hidden = !action.dataset.roles.split(" ").includes(currentRole);
+      action.hidden = !action.dataset.roles.split(" ").includes(currentRole) || action.dataset.available === "false";
     });
     const usable = actions.filter((action) => !action.hidden);
     const notice = card.querySelector(".specialist-unavailable");
@@ -2383,6 +2390,20 @@ document.querySelectorAll(".specialist-action[data-view]").forEach((action) => {
     const navItem = document.querySelector(`.nav-item[data-view="${action.dataset.view}"]`);
     if (navItem) navItem.click();
   });
+});
+
+document.querySelector("[data-developer-open]").addEventListener("click", async () => {
+  // Open synchronously from the click so popup blockers allow the new tab.
+  const tab = window.open("about:blank", "_blank");
+  if (!tab) { alert(t("home.developer.popup_blocked")); return; }
+  tab.opener = null;
+  try {
+    const { url } = await api("/api/developer/link");
+    tab.location.replace(url);
+  } catch (error) {
+    tab.close();
+    alert(error.message || t("home.developer.unavailable"));
+  }
 });
 
 // Optional animation per specialist: drop <name>.mp4 next to the PNG in
