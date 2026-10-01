@@ -234,8 +234,11 @@ Software Developer and OpenCode are not built.
 - Test story created with Arrya's approval through SIP's routes:
   **#1800** "[SIP-test] Product Owner-assistent maakt story aan" on the backlog
   (New, 1 point, no tags, unassigned), read back. Not closed or removed.
-- `backend/app/avatars/product-owner-base.webp` (eyes removed, by Claude) is
-  left untracked: the living-eyes animation needs new eye coordinates first.
+- The Product Owner robot is alive like the others: `product-owner-base.webp`
+  plus `data-eyes="551,298,64;730,353,64"` (measured from the difference with
+  `product-owner.webp`). Home always shows three specialists per row; the
+  Product Owner starts the second row. Fixed 01-10: the chat-open layout rules
+  now include `#product-owner-view`/`#po-chat`, so the conversation scrolls.
 - Live: merged to main (ab3fde6), pushed, deployed with `railway up --service sip-poc`,
   deployment fa010e45 SUCCESS on 01-10; /health 200, new app.js served, PO API
   answers 401 without sign-in. Railway variables added: DIFY_PRODUCT_OWNER_API_KEY,
