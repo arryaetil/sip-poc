@@ -149,3 +149,19 @@ Railway does **not** auto-deploy from GitHub. Deploy with `railway up`:
 5. Open items: evidence stays public after its context is deleted (SIP rule says it
    should become private); Finalizer writes fields in English; occasional wrong
    answer language; extra source chips.
+
+## Home page — "Jouw digitale team" (feature/digitaal-team)
+
+- Home is the default view after sign-in, reachable via "Home" in the sidebar and
+  the ibc group logo (the only way back on phones, where the sidebar is hidden).
+- Three specialists: Marketing (opens the existing studio view with its signed
+  link), Kennisassistent (two actions: Ask ibc group, and Create context), and
+  KYC-onderzoeker, shown as "coming soon" because SIP has no KYC function.
+  Actions carry `data-roles` mirroring `_role_allows`; Sales sees the studio and
+  create-context actions as unavailable.
+- Images: `backend/app/avatars/{marketing,kennis,kyc}.{webp,png}`, 720 px.
+- Optional animations: drop `marketing.mp4`, `kennis.mp4`, `kyc.mp4` (square,
+  muted, H.264) in the same folder and deploy. `index()` only advertises videos
+  that exist; playback stops off-screen, on other views and with reduced motion.
+- Ubuntu is now loaded from `backend/app/fonts` (woff2, Ubuntu Font Licence),
+  which changes the font across all of SIP, not just Home.

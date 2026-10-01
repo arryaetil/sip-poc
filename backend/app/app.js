@@ -1,4 +1,5 @@
 const views = {
+  home: document.querySelector("#home-view"),
   conversations: document.querySelector("#conversations-view"),
   builder: document.querySelector("#builder-view"),
   review: document.querySelector("#review-view"),
@@ -165,6 +166,7 @@ function applyRolePermissions() {
   const isAdmin = currentRole === "admin";
   navTeam.hidden = !isAdmin;
   navLabelAdministration.hidden = !isAdmin;
+  applySpecialistAvailability();
 }
 
 function deleteButton(label, onClick) {
@@ -211,6 +213,7 @@ function showView(name) {
     else item.removeAttribute("aria-current");
   });
   window.scrollTo({ top: 0, behavior: "smooth" });
+  syncHomeMedia();
 }
 
 function resizeTextArea(textarea) {
@@ -1411,7 +1414,81 @@ deleteDialog.addEventListener("close", () => {
   pendingDelete = null;
 });
 
+// Home: "Your digital team". Each action opens an existing SIP view through its
+// navigation item, so the home page adds no second route into any feature.
+// data-roles on each action mirrors _role_allows in main.py.
+const specialistCards = [...document.querySelectorAll(".specialist[data-specialist]")];
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function applySpecialistAvailability() {
+  specialistCards.forEach((card) => {
+    const actions = [...card.querySelectorAll(".specialist-action")];
+    actions.forEach((action) => {
+      action.hidden = !action.dataset.roles.split(" ").includes(currentRole);
+    });
+    const usable = actions.filter((action) => !action.hidden);
+    const notice = card.querySelector(".specialist-unavailable");
+    if (notice && actions.length) notice.hidden = usable.length > 0;
+    card.classList.toggle("is-unavailable", usable.length === 0);
+    // With exactly one action the whole card is its hit area; with two, each button is its own.
+    card.classList.toggle("is-single-action", usable.length === 1);
+  });
+}
+
+document.querySelectorAll(".specialist-action").forEach((action) => {
+  action.addEventListener("click", () => {
+    const navItem = document.querySelector(`.nav-item[data-view="${action.dataset.view}"]`);
+    if (navItem) navItem.click();
+  });
+});
+
+// Optional animation per specialist: drop <name>.mp4 next to the PNG in
+// backend/app/avatars. Without a file, or when it fails, blocked autoplay or
+// "reduce motion" apply, the still image stays and everything keeps working.
+const homeVideoState = new Map(); // video element -> "failed" | "ready"
+const homeVideoObserver = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries) => entries.forEach((entry) => {
+    entry.target.dataset.inView = entry.isIntersecting ? "true" : "false";
+    updateHomeVideo(entry.target);
+  }), { threshold: 0.35 })
+  : null;
+
+function updateHomeVideo(video) {
+  const shouldPlay = !views.home.hidden
+    && !document.hidden
+    && !reducedMotion.matches
+    && video.dataset.inView === "true"
+    && homeVideoState.get(video) !== "failed";
+  if (!shouldPlay) {
+    if (!video.paused) video.pause();
+    return;
+  }
+  if (!video.getAttribute("src")) video.src = video.dataset.video;
+  const attempt = video.play();
+  if (attempt) attempt.catch(() => video.pause()); // autoplay blocked: keep the still image
+}
+
+const homeVideos = [...document.querySelectorAll(".specialist-video[data-video]")];
+
+function syncHomeMedia() {
+  homeVideos.forEach(updateHomeVideo);
+}
+
+homeVideos.forEach((video) => {
+  video.addEventListener("playing", () => video.closest(".specialist-stage").classList.add("has-video"));
+  video.addEventListener("pause", () => video.closest(".specialist-stage").classList.remove("has-video"));
+  video.addEventListener("error", () => {
+    homeVideoState.set(video, "failed");
+    video.closest(".specialist-stage").classList.remove("has-video");
+    video.removeAttribute("src");
+  });
+  if (homeVideoObserver) homeVideoObserver.observe(video);
+});
+document.addEventListener("visibilitychange", syncHomeMedia);
+reducedMotion.addEventListener?.("change", syncHomeMedia);
+
 applyTranslations();
+applySpecialistAvailability();
 resetKnowledgeChat();
 loadCurrentUser();
 loadConversations();

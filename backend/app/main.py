@@ -251,7 +251,7 @@ def _role_allows(role: str, method: str, path: str) -> bool:
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     secret = _session_secret()
-    if secret is None or request.url.path in PUBLIC_PATHS:
+    if secret is None or request.url.path in PUBLIC_PATHS or request.url.path.startswith("/fonts/"):
         return await call_next(request)
 
     identity = _session_identity(request, secret)
@@ -408,10 +408,21 @@ def _upload_root() -> Path:
 # Browsers otherwise keep an old app.js after a deploy; revalidate against the ETag.
 REVALIDATE = {"Cache-Control": "no-cache"}
 
+AVATAR_DIR = APP_DIR / "avatars"
+FONT_DIR = APP_DIR / "fonts"
+AVATAR_NAMES = {"marketing", "kennis", "kyc"}
+AVATAR_TYPES = {".png": "image/png", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm"}
+FONT_FILES = {"ubuntu-regular.woff2", "ubuntu-medium.woff2", "ubuntu-bold.woff2"}
+
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    return (APP_DIR / "index.html").read_text(encoding="utf-8")
+    html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+    # The home page only tries an animation that is actually there; otherwise it shows the PNG.
+    for name in AVATAR_NAMES:
+        if not (AVATAR_DIR / f"{name}.mp4").is_file():
+            html = html.replace(f' data-video="/avatars/{name}.mp4"', "")
+    return html
 
 
 @app.get("/ibc-group-lockup.png", response_class=FileResponse)
@@ -437,6 +448,24 @@ def frontend_script() -> FileResponse:
 @app.get("/i18n.js", response_class=FileResponse)
 def frontend_i18n() -> FileResponse:
     return FileResponse(APP_DIR / "i18n.js", headers=REVALIDATE)
+
+
+@app.get("/avatars/{filename}", response_class=FileResponse)
+def avatar(filename: str) -> FileResponse:
+    """Robot images on the home page, plus optional animation videos dropped in later."""
+    stem, dot, extension = filename.rpartition(".")
+    media_type = AVATAR_TYPES.get(f".{extension}") if dot else None
+    path = AVATAR_DIR / filename
+    if stem not in AVATAR_NAMES or media_type is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path, media_type=media_type, headers=REVALIDATE)
+
+
+@app.get("/fonts/{filename}", response_class=FileResponse)
+def font(filename: str) -> FileResponse:
+    if filename not in FONT_FILES:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(FONT_DIR / filename, media_type="font/woff2", headers={"Cache-Control": "public, max-age=604800"})
 
 
 @app.get("/health")
