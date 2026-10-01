@@ -38,10 +38,11 @@ function safeNext(path) {
 }
 function enter(req, res, url) {
   const claims = verify(url.searchParams.get('t'));
-  if (!claims || typeof claims.sub !== 'string' || !/^[a-f0-9]{32}$/.test(claims.jti || '')) return deny(res);
+  // A session cookie is not an entry link: it carries typ 'session' and no one-time id.
+  if (!claims || claims.typ === 'session' || typeof claims.sub !== 'string' || !/^[a-f0-9]{32}$/.test(claims.jti || '')) return deny(res);
   try { fs.writeFileSync(`${nonceDir}/${claims.jti}`, String(claims.exp), { flag: 'wx', mode: 0o600 }); }
   catch { return deny(res); }
-  const body = b64(JSON.stringify({ sub: claims.sub, exp: Math.floor(Date.now() / 1000) + sessionSeconds }));
+  const body = b64(JSON.stringify({ typ: 'session', sub: claims.sub, exp: Math.floor(Date.now() / 1000) + sessionSeconds }));
   res.writeHead(303, {
     location: safeNext(claims.next),
     'set-cookie': `${cookieName}=${body}.${sign(body)}; Path=/; Max-Age=${sessionSeconds}; HttpOnly; Secure; SameSite=Strict`,
@@ -49,7 +50,8 @@ function enter(req, res, url) {
   });
   res.end();
 }
-function authorised(req) { return verify(cookie(req)) !== null; }
+// Only a session cookie counts; an entry link set as a cookie would skip its one-time check.
+function authorised(req) { return verify(cookie(req))?.typ === 'session'; }
 function safeRequest(req) {
   if (req.headers.origin && req.headers.origin !== origin) return false;
   if (req.headers['sec-fetch-site'] === 'cross-site') return false;

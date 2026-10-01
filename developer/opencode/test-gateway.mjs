@@ -51,7 +51,11 @@ try {
   assert.equal((await fetch(base, { headers: { cookie } })).status, 200);
   assert.equal((await fetch(base, { method: 'POST', headers: { cookie, origin: 'https://evil.example' } })).status, 403);
   assert.equal((await fetch(base, { method: 'POST', headers: { cookie, origin } })).status, 200);
-  console.log('gateway: unauthorised, expired, tampered, replay, cookie and origin checks passed');
+  // An entry link used as a cookie is refused, used or not; a cookie is refused as a link.
+  const token = new URL(link(Math.floor(Date.now() / 1000) + 120)).searchParams.get('t');
+  assert.equal((await fetch(base, { headers: { cookie: `__Host-sip_developer=${token}` } })).status, 401);
+  assert.equal((await fetch(`${base}/__sip/enter?t=${cookie.split('=')[1]}`, { redirect: 'manual' })).status, 401);
+  console.log('gateway: unauthorised, expired, tampered, replay, link-as-cookie, cookie and origin checks passed');
 } finally {
   child.kill();
   upstream.close();
