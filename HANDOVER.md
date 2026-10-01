@@ -244,5 +244,26 @@ Software Developer and OpenCode are not built.
   answers 401 without sign-in. Railway variables added: DIFY_PRODUCT_OWNER_API_KEY,
   SIP_PRODUCT_OWNER_WRITERS (= SIP_AUTH_EMAIL). Open Design was not deployed.
 - Not verified on production: a signed-in browser run (Arrya's login).
+- Since 01-10 (later the same day), the chat covers skill routes A, C and E too:
+  - Overviews: the model returns a `query` (sprint, assigned to a person or
+    "me", one story); SIP runs it (WIQL, max 200 items) and shows the real
+    items grouped by status with links. Results are stored
+    (`work_item_results`) and shown to the model in later turns as
+    "[Azure DevOps via SIP]" notes.
+  - Changes to existing user stories: the model returns a `change` (only the
+    fields that change: description as As/I want/so that, criteria, points,
+    status, sprint, assignee). SIP reads the story, shows current → new
+    (`work_item_changes`, versioned like story_drafts) and writes after
+    confirmation with a `/rev` test op. If the story changed meanwhile SIP plans
+    again on the new revision and asks for a new confirmation; a timeout is
+    uncertain and settled by reading the story. Closed/Removed cannot be
+    expressed; Resolved only on explicit request; a warning shows that Active
+    assigns the story to the token's account.
+  - New stories can be assigned (`assigned_to`); people are resolved against
+    the live team member list (display names to the model, accounts stay in
+    SIP). Reads and changes are limited to `SIP_PRODUCT_OWNER_WRITERS`.
+  - Verified for real (reads only): current sprint, Arrya's work in Sprint 28,
+    story #1800, and a change proposal "New → Refinement" for #1800 (not applied).
+  - Not built: route D (implementing a story) and comments.
 - Not tested: Safari; the uncertain/timeout path against the real DevOps
   (only with fakes); several people at once on Railway.
