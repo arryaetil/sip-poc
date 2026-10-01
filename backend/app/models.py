@@ -268,6 +268,9 @@ class StoryDraftContent(BaseModel):
     estimation_reason: str = ""
     target_kind: Literal["backlog", "sprint"] | None = None
     iteration_path: str | None = None
+    # The language the story text is written in; SIP builds "As … I want … so that …"
+    # in it, which can differ from the interface language.
+    language: Literal["nl", "en", "de"] | None = None
 
     @field_validator("title")
     @classmethod
