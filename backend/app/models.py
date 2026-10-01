@@ -250,6 +250,18 @@ def _clean_items(items: list[str]) -> list[str]:
     return cleaned
 
 
+def _clean_tags(items: list[str] | None) -> list[str]:
+    seen: dict[str, str] = {}
+    for item in items or []:
+        for part in str(item).split(";"):
+            tag = part.strip()
+            if tag and tag.casefold() not in seen:
+                seen[tag.casefold()] = tag
+    if len(seen) > 20 or any(len(tag) > 100 for tag in seen.values()):
+        raise ValueError("at most 20 tags of 100 characters")
+    return list(seen.values())
+
+
 class StoryDraftContent(BaseModel):
     """A user story as the Product Owner assistant proposes it and the user edits it.
 
@@ -273,11 +285,18 @@ class StoryDraftContent(BaseModel):
     language: Literal["nl", "en", "de"] | None = None
     # A team member's display name; SIP resolves it to the real account. None = nobody.
     assigned_to: str | None = None
+    # Existing Azure DevOps tags only; SIP drops or refuses tags that do not exist.
+    tags: list[str] = Field(default_factory=list)
 
     @field_validator("title")
     @classmethod
     def _title(cls, value: str) -> str:
         return _clean_text(value, 255)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str]) -> list[str]:
+        return _clean_tags(value)
 
     @field_validator("role", "capability", "value", "estimation_reason")
     @classmethod
@@ -330,7 +349,15 @@ class WorkItemChange(BaseModel):
     target_kind: Literal["backlog", "sprint"] | None = None
     iteration_path: str | None = None
     assigned_to: str | None = None
+    # Existing tags to add or remove; the rest of the story's tags stay.
+    add_tags: list[str] | None = None
+    remove_tags: list[str] | None = None
     language: Literal["nl", "en", "de"] | None = None
+
+    @field_validator("add_tags", "remove_tags")
+    @classmethod
+    def _tags(cls, value: list[str] | None) -> list[str] | None:
+        return _clean_tags(value) if value is not None else None
 
     @field_validator("title")
     @classmethod
@@ -411,6 +438,7 @@ class WorkItemSummary(BaseModel):
 
 class WorkItemDetail(WorkItemSummary):
     rev: int
+    tags: list[str] = Field(default_factory=list)
     description: str = ""
     entry_criteria: str = ""
     acceptance_criteria: str = ""
@@ -432,7 +460,7 @@ class WorkItemResult(BaseModel):
 class FieldChange(BaseModel):
     field: Literal[
         "title", "description", "entry_criteria", "acceptance_criteria",
-        "story_points", "state", "iteration_path", "assigned_to",
+        "story_points", "state", "iteration_path", "assigned_to", "tags",
     ]
     before: str
     after: str
@@ -502,6 +530,8 @@ class ProductOwnerSettings(BaseModel):
     targets: list[StoryTarget]
     # Team members' display names, for assigning; only for accounts that may use Azure DevOps.
     people: list[str] = Field(default_factory=list)
+    # Existing tags in the project; only these can be used.
+    tags: list[str] = Field(default_factory=list)
     notice: str | None = None
 
 

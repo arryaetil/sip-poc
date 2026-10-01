@@ -193,6 +193,39 @@ def _description_html(sentence: str, reason: str, language: str) -> str:
     return body
 
 
+def list_tags() -> list[str]:
+    """The tags that already exist in the project. New tags may not be created (TF401289)."""
+    settings = _settings()
+    try:
+        with client_factory(settings) as http:
+            response = http.get(
+                f"{settings.base}/{quote(settings.project)}/_apis/wit/tags",
+                params={"api-version": "7.1-preview.1"},
+            )
+    except httpx.HTTPError as exc:
+        raise DevOpsUnavailable("Azure DevOps could not be reached.") from exc
+    _check_auth(response)
+    if response.status_code >= 400:
+        raise DevOpsUnavailable(f"Azure DevOps did not return the tags: {_devops_message(response)}")
+    return sorted((item["name"] for item in response.json().get("value", [])), key=str.casefold)
+
+
+def resolve_tags(names: list[str], existing: list[str]) -> list[str]:
+    """Existing tags in their real spelling; refuses any tag that does not exist yet."""
+    known = {tag.casefold(): tag for tag in existing}
+    unknown = [name for name in names if name.casefold() not in known]
+    if unknown:
+        raise ValueError(
+            f"Tag {', '.join(unknown)} does not exist in Azure DevOps, and new tags may not be created. "
+            "Choose an existing tag."
+        )
+    return [known[name.casefold()] for name in names]
+
+
+def _tags_value(tags: list[str]) -> str:
+    return "; ".join(tags)
+
+
 def story_patch(
     content: StoryDraftContent, language: str, iteration_path: str, assigned_to: str | None = None
 ) -> list[dict]:
@@ -211,6 +244,8 @@ def story_patch(
         "System.IterationPath": iteration_path,
         # A resolved account (uniqueName), never a guessed name.
         "System.AssignedTo": assigned_to,
+        # Only existing tags, already checked by SIP.
+        "System.Tags": _tags_value(content.tags),
     }
     return [
         {"op": "add", "path": f"/fields/{name}", "value": value}
@@ -315,7 +350,7 @@ LIST_FIELDS = (
     "System.IterationPath,Microsoft.VSTS.Scheduling.StoryPoints"
 )
 DETAIL_FIELDS = LIST_FIELDS + (
-    ",System.Rev,System.Description,Custom.EntryCriteria,Microsoft.VSTS.Common.AcceptanceCriteria"
+    ",System.Rev,System.Tags,System.Description,Custom.EntryCriteria,Microsoft.VSTS.Common.AcceptanceCriteria"
 )
 MAX_LIST = 200  # Azure DevOps returns at most 200 work items per batch
 # Statuses in the order the board shows them.
@@ -442,6 +477,7 @@ def get_item(item_id: int) -> WorkItemDetail:
     return WorkItemDetail(
         **summary.model_dump(),
         rev=fields.get("System.Rev", item.get("rev", 0)),
+        tags=[tag.strip() for tag in (fields.get("System.Tags") or "").split(";") if tag.strip()],
         description=plain_text(fields.get("System.Description", "")),
         entry_criteria=plain_text(fields.get("Custom.EntryCriteria", "")),
         acceptance_criteria=plain_text(fields.get("Microsoft.VSTS.Common.AcceptanceCriteria", "")),
@@ -468,6 +504,7 @@ def plan_change(
     language: str,
     targets: list[StoryTarget],
     members: list[tuple[str, str]],
+    existing_tags: list[str] | None = None,
 ) -> tuple[list[dict], list[FieldChange]]:
     """The JSON Patch operations and the before/after list for a proposed change.
 
@@ -519,6 +556,13 @@ def plan_change(
         display, account = resolve_person(change.assigned_to, members)
         if display != (current.assigned_to or ""):
             add("System.AssignedTo", account, "assigned_to", current.assigned_to or "", display)
+    if change.add_tags or change.remove_tags:
+        added = resolve_tags(change.add_tags or [], existing_tags or [])
+        removed = {tag.casefold() for tag in change.remove_tags or []}
+        tags = [tag for tag in current.tags if tag.casefold() not in removed]
+        tags += [tag for tag in added if tag.casefold() not in {t.casefold() for t in tags}]
+        if [t.casefold() for t in tags] != [t.casefold() for t in current.tags]:
+            add("System.Tags", _tags_value(tags), "tags", _tags_value(current.tags), _tags_value(tags))
     return ops, shown
 
 
@@ -564,6 +608,8 @@ def change_applied(ops: list[dict], current: WorkItemDetail, members: list[tuple
             "System.IterationPath": lambda: current.iteration_path == value,
             "Microsoft.VSTS.Scheduling.StoryPoints": lambda: current.story_points == value,
             "System.AssignedTo": lambda: accounts.get(str(value).casefold()) == current.assigned_to,
+            "System.Tags": lambda: {t.strip().casefold() for t in str(value).split(";") if t.strip()}
+            == {t.casefold() for t in current.tags},
             "System.Description": lambda: _same(value, current.description),
             "Custom.EntryCriteria": lambda: _same(value, current.entry_criteria),
             "Microsoft.VSTS.Common.AcceptanceCriteria": lambda: _same(value, current.acceptance_criteria),

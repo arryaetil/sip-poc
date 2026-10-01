@@ -294,16 +294,27 @@ function revealMessage(message, text, container) {
   window.setTimeout(step, 80);
 }
 
+// Each chat shows the robot of its specialist from the home page.
+function chatAvatarFor(container) {
+  return container === poMessages ? "product-owner" : "kennis";
+}
+
+function robotAvatar(name) {
+  const avatar = document.createElement("span");
+  avatar.className = "avatar avatar-robot";
+  avatar.setAttribute("aria-hidden", "true");
+  const image = document.createElement("img");
+  image.src = `/avatars/${name}.webp`;
+  image.alt = "";
+  image.decoding = "async";
+  avatar.append(image);
+  return avatar;
+}
+
 function appendMessage(container, text, role, assistantName, animate = false) {
   const row = document.createElement("div");
   row.className = `message-row ${role}`;
-  if (role === "assistant") {
-    const avatar = document.createElement("span");
-    avatar.className = "avatar";
-    avatar.setAttribute("aria-hidden", "true");
-    avatar.textContent = "SIP";
-    row.append(avatar);
-  }
+  if (role === "assistant") row.append(robotAvatar(chatAvatarFor(container)));
   const content = document.createElement("div");
   content.className = "message-content";
   if (role === "assistant") {
@@ -1480,13 +1491,24 @@ deleteDialog.addEventListener("close", () => {
 // version on screen with a confirmation id, so an edited, old or repeated click
 // never creates a story the user did not see, and never creates it twice.
 let poConversationId = null;
-let poSettings = { devops_configured: false, can_create: false, targets: [], people: [], project: "" };
+let poSettings = { devops_configured: false, can_create: false, targets: [], people: [], tags: [], project: "" };
+
+function syncTagOptions() {
+  let list = document.querySelector("#po-tag-options");
+  if (!list) {
+    list = document.createElement("datalist");
+    list.id = "po-tag-options";
+    document.body.append(list);
+  }
+  list.replaceChildren(...poSettings.tags.map((tag) => new Option(tag, tag)));
+}
 
 async function loadPoSettings() {
   try {
     poSettings = await api("/api/product-owner/settings");
+    syncTagOptions();
   } catch (error) {
-    poSettings = { devops_configured: false, can_create: false, targets: [], people: [], project: "" };
+    poSettings = { devops_configured: false, can_create: false, targets: [], people: [], tags: [], project: "" };
   }
   return poSettings;
 }
@@ -1621,6 +1643,12 @@ function storyDraftCard(record) {
     assignee.add(new Option(content.assigned_to, content.assigned_to));
   }
   assignee.value = content.assigned_to || "";
+  // Tags: existing ones only (new tags may not be created); suggestions from the live list.
+  const tagsInput = document.createElement("input");
+  tagsInput.name = "tags";
+  tagsInput.value = (content.tags || []).join("; ");
+  tagsInput.setAttribute("list", "po-tag-options");
+  tagsInput.autocomplete = "off";
 
   grid.append(
     titleField,
@@ -1632,6 +1660,7 @@ function storyDraftCard(record) {
     poField(t("po.field.story_points"), points),
     poField(t("po.field.target"), target),
     poField(t("po.field.assigned_to"), assignee),
+    Object.assign(poField(t("po.field.tags"), tagsInput, t("po.tags_hint")), { className: "field full-width" }),
     Object.assign(poField(t("po.field.estimation_reason"), poTextarea("estimation_reason", content.estimation_reason, 2)), { className: "field full-width" }),
   );
   grid.querySelectorAll("input, textarea, select").forEach((control) => { control.disabled = !editable; });
@@ -1802,6 +1831,7 @@ function readStoryForm(card) {
     target_kind: target === "backlog" ? "backlog" : target ? "sprint" : null,
     iteration_path: target && target !== "backlog" ? target : null,
     assigned_to: value("assigned_to") || null,
+    tags: value("tags").split(/[;,]/).map((tag) => tag.trim()).filter(Boolean),
     // Not a form field: kept from the proposal so an edit does not change the story's language.
     language: card.dataset.language || null,
   };
@@ -1863,6 +1893,7 @@ function workItemResultCard(result) {
       detail.story_points != null ? t("po.points", { n: detail.story_points }) : "",
       detail.assigned_to || t("po.unassigned"),
       detail.iteration_path,
+      (detail.tags || []).length ? `${t("po.field.tags")}: ${detail.tags.join(", ")}` : "",
     ].filter(Boolean).join(" · ");
     card.append(head, meta);
     [["description", "po.change_field.description"], ["entry_criteria", "po.change_field.entry_criteria"],
