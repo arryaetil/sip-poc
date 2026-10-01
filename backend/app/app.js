@@ -198,6 +198,34 @@ function setStatus(element, message, type = "error") {
   element.classList.toggle("success", type === "success");
 }
 
+const SIDEBAR_KEY = "sip:sidebar-collapsed";
+const sidebarToggle = document.querySelector("#sidebar-toggle");
+
+function syncSidebarLabels() {
+  const collapsed = document.body.classList.contains("sidebar-collapsed");
+  sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  sidebarToggle.setAttribute("aria-label", t(collapsed ? "nav.expand" : "nav.collapse"));
+  sidebarToggle.title = t(collapsed ? "nav.expand" : "nav.collapse");
+  // Collapsed, only icons show: the name becomes the tooltip.
+  document.querySelectorAll(".sidebar .nav-item").forEach((item) => {
+    const label = item.querySelector("span")?.textContent.trim() || "";
+    if (collapsed) item.title = label;
+    else item.removeAttribute("title");
+  });
+}
+
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch {}
+  syncSidebarLabels();
+}
+
+sidebarToggle.addEventListener("click", () =>
+  setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed")));
+try { if (localStorage.getItem(SIDEBAR_KEY) === "1") document.body.classList.add("sidebar-collapsed"); } catch {}
+document.querySelector("#language-switcher")?.addEventListener("change", () => setTimeout(syncSidebarLabels));
+setTimeout(syncSidebarLabels);
+
 function showView(name) {
   Object.entries(views).forEach(([viewName, element]) => {
     element.hidden = viewName !== name;
