@@ -820,6 +820,17 @@ def _devops_people(request: Request) -> tuple[list[tuple[str, str]], tuple[str, 
     return members, devops.person_for_email(email, members) if email else None
 
 
+def _devops_tags(request: Request) -> list[str]:
+    """Existing tags, for accounts that may use Azure DevOps; empty when unavailable."""
+    if not (_can_write_stories(request) and devops.configured()):
+        return []
+    try:
+        return devops.list_tags()
+    except devops.DevOpsUnavailable as exc:
+        logger.warning("Azure DevOps tags unavailable: %s", exc)
+        return []
+
+
 def _people_for_model(members: list[tuple[str, str]], me: tuple[str, str] | None, allowed: bool) -> str:
     if not allowed:
         return "Azure DevOps reads and changes are not available for this user; only new story drafts are."
@@ -840,6 +851,7 @@ def _result_note(payload: dict) -> str:
         return (
             f"[Azure DevOps via SIP] Story #{detail['id']} ({detail['state']}, rev {detail['rev']}): {detail['title']}\n"
             f"Assigned to: {detail.get('assigned_to') or 'nobody'}; iteration: {detail['iteration_path']}; "
+            f"tags: {', '.join(detail.get('tags') or []) or 'none'}; "
             f"points: {detail.get('story_points')}\nDescription: {detail['description']}\n"
             f"Entry criteria: {detail['entry_criteria']}\nAcceptance criteria: {detail['acceptance_criteria']}"
         )
@@ -934,12 +946,15 @@ def _run_query(
 
 
 def _plan_change(
-    change: WorkItemChange, language: str, targets: list[StoryTarget], members: list[tuple[str, str]]
+    change: WorkItemChange, language: str, targets: list[StoryTarget], members: list[tuple[str, str]],
+    tags: list[str] | None = None,
 ) -> tuple[object, list[dict], list]:
     current = devops.get_item(change.work_item_id)
     if current.work_item_type != "User Story":
         raise ValueError(f"#{current.id} is a {current.work_item_type}; SIP only changes user stories.")
-    ops, shown = devops.plan_change(change, current, language, targets, members)
+    if (change.add_tags or change.remove_tags) and tags is None:
+        tags = devops.list_tags()
+    ops, shown = devops.plan_change(change, current, language, targets, members, tags)
     if not ops:
         raise ValueError(f"Story #{current.id} already has these values; nothing to change.")
     return current, ops, shown
@@ -959,6 +974,7 @@ def product_owner_settings(request: Request) -> ProductOwnerSettings:
     if not can_create and notice is None:
         notice = "Your account cannot create stories in Azure DevOps yet. You can write and save a proposal."
     members, _ = _devops_people(request)
+    tags = _devops_tags(request)
     return ProductOwnerSettings(
         devops_configured=devops.configured(),
         can_create=can_create and bool(targets),
@@ -966,6 +982,7 @@ def product_owner_settings(request: Request) -> ProductOwnerSettings:
         project=devops.project(),
         targets=targets,
         people=[display for display, _ in members],
+        tags=tags,
         notice=notice,
     )
 
@@ -984,13 +1001,18 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
     targets, _ = _story_targets()
     allowed = _can_write_stories(http_request)
     members, me = _devops_people(http_request)
+    tags = _devops_tags(http_request)
+    tags_text = (
+        f"Existing tags (only these may be used; new tags cannot be created): {', '.join(tags)}"
+        if tags else "Existing tags: not available; do not propose tags."
+    )
     try:
         turn = get_assistant().product_owner_turn(
             _history_for_model(conversation, owner_id),
             request.message,
             conversation.language,
             owner_id,
-            f"{_targets_for_model(targets)}\n\n{_people_for_model(members, me, allowed)}",
+            f"{_targets_for_model(targets)}\n\n{_people_for_model(members, me, allowed)}\n{tags_text}",
             current["content"] if open_draft else "",
         )
     except RuntimeError as exc:
@@ -1020,6 +1042,10 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
                 content = content.model_copy(update={"assigned_to": devops.resolve_person(content.assigned_to, members)[0]})
             except ValueError:
                 content = content.model_copy(update={"assigned_to": None})
+        if content.tags:
+            # Keep only tags that exist, in their real spelling; drop invented ones.
+            known = {tag.casefold(): tag for tag in tags}
+            content = content.model_copy(update={"tags": [known[t.casefold()] for t in content.tags if t.casefold() in known]})
         saved = store.save_model_story_draft(conversation.id, owner_id, conversation.language, content)
         draft_row = saved or current
     updated = store.add_conversation_turn(
@@ -1046,7 +1072,7 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
         error = no_access if not allowed else None
         if error is None:
             try:
-                current_item, ops, shown = _plan_change(turn.change, conversation.language, targets, members)
+                current_item, ops, shown = _plan_change(turn.change, conversation.language, targets, members, tags)
                 change_row = store.save_work_item_change(
                     conversation.id, owner_id, current_item.id, current_item.title, current_item.url,
                     turn.change.model_dump_json(), ops, [item.model_dump() for item in shown], current_item.rev,
@@ -1257,11 +1283,14 @@ def create_product_owner_story(draft_id: str, body: CreateStoryRequest, request:
     try:
         iteration_path = devops.resolve_iteration(content, devops.list_targets())
         assignee = devops.resolve_person(content.assigned_to, devops.team_members()) if content.assigned_to else None
+        tags = devops.resolve_tags(content.tags, devops.list_tags()) if content.tags else []
     except devops.DevOpsUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    approved = content.model_copy(update={"iteration_path": iteration_path, "assigned_to": assignee[0] if assignee else None})
+    approved = content.model_copy(update={
+        "iteration_path": iteration_path, "assigned_to": assignee[0] if assignee else None, "tags": tags,
+    })
     approved_by = getattr(request.state, "user_email", None) or "local-dev"
     if not store.begin_story_create(draft_id, owner_id, body.version, body.confirmation_id, approved_by, approved):
         current = store.get_story_draft(draft_id, owner_id)

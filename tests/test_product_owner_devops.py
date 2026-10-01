@@ -43,7 +43,8 @@ class FakeDevOps:
             1798: {"System.Title": "Rapport exporteren", "System.WorkItemType": "User Story", "System.State": "New",
                    "System.IterationPath": SPRINT, "System.Rev": 4, "Microsoft.VSTS.Scheduling.StoryPoints": 3.0,
                    "System.AssignedTo": {"displayName": "Arrya Willems", "uniqueName": "arrya@etil.nl"},
-                   "System.Description": "<p>Export</p>", "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>Werkt</li></ul>"},
+                   "System.Description": "<p>Export</p>", "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>Werkt</li></ul>",
+                   "System.Tags": "AI"},
             1799: {"System.Title": "Inloggen met SSO", "System.WorkItemType": "User Story", "System.State": "Active",
                    "System.IterationPath": SPRINT, "System.Rev": 2,
                    "System.AssignedTo": {"displayName": "Mark Mennens", "uniqueName": "mark@etil.nl"}},
@@ -60,6 +61,8 @@ class FakeDevOps:
         self.calls.append(f"{request.method} {request.url.path}")
         if url.split("?")[0].endswith("/teams/Etil%20Solutions%20Team/members"):
             return httpx.Response(200, json={"value": [{"identity": {"displayName": d, "uniqueName": u}} for d, u in MEMBERS]})
+        if url.split("?")[0].endswith("/_apis/wit/tags"):
+            return httpx.Response(200, json={"value": [{"name": n} for n in ("AI", "Arrya", "Demo")]})
         if "teamsettings/iterations" in url:
             return httpx.Response(200, json={"value": [
                 {"name": "Sprint 28", "path": SPRINT, "attributes": {"timeFrame": "current"}},
@@ -364,3 +367,45 @@ def test_new_story_assignee_is_a_real_team_member(env):
     invented = say(http, assistant, ProductOwnerTurn(message="Voorstel", stage="draft_ready",
                                                      draft=content.model_copy(update={"assigned_to": "Piet"})))["draft"]
     assert invented["content"]["assigned_to"] is None
+
+
+# --- Tags: existing ones only -------------------------------------------------------
+
+
+def test_existing_tags_can_be_added_and_removed_on_a_story(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    change = say(http, assistant, change_turn(work_item_id=1798, add_tags=["demo"], remove_tags=["AI"]))["change"]
+    assert change["changes"] == [{"field": "tags", "before": "AI", "after": "Demo"}]
+    assert "Existing tags (only these may be used" in assistant.calls[0]["targets"] and "Demo" in assistant.calls[0]["targets"]
+
+    apply(http, change)
+    assert {"op": "add", "path": "/fields/System.Tags", "value": "Demo"} in fake.patches[0]
+
+    refused = say(http, assistant, change_turn(work_item_id=1798, add_tags=["Nieuwe tag"]))
+    assert refused["change"] is None and "does not exist" in refused["result"]["error"]
+    assert len(fake.patches) == 1
+
+
+def test_new_story_tags_must_already_exist(env):
+    store, assistant, fake = env
+    http = signed_in("arrya@etil.nl", "a-pass")
+    content = StoryDraftContent(
+        title="Exporteren", role="medewerker", capability="exporteren", value="ik tijd bespaar",
+        acceptance_criteria=["Werkt"], story_points=2, target_kind="backlog", tags=["ai", "Verzonnen"],
+    )
+    draft = say(http, assistant, ProductOwnerTurn(message="Voorstel", stage="draft_ready", draft=content))["draft"]
+    assert draft["content"]["tags"] == ["AI"]  # real spelling, invented tag dropped
+    assert http.get("/api/product-owner/settings").json()["tags"] == ["AI", "Arrya", "Demo"]
+
+    typed = http.put(f"/api/product-owner/drafts/{draft['id']}",
+                     json={"version": 1, "content": {**draft["content"], "tags": ["AI", "Bestaat niet"]}}).json()
+    response = http.post(f"/api/product-owner/drafts/{draft['id']}/create", json={"version": typed["version"], "confirmation_id": "confirm-0007"})
+    assert response.status_code == 422 and "does not exist" in response.json()["detail"]
+    assert fake.posts == []
+
+    fixed = http.put(f"/api/product-owner/drafts/{draft['id']}",
+                     json={"version": typed["version"], "content": {**draft["content"], "tags": ["AI", "demo"]}}).json()
+    http.post(f"/api/product-owner/drafts/{draft['id']}/create", json={"version": fixed["version"], "confirmation_id": "confirm-0008"})
+    fields = {op["path"]: op["value"] for op in fake.posts[0]}
+    assert fields["/fields/System.Tags"] == "AI; Demo"

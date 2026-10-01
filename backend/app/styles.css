@@ -252,6 +252,9 @@ body.sidebar-collapsed .sidebar-note { display: none; }
   font-size: 11px;
   font-weight: 500;
 }
+/* The specialist's robot, zoomed in on its head (eyes sit at about 52% / 26% of every robot image). */
+.avatar-robot { position: relative; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 50%; background: #f3f4f6; overflow: hidden; }
+.avatar-robot img { position: absolute; width: 84px; height: 84px; max-width: none; left: calc(20px - 84px * .48); top: calc(20px - 84px * .25); }
 .message-content { max-width: min(680px, 80%); }
 .message.typing::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: currentColor; vertical-align: -.12em; animation: typing-caret 760ms step-end infinite; }
 @keyframes typing-caret { 50% { opacity: 0; } }
