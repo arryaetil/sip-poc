@@ -317,7 +317,7 @@ LIST_FIELDS = (
 DETAIL_FIELDS = LIST_FIELDS + (
     ",System.Rev,System.Description,Custom.EntryCriteria,Microsoft.VSTS.Common.AcceptanceCriteria"
 )
-MAX_LIST = 50
+MAX_LIST = 200  # Azure DevOps returns at most 200 work items per batch
 # Statuses in the order the board shows them.
 STATE_ORDER = ("New", "Refinement", "To Be Planned", "Ready", "Active", "Resolved", "Closed", "Removed")
 BOARD_TYPES = "[System.WorkItemType] IN ('User Story', 'Bug') AND [System.State] <> 'Removed'"
