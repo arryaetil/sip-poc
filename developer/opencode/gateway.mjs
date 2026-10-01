@@ -43,12 +43,17 @@ function enter(req, res, url) {
   try { fs.writeFileSync(`${nonceDir}/${claims.jti}`, String(claims.exp), { flag: 'wx', mode: 0o600 }); }
   catch { return deny(res); }
   const body = b64(JSON.stringify({ typ: 'session', sub: claims.sub, exp: Math.floor(Date.now() / 1000) + sessionSeconds }));
-  res.writeHead(303, {
-    location: safeNext(claims.next),
+  // Not a redirect: the click started on SIP, another site, and a browser does not send a
+  // SameSite=Strict cookie on any request of that navigation, redirects included. This
+  // page continues from the Developer site itself, so the cookie is sent from then on.
+  const next = safeNext(claims.next).replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
     'set-cookie': `${cookieName}=${body}.${sign(body)}; Path=/; Max-Age=${sessionSeconds}; HttpOnly; Secure; SameSite=Strict`,
     'cache-control': 'no-store', 'referrer-policy': 'no-referrer',
+    'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
   });
-  res.end();
+  res.end(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${next}"><title>OpenCode</title><p>OpenCode wordt geopend…</p>`);
 }
 // Only a session cookie counts; an entry link set as a cookie would skip its one-time check.
 function authorised(req) { return verify(cookie(req))?.typ === 'session'; }
