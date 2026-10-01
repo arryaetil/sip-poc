@@ -275,6 +275,8 @@ function resizeTextArea(textarea) {
 }
 
 function revealMessage(message, text, container) {
+  // The Product Owner chat places its answer once and does not chase the typing.
+  const follow = container !== poMessages;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     message.textContent = text;
     return;
@@ -287,7 +289,7 @@ function revealMessage(message, text, container) {
   const step = () => {
     message.textContent += tokens.slice(index, index + batchSize).join("");
     index += batchSize;
-    container.scrollTop = container.scrollHeight;
+    if (follow) container.scrollTop = container.scrollHeight;
     if (index < tokens.length) window.setTimeout(step, 22);
     else message.classList.remove("typing");
   };
@@ -1538,6 +1540,12 @@ function newConfirmationId() {
   return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+const WORK_ITEM_TYPES = ["User Story", "Bug", "Task", "Feature", "Epic"];
+
+function typeKey(type) {
+  return type.toLowerCase().replace(" ", "_");
+}
+
 function poField(labelText, control, hint = "") {
   const label = document.createElement("label");
   label.className = "field";
@@ -1610,6 +1618,11 @@ function storyDraftCard(record) {
 
   const grid = document.createElement("div");
   grid.className = "form-grid story-draft-grid";
+  const typeSelect = document.createElement("select");
+  typeSelect.name = "work_item_type";
+  WORK_ITEM_TYPES.forEach((type) => typeSelect.add(new Option(t(`po.type.${typeKey(type)}`), type)));
+  typeSelect.value = content.work_item_type || "User Story";
+  const typeField = poField(t("po.field.work_item_type"), typeSelect);
   const titleInput = document.createElement("input");
   titleInput.name = "title";
   titleInput.maxLength = 255;
@@ -1650,20 +1663,51 @@ function storyDraftCard(record) {
   tagsInput.setAttribute("list", "po-tag-options");
   tagsInput.autocomplete = "off";
 
+  const priority = document.createElement("select");
+  priority.name = "priority";
+  ["", 1, 2, 3, 4].forEach((value) => priority.add(new Option(value === "" ? "—" : String(value), String(value))));
+  priority.value = String(content.priority ?? "");
+  const remaining = document.createElement("input");
+  remaining.name = "remaining_work";
+  remaining.type = "number";
+  remaining.min = "0";
+  remaining.step = "0.5";
+  remaining.value = content.remaining_work ?? "";
+  const parent = document.createElement("input");
+  parent.name = "parent_id";
+  parent.type = "number";
+  parent.min = "1";
+  parent.value = content.parent_id ?? "";
+  // Which fields a type has, as in TYPE_RULES in devops.py.
+  const show = (field, types) => { field.dataset.types = types; return field; };
+  const story = "User Story";
   grid.append(
+    typeField,
     titleField,
-    poField(t("po.field.role"), poTextarea("role", content.role, 2)),
-    poField(t("po.field.capability"), poTextarea("capability", content.capability, 2)),
-    Object.assign(poField(t("po.field.value"), poTextarea("value", content.value, 2)), { className: "field full-width" }),
-    poField(t("po.field.entry_criteria"), poTextarea("entry_criteria", content.entry_criteria.join("\n"), 4), t("review.field.one_per_line")),
-    poField(t("po.field.acceptance_criteria"), poTextarea("acceptance_criteria", content.acceptance_criteria.join("\n"), 4), t("review.field.one_per_line")),
-    poField(t("po.field.story_points"), points),
+    show(poField(t("po.field.role"), poTextarea("role", content.role, 2)), story),
+    show(poField(t("po.field.capability"), poTextarea("capability", content.capability, 2)), story),
+    show(Object.assign(poField(t("po.field.value"), poTextarea("value", content.value, 2)), { className: "field full-width" }), story),
+    show(Object.assign(poField(t("po.field.description"), poTextarea("description", content.description || "", 4)), { className: "field full-width" }), "Bug|Task|Feature|Epic"),
+    show(poField(t("po.field.entry_criteria"), poTextarea("entry_criteria", content.entry_criteria.join("\n"), 4), t("review.field.one_per_line")), story),
+    show(poField(t("po.field.acceptance_criteria"), poTextarea("acceptance_criteria", content.acceptance_criteria.join("\n"), 4), t("review.field.one_per_line")), story),
+    show(poField(t("po.field.story_points"), points), "User Story|Bug|Feature|Epic"),
+    show(poField(t("po.field.remaining_work"), remaining), "Bug|Task"),
+    poField(t("po.field.priority"), priority),
+    poField(t("po.field.parent_id"), parent, t("po.parent_hint")),
     poField(t("po.field.target"), target),
     poField(t("po.field.assigned_to"), assignee),
     Object.assign(poField(t("po.field.tags"), tagsInput, t("po.tags_hint")), { className: "field full-width" }),
     Object.assign(poField(t("po.field.estimation_reason"), poTextarea("estimation_reason", content.estimation_reason, 2)), { className: "field full-width" }),
   );
   grid.querySelectorAll("input, textarea, select").forEach((control) => { control.disabled = !editable; });
+  const applyType = () => grid.querySelectorAll("[data-types]").forEach((field) => {
+    field.hidden = !field.dataset.types.split("|").includes(typeSelect.value);
+  });
+  typeSelect.addEventListener("change", applyType);
+  applyType();
+  badge.after(Object.assign(document.createElement("span"), {
+    className: "story-draft-badge", textContent: t(`po.type.${typeKey(content.work_item_type || story)}`),
+  }));
   card.append(grid);
 
   const notes = document.createElement("div");
@@ -1831,19 +1875,36 @@ function readStoryForm(card) {
     target_kind: target === "backlog" ? "backlog" : target ? "sprint" : null,
     iteration_path: target && target !== "backlog" ? target : null,
     assigned_to: value("assigned_to") || null,
+    work_item_type: value("work_item_type") || "User Story",
+    description: value("description").trim(),
+    remaining_work: value("remaining_work") === "" ? null : Number(value("remaining_work")),
+    priority: value("priority") ? Number(value("priority")) : null,
+    parent_id: value("parent_id") ? Number(value("parent_id")) : null,
     tags: value("tags").split(/[;,]/).map((tag) => tag.trim()).filter(Boolean),
     // Not a form field: kept from the proposal so an edit does not change the story's language.
     language: card.dataset.language || null,
   };
 }
 
-function renderStoryDraft(record, message = "") {
-  // The newest state of a proposal always moves to the end of the conversation.
-  poMessages.querySelector(`.story-draft-row[data-draft-id="${record.id}"]`)?.remove();
+function placeCard(row, existing, moveToEnd) {
+  // A new answer moves the card to the end; saving or confirming keeps it where it is.
+  if (existing && !moveToEnd) existing.replaceWith(row);
+  else {
+    existing?.remove();
+    poMessages.append(row);
+  }
+}
+
+function scrollToRow(row) {
+  const offset = row.getBoundingClientRect().top - poMessages.getBoundingClientRect().top;
+  poMessages.scrollTop += offset - 12;
+}
+
+function renderStoryDraft(record, message = "", moveToEnd = false) {
+  const existing = poMessages.querySelector(`.story-draft-row[data-draft-id="${record.id}"]`);
   const row = storyDraftCard(record);
-  poMessages.append(row);
+  placeCard(row, existing, moveToEnd);
   if (message) row.querySelector(".story-draft-status").textContent = message;
-  poMessages.scrollTop = poMessages.scrollHeight;
 }
 
 function hasUnsavedStoryEdits() {
@@ -1853,7 +1914,7 @@ function hasUnsavedStoryEdits() {
 async function reloadStoryDrafts() {
   if (!poConversationId) return;
   const drafts = await api(`/api/product-owner/conversations/${poConversationId}/drafts`);
-  drafts.forEach((record) => renderStoryDraft(record));
+  drafts.forEach((record) => renderStoryDraft(record));  // in place
 }
 
 // What SIP read from Azure DevOps: a list per status, or one story, with real links.
@@ -1889,7 +1950,11 @@ function workItemResultCard(result) {
     const meta = document.createElement("p");
     meta.className = "work-items-meta";
     meta.textContent = [
+      WORK_ITEM_TYPES.includes(detail.work_item_type) ? t(`po.type.${typeKey(detail.work_item_type)}`) : detail.work_item_type,
       detail.state,
+      detail.priority != null ? `${t("po.field.priority")} ${detail.priority}` : "",
+      detail.remaining_work != null ? `${t("po.field.remaining_work")}: ${detail.remaining_work}` : "",
+      detail.parent_id ? `${t("po.field.parent_id")} #${detail.parent_id}` : "",
       detail.story_points != null ? t("po.points", { n: detail.story_points }) : "",
       detail.assigned_to || t("po.unassigned"),
       detail.iteration_path,
@@ -1925,6 +1990,7 @@ function workItemResultCard(result) {
         const meta = document.createElement("span");
         meta.className = "work-items-meta";
         meta.textContent = [
+          WORK_ITEM_TYPES.includes(item.work_item_type) ? t(`po.type.${typeKey(item.work_item_type)}`) : item.work_item_type,
           item.story_points != null ? t("po.points", { n: item.story_points }) : "",
           item.assigned_to || t("po.unassigned"),
         ].filter(Boolean).join(" · ");
@@ -1940,7 +2006,6 @@ function workItemResultCard(result) {
 
 function renderWorkItemResult(result) {
   poMessages.append(workItemResultCard(result));
-  poMessages.scrollTop = poMessages.scrollHeight;
 }
 
 // A proposed change to an existing story: each field as current -> new, confirmed
@@ -1957,7 +2022,8 @@ function workItemChangeCard(record) {
   const header = document.createElement("div");
   header.className = "story-draft-header";
   const title = document.createElement("h3");
-  title.append(t("po.change_title"), " ", workItemLink({ id: record.work_item_id, url: record.url }));
+  const typeName = WORK_ITEM_TYPES.includes(record.work_item_type) ? t(`po.type.${typeKey(record.work_item_type)}`) : record.work_item_type;
+  title.append(t("po.change_title_type", { type: typeName }), " ", workItemLink({ id: record.work_item_id, url: record.url }));
   const badge = document.createElement("span");
   badge.className = "story-draft-badge";
   badge.textContent = t(`po.change_status_${record.status}`);
@@ -2096,12 +2162,11 @@ function workItemChangeCard(record) {
   return row;
 }
 
-function renderWorkItemChange(record, message = "") {
-  poMessages.querySelector(`.story-draft-row[data-change-id="${record.id}"]`)?.remove();
+function renderWorkItemChange(record, message = "", moveToEnd = false) {
+  const existing = poMessages.querySelector(`.story-draft-row[data-change-id="${record.id}"]`);
   const row = workItemChangeCard(record);
-  poMessages.append(row);
+  placeCard(row, existing, moveToEnd);
   if (message) row.querySelector(".story-draft-status").textContent = message;
-  poMessages.scrollTop = poMessages.scrollHeight;
 }
 
 function appendSplitSuggestion(titles) {
@@ -2158,8 +2223,8 @@ async function openPoConversation(conversationId) {
     ...conversation.messages.map((message, index) => ({ at: message.created_at, order: 0, index, show: () =>
       appendMessage(poMessages, message.content, message.role, t("po.assistant_name")) })),
     ...timeline.results.map((result) => ({ at: result.created_at, order: 1, show: () => renderWorkItemResult(result) })),
-    ...timeline.drafts.map((record) => ({ at: record.updated_at, order: 1, show: () => renderStoryDraft(record) })),
-    ...timeline.changes.map((record) => ({ at: record.updated_at, order: 1, show: () => renderWorkItemChange(record) })),
+    ...timeline.drafts.map((record) => ({ at: record.updated_at, order: 1, show: () => renderStoryDraft(record, "", true) })),
+    ...timeline.changes.map((record) => ({ at: record.updated_at, order: 1, show: () => renderWorkItemChange(record, "", true) })),
   ];
   entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.order - b.order || (a.index ?? 0) - (b.index ?? 0)));
   entries.forEach((entry) => entry.show());
@@ -2242,11 +2307,13 @@ poChatForm.addEventListener("submit", async (event) => {
     return;
   }
   const userRow = appendMessage(poMessages, message, "user");
+  poMessages.scrollTop = poMessages.scrollHeight;
   poInput.value = "";
   resizeTextArea(poInput);
   poSend.disabled = true;
   setStatus(poStatus, "");
   const pendingRow = appendMessage(poMessages, "", "assistant", t("po.assistant_name"));
+  poMessages.scrollTop = poMessages.scrollHeight;
   const pendingMessage = pendingRow.querySelector(".message");
   pendingMessage.classList.add("pending");
   pendingMessage.append(...Array.from({ length: 3 }, () => document.createElement("span")));
@@ -2260,9 +2327,11 @@ poChatForm.addEventListener("submit", async (event) => {
     pendingRow.remove();
     appendMessage(poMessages, data.message, "assistant", t("po.assistant_name"), true);
     if (data.split_suggestion.length) appendSplitSuggestion(data.split_suggestion);
-    if (data.draft) renderStoryDraft(data.draft);
+    if (data.draft) renderStoryDraft(data.draft, "", true);
     if (data.result) renderWorkItemResult(data.result);
-    if (data.change) renderWorkItemChange(data.change);
+    if (data.change) renderWorkItemChange(data.change, "", true);
+    // Show the answer from its first line, with the card below it.
+    scrollToRow(userRow);
     await loadPoHistory();
   } catch (error) {
     pendingRow.remove();

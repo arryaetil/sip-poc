@@ -57,6 +57,7 @@ from app.models import (
     WorkItemChangeRecord,
     WorkItemQuery,
     WorkItemResult,
+    WorkItemSummary,
     UploadRecord,
     UserInfo,
     UserRecord,
@@ -725,6 +726,11 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
 # conversations, but only the owner can continue, edit or confirm them.
 
 STALE_CREATE_SECONDS = 120
+DROPPED_NOTE = {
+    "nl": "SIP heeft dit niet in het voorstel gezet, omdat het niet bestaat in Azure DevOps: {items}.",
+    "en": "SIP did not put this in the proposal because it does not exist in Azure DevOps: {items}.",
+    "de": "SIP hat dies nicht in den Vorschlag übernommen, weil es in Azure DevOps nicht existiert: {items}.",
+}
 
 
 def _story_writers() -> set[str]:
@@ -738,16 +744,8 @@ def _can_write_stories(request: Request) -> bool:
 
 
 def _missing_story_fields(content: StoryDraftContent) -> list[str]:
-    checks = {
-        "title": content.title,
-        "role": content.role,
-        "capability": content.capability,
-        "value": content.value,
-        "acceptance_criteria": content.acceptance_criteria,
-        "story_points": content.story_points,
-        "target": content.target_kind == "backlog" or (content.target_kind == "sprint" and content.iteration_path),
-    }
-    return [name for name, value in checks.items() if not value]
+    """What still has to be filled in; depends on the work item type."""
+    return devops.missing_fields(content)
 
 
 def _story_record(row) -> StoryDraftRecord:
@@ -849,14 +847,17 @@ def _result_note(payload: dict) -> str:
     detail = payload.get("detail")
     if detail:
         return (
-            f"[Azure DevOps via SIP] Story #{detail['id']} ({detail['state']}, rev {detail['rev']}): {detail['title']}\n"
+            f"[Azure DevOps via SIP] {detail['work_item_type']} #{detail['id']} ({detail['state']}, rev {detail['rev']}): {detail['title']}\n"
+            f"Parent: {'#' + str(detail['parent_id']) if detail.get('parent_id') else 'none'}; "
+            f"children: {', '.join('#' + str(i) for i in detail.get('child_ids') or []) or 'none'}; "
+            f"priority: {detail.get('priority')}; remaining work: {detail.get('remaining_work')}\n"
             f"Assigned to: {detail.get('assigned_to') or 'nobody'}; iteration: {detail['iteration_path']}; "
             f"tags: {', '.join(detail.get('tags') or []) or 'none'}; "
             f"points: {detail.get('story_points')}\nDescription: {detail['description']}\n"
             f"Entry criteria: {detail['entry_criteria']}\nAcceptance criteria: {detail['acceptance_criteria']}"
         )
     lines = [
-        f"#{item['id']} {item['title']} ({item['state']}, {item.get('story_points')} pts, {item.get('assigned_to') or 'unassigned'})"
+        f"#{item['id']} {item.get('work_item_type', '')} {item['title']} ({item['state']}, {item.get('story_points')} pts, {item.get('assigned_to') or 'unassigned'})"
         for item in payload.get("items", [])
     ]
     return f"[Azure DevOps via SIP] {payload['label']}: " + ("; ".join(lines) if lines else "no items")
@@ -871,10 +872,10 @@ def _history_for_model(conversation: ConversationDetail, owner_id: str) -> list[
     for row in store.list_work_item_changes(conversation.id, owner_id):
         if row["status"] == "applied":
             summary = "; ".join(f"{c['field']}: {c['before'] or '-'} -> {c['after']}" for c in json.loads(row["changes"]))
-            notes.append((row["updated_at"], f"[SIP] Story #{row['work_item_id']} was updated in Azure DevOps: {summary}"))
+            notes.append((row["updated_at"], f"[SIP] Work item #{row['work_item_id']} was updated in Azure DevOps: {summary}"))
     for row in store.list_story_drafts(conversation.id, owner_id):
         if row["status"] == "created":
-            notes.append((row["updated_at"], f"[SIP] Story #{row['devops_id']} was created in Azure DevOps."))
+            notes.append((row["updated_at"], f"[SIP] Work item #{row['devops_id']} was created in Azure DevOps."))
     timeline = [(message.created_at, 0, message) for message in conversation.messages]
     timeline += [
         (created_at, 1, ConversationMessage(id=0, role="assistant", content=text, created_at=created_at))
@@ -892,6 +893,7 @@ def _change_record(row) -> WorkItemChangeRecord:
         id=row["id"],
         conversation_id=row["conversation_id"],
         work_item_id=row["work_item_id"],
+        work_item_type=row["work_item_type"],
         title=row["title"],
         url=row["url"],
         version=row["version"],
@@ -913,13 +915,17 @@ def _run_query(
     current = next((target for target in sprints.values() if target.timeframe == "current"), None)
     payload: dict = {"kind": query.kind, "label": "", "items": [], "detail": None, "error": None}
     try:
-        if query.kind == "story":
+        if query.kind in ("story", "children"):
             if not query.work_item_id:
-                raise ValueError("Which story number do you mean?")
-            payload["label"] = f"Story #{query.work_item_id}"
+                raise ValueError("Which work item number do you mean?")
+            if query.kind == "children":
+                payload["label"] = f"#{query.work_item_id} · children"
+                payload["items"] = [item.model_dump() for item in devops.child_items(query.work_item_id)]
+                return payload
             detail = devops.get_item(query.work_item_id)
+            payload["label"] = f"{detail.work_item_type} #{detail.id}"
             payload["detail"] = detail.model_dump()
-            payload["items"] = [detail.model_dump(include=set(type(detail).model_fields) - {"rev", "description", "entry_criteria", "acceptance_criteria"})]
+            payload["items"] = [WorkItemSummary(**detail.model_dump(include=set(WorkItemSummary.model_fields))).model_dump()]
             return payload
         sprint = sprints.get(query.iteration_path or "") or (current if query.kind == "sprint" or query.iteration_path else None)
         if query.kind == "sprint":
@@ -927,6 +933,19 @@ def _run_query(
                 raise ValueError("There is no current sprint for the team.")
             payload["label"] = sprint.name
             payload["items"] = [item.model_dump() for item in devops.sprint_items(sprint.iteration_path)]
+        elif query.kind == "search":
+            person = None
+            if query.person:
+                person = me if query.person.strip().casefold() in ("me", "mij", "ik", "mich", "ich") else devops.resolve_person(query.person, members)
+                if person is None:
+                    raise ValueError("SIP cannot link your sign-in to an Azure DevOps account. Ask again with your name.")
+            parts = [f"\"{query.text}\"" if query.text else "", query.work_item_type or "", query.state or "",
+                     "backlog" if query.unplanned else (sprint.name if sprint else ""), person[0] if person else ""]
+            payload["label"] = " · ".join(part for part in parts if part) or "Open work items"
+            payload["items"] = [item.model_dump() for item in devops.search_items(
+                query.text, query.work_item_type, query.state, bool(query.unplanned),
+                person[1] if person else None, None if query.unplanned else (sprint.iteration_path if sprint else None),
+            )]
         else:
             if not members:
                 raise ValueError("The team list of Azure DevOps is not available right now.")
@@ -950,13 +969,11 @@ def _plan_change(
     tags: list[str] | None = None,
 ) -> tuple[object, list[dict], list]:
     current = devops.get_item(change.work_item_id)
-    if current.work_item_type != "User Story":
-        raise ValueError(f"#{current.id} is a {current.work_item_type}; SIP only changes user stories.")
     if (change.add_tags or change.remove_tags) and tags is None:
         tags = devops.list_tags()
     ops, shown = devops.plan_change(change, current, language, targets, members, tags)
     if not ops:
-        raise ValueError(f"Story #{current.id} already has these values; nothing to change.")
+        raise ValueError(f"{current.work_item_type} #{current.id} already has these values; nothing to change.")
     return current, ops, shown
 
 
@@ -1027,6 +1044,7 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
         raise HTTPException(status_code=502, detail="The Product Owner could not be reached. Your draft is unchanged; please try again.") from exc
 
     draft_row = current
+    dropped: list[str] = []
     if turn.draft is not None:
         content = turn.draft
         if content.target_kind == "backlog":
@@ -1035,23 +1053,30 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
             target.iteration_path for target in targets if target.kind == "sprint"
         }:
             # Never keep a sprint SIP did not offer; the user picks one in the proposal.
+            dropped.append(content.iteration_path or "sprint")
             content = content.model_copy(update={"iteration_path": None})
         if content.assigned_to:
             # Only a real team member; a name the model made up is dropped.
             try:
                 content = content.model_copy(update={"assigned_to": devops.resolve_person(content.assigned_to, members)[0]})
             except ValueError:
+                dropped.append(content.assigned_to)
                 content = content.model_copy(update={"assigned_to": None})
         if content.tags:
             # Keep only tags that exist, in their real spelling; drop invented ones.
             known = {tag.casefold(): tag for tag in tags}
+            dropped += [t for t in content.tags if t.casefold() not in known]
             content = content.model_copy(update={"tags": [known[t.casefold()] for t in content.tags if t.casefold() in known]})
         saved = store.save_model_story_draft(conversation.id, owner_id, conversation.language, content)
         draft_row = saved or current
+    message = turn.message
+    if dropped:
+        # Say so, instead of letting the assistant's "done" stand for something that is not there.
+        message += "\n\n" + DROPPED_NOTE.get(conversation.language, DROPPED_NOTE["en"]).format(items=", ".join(dropped))
     updated = store.add_conversation_turn(
         conversation_id=conversation.id,
         user_message=request.message,
-        assistant_message=turn.message,
+        assistant_message=message,
         is_ready_to_save=False,
         readiness_reason="Product Owner conversations are not saved as Business Contexts.",
         owner_id=owner_id,
@@ -1074,19 +1099,19 @@ def product_owner_chat(request: ChatRequest, http_request: Request) -> ProductOw
             try:
                 current_item, ops, shown = _plan_change(turn.change, conversation.language, targets, members, tags)
                 change_row = store.save_work_item_change(
-                    conversation.id, owner_id, current_item.id, current_item.title, current_item.url,
+                    conversation.id, owner_id, current_item.id, current_item.work_item_type, current_item.title, current_item.url,
                     turn.change.model_dump_json(), ops, [item.model_dump() for item in shown], current_item.rev,
                 )
                 if change_row is None:
-                    error = f"A change to story #{current_item.id} is still being applied or checked."
+                    error = f"A change to #{current_item.id} is still being applied or checked."
             except (ValueError, devops.DevOpsUnavailable) as exc:
                 error = str(exc)
         if error is not None:
             result_row = store.save_work_item_result(conversation.id, owner_id, {
-                "kind": "story", "label": f"Story #{turn.change.work_item_id}", "items": [], "detail": None, "error": error,
+                "kind": "story", "label": f"#{turn.change.work_item_id}", "items": [], "detail": None, "error": error,
             })
     return ProductOwnerChatResponse(
-        message=turn.message,
+        message=message,
         conversation_id=conversation.id,
         draft=_story_record(draft_row) if draft_row is not None else None,
         result=_result_record(result_row) if result_row is not None else None,
@@ -1284,6 +1309,8 @@ def create_product_owner_story(draft_id: str, body: CreateStoryRequest, request:
         iteration_path = devops.resolve_iteration(content, devops.list_targets())
         assignee = devops.resolve_person(content.assigned_to, devops.team_members()) if content.assigned_to else None
         tags = devops.resolve_tags(content.tags, devops.list_tags()) if content.tags else []
+        if content.parent_id:
+            devops.get_item(content.parent_id)  # the parent must exist
     except devops.DevOpsUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
@@ -1299,7 +1326,9 @@ def create_product_owner_story(draft_id: str, body: CreateStoryRequest, request:
         raise HTTPException(status_code=409, detail="The proposal changed or is already being created. Reload it first.")
 
     try:
-        created = devops.create_story(approved, row["language"], iteration_path, assignee[1] if assignee else None)
+        created = devops.create_work_item(
+            approved, row["language"], iteration_path, assignee[1] if assignee else None, content.parent_id
+        )
     except devops.DevOpsUncertain as exc:
         logger.warning("Azure DevOps outcome uncertain for story proposal %s: %s", draft_id, exc)
         store.mark_story_uncertain(draft_id, f"{exc} The story may exist; check before trying again.")
@@ -1332,7 +1361,7 @@ def check_product_owner_story(draft_id: str, request: Request) -> StoryDraftReco
     # A margin for clock differences between SIP and Azure DevOps.
     since = (datetime.strptime(row["approved_at"], "%Y-%m-%d %H:%M:%S") - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
     try:
-        found = devops.find_created(approved.title, since)
+        found = devops.find_created(approved.title, since, approved.work_item_type)
     except devops.DevOpsUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if len(found) == 1:

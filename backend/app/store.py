@@ -230,6 +230,13 @@ class ContextStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_work_item_changes_conversation ON work_item_changes(conversation_id, created_at)"
             )
+            try:
+                # Expand only: rows from before this column count as user stories.
+                connection.execute(
+                    "ALTER TABLE work_item_changes ADD COLUMN work_item_type TEXT NOT NULL DEFAULT 'User Story'"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def backfill_owner(self, owner_id: str) -> None:
         """Claim legacy rows for the bootstrap account; NULL must never mean public."""
@@ -725,7 +732,7 @@ class ContextStore:
             ).fetchall()
 
     def save_work_item_change(
-        self, conversation_id: str, owner_id: str, work_item_id: int, title: str, url: str,
+        self, conversation_id: str, owner_id: str, work_item_id: int, work_item_type: str, title: str, url: str,
         content: str, ops: list[dict], changes: list[dict], base_rev: int,
     ) -> sqlite3.Row | None:
         """A new proposal, or a new version of the open one for the same story.
@@ -745,12 +752,12 @@ class ContextStore:
                 cursor = connection.execute(
                     """
                     UPDATE work_item_changes
-                    SET title = ?, url = ?, content = ?, ops = ?, changes = ?, base_rev = ?, version = version + 1,
+                    SET work_item_type = ?, title = ?, url = ?, content = ?, ops = ?, changes = ?, base_rev = ?, version = version + 1,
                         status = 'draft', error = NULL, approved_version = NULL, approved_by = NULL,
                         approved_at = NULL, confirmation_id = NULL, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ? AND status IN ('draft', 'failed')
                     """,
-                    (title, url, content, json.dumps(ops), json.dumps(changes), base_rev, current["id"]),
+                    (work_item_type, title, url, content, json.dumps(ops), json.dumps(changes), base_rev, current["id"]),
                 )
                 if not cursor.rowcount:
                     return None
@@ -759,9 +766,9 @@ class ContextStore:
                 change_id = str(uuid4())
                 connection.execute(
                     "INSERT INTO work_item_changes "
-                    "(id, conversation_id, owner_id, work_item_id, title, url, content, ops, changes, base_rev) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (change_id, conversation_id, owner_id, work_item_id, title, url, content,
+                    "(id, conversation_id, owner_id, work_item_id, work_item_type, title, url, content, ops, changes, base_rev) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (change_id, conversation_id, owner_id, work_item_id, work_item_type, title, url, content,
                      json.dumps(ops), json.dumps(changes), base_rev),
                 )
         return self.get_work_item_change(change_id, owner_id)
