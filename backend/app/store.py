@@ -16,9 +16,14 @@ from app.models import (
     ConversationMessage,
     ConversationSummary,
     StoredBusinessContext,
+    StoryDraftContent,
     UploadRecord,
     UserRecord,
 )
+
+CONVERSATION_KINDS = ("context", "knowledge", "product_owner")
+# Statuses in which the user (or the model) may still change a story proposal.
+EDITABLE_STORY_STATUSES = ("draft", "failed")
 
 
 def _hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
@@ -151,6 +156,36 @@ class ContextStore:
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_uploads_owner_kind ON uploads(owner_id, kind, created_at)"
+            )
+            # Product Owner story proposals. A row is versioned: every change by the
+            # model or the user raises the version and clears any approval, so a
+            # confirmation only ever covers the exact version the user saw.
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS story_drafts (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    language TEXT NOT NULL DEFAULT 'en',
+                    version INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft', 'creating', 'created', 'failed', 'uncertain')),
+                    content TEXT NOT NULL,
+                    approved_version INTEGER,
+                    approved_content TEXT,
+                    approved_by TEXT,
+                    approved_at TEXT,
+                    confirmation_id TEXT UNIQUE,
+                    devops_id INTEGER,
+                    devops_url TEXT,
+                    error TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_story_drafts_conversation ON story_drafts(conversation_id, created_at)"
             )
 
     def backfill_owner(self, owner_id: str) -> None:
@@ -302,6 +337,8 @@ class ContextStore:
                 "DELETE FROM conversation_messages WHERE conversation_id = ?",
                 (conversation_id,),
             )
+            # Only SIP's copy goes; a story already created in Azure DevOps stays there.
+            connection.execute("DELETE FROM story_drafts WHERE conversation_id = ?", (conversation_id,))
             connection.execute(
                 "DELETE FROM conversations WHERE id = ?", (conversation_id,)
             )
@@ -454,7 +491,7 @@ class ContextStore:
             title=row["title"],
             preview=row["preview"],
             language=row["language"] if row["language"] in ("en", "nl", "de") else "en",
-            kind=row["kind"] if row["kind"] in ("context", "knowledge") else "context",
+            kind=row["kind"] if row["kind"] in CONVERSATION_KINDS else "context",
             is_ready_to_save=bool(row["is_ready_to_save"]),
             readiness_reason=row["readiness_reason"],
             portfolio_context_id=row["portfolio_context_id"],
@@ -467,6 +504,162 @@ class ContextStore:
     def _conversation_title(message: str) -> str:
         first_line = " ".join(message.split()).strip()
         return first_line if len(first_line) <= 64 else f"{first_line[:61]}…"
+
+    # --- Product Owner story proposals ------------------------------------
+
+    def current_story_draft(self, conversation_id: str) -> sqlite3.Row | None:
+        """The newest proposal of a conversation, whatever its status."""
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM story_drafts WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (conversation_id,),
+            ).fetchone()
+
+    def save_model_story_draft(
+        self, conversation_id: str, owner_id: str, language: str, content: StoryDraftContent
+    ) -> sqlite3.Row | None:
+        """Store the assistant's proposal as a new version.
+
+        An open proposal (draft or failed) is updated in place; after a story was
+        created the next proposal starts a new row, so a split story can be created
+        part by part. While a write is running or its outcome is unknown nothing
+        changes, and None is returned.
+        """
+        current = self.current_story_draft(conversation_id)
+        with self._connect() as connection:
+            if current is not None and current["status"] in EDITABLE_STORY_STATUSES:
+                cursor = connection.execute(
+                    """
+                    UPDATE story_drafts
+                    SET content = ?, version = version + 1, status = 'draft', error = NULL,
+                        approved_version = NULL, approved_content = NULL, approved_by = NULL,
+                        approved_at = NULL, confirmation_id = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND status IN ('draft', 'failed')
+                    """,
+                    (content.model_dump_json(), current["id"]),
+                )
+                if not cursor.rowcount:
+                    return None  # a confirmation claimed it in the meantime
+                draft_id = current["id"]
+            elif current is not None and current["status"] in ("creating", "uncertain"):
+                return None
+            else:
+                draft_id = str(uuid4())
+                connection.execute(
+                    "INSERT INTO story_drafts (id, conversation_id, owner_id, language, content) VALUES (?, ?, ?, ?, ?)",
+                    (draft_id, conversation_id, owner_id, language, content.model_dump_json()),
+                )
+        return self.get_story_draft(draft_id, owner_id)
+
+    def get_story_draft(self, draft_id: str, owner_id: str, is_admin: bool = False) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM story_drafts WHERE id = ? AND (? OR owner_id = ?)",
+                (draft_id, int(is_admin), owner_id),
+            ).fetchone()
+
+    def list_story_drafts(self, conversation_id: str, owner_id: str, is_admin: bool = False) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM story_drafts WHERE conversation_id = ? AND (? OR owner_id = ?) "
+                "ORDER BY created_at, rowid",
+                (conversation_id, int(is_admin), owner_id),
+            ).fetchall()
+
+    def update_story_draft(
+        self, draft_id: str, owner_id: str, expected_version: int, content: StoryDraftContent
+    ) -> bool:
+        """The user's own edit. Only the owner, only the version they edited, only while open."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE story_drafts
+                SET content = ?, version = version + 1, status = 'draft', error = NULL,
+                    approved_version = NULL, approved_content = NULL, approved_by = NULL,
+                    approved_at = NULL, confirmation_id = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND owner_id = ? AND version = ? AND status IN ('draft', 'failed')
+                """,
+                (content.model_dump_json(), draft_id, owner_id, expected_version),
+            )
+        return bool(cursor.rowcount)
+
+    def begin_story_create(
+        self,
+        draft_id: str,
+        owner_id: str,
+        version: int,
+        confirmation_id: str,
+        approved_by: str,
+        approved_content: StoryDraftContent,
+    ) -> bool:
+        """Claim the write for exactly this version, in one statement.
+
+        Two clicks, two tabs or a retried request race for the same row; SQLite
+        runs the UPDATE one at a time, so only one of them sees rowcount 1.
+        """
+        try:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE story_drafts
+                    SET status = 'creating', approved_version = version, approved_content = ?,
+                        approved_by = ?, approved_at = CURRENT_TIMESTAMP, confirmation_id = ?,
+                        error = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND owner_id = ? AND version = ? AND status IN ('draft', 'failed')
+                    """,
+                    (approved_content.model_dump_json(), approved_by, confirmation_id, draft_id, owner_id, version),
+                )
+        except sqlite3.IntegrityError:
+            return False  # this confirmation id already belongs to another proposal
+        return bool(cursor.rowcount)
+
+    def finish_story_create(self, draft_id: str, devops_id: int, devops_url: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE story_drafts
+                SET status = 'created', devops_id = ?, devops_url = ?, error = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status IN ('creating', 'uncertain')
+                """,
+                (devops_id, devops_url, draft_id),
+            )
+
+    def fail_story_create(self, draft_id: str, error: str) -> None:
+        """Nothing was created: the proposal opens again and needs a new confirmation."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE story_drafts
+                SET status = 'failed', error = ?, confirmation_id = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status IN ('creating', 'uncertain')
+                """,
+                (error, draft_id),
+            )
+
+    def mark_story_uncertain(self, draft_id: str, error: str, stale_seconds: int | None = None) -> None:
+        """The write may or may not have happened; it must be checked before any retry.
+
+        With stale_seconds only a write that has been 'creating' that long is
+        marked, which covers a server that stopped halfway through a request.
+        """
+        query = (
+            "UPDATE story_drafts SET status = 'uncertain', error = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'creating'"
+        )
+        params: tuple = (error, draft_id)
+        if stale_seconds is not None:
+            query += " AND updated_at <= datetime('now', ?)"
+            params = (error, draft_id, f"-{int(stale_seconds)} seconds")
+        with self._connect() as connection:
+            connection.execute(query, params)
+
+    def note_story_uncertainty(self, draft_id: str, error: str) -> None:
+        """Replace the explanation of an outcome that is still uncertain."""
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE story_drafts SET error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'uncertain'",
+                (error, draft_id),
+            )
 
     def list_users(self) -> list[UserRecord]:
         with self._connect() as connection:

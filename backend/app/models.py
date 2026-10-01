@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class BusinessContext(BaseModel):
@@ -72,7 +72,7 @@ class StudioProjectRequest(BaseModel):
 
 class ConversationCreateRequest(BaseModel):
     language: Literal["en", "nl", "de"] = "en"
-    kind: Literal["context", "knowledge"] = "context"
+    kind: Literal["context", "knowledge", "product_owner"] = "context"
 
 
 class UserInfo(BaseModel):
@@ -117,7 +117,7 @@ class ConversationSummary(BaseModel):
     title: str
     preview: str
     language: Literal["en", "nl", "de"]
-    kind: Literal["context", "knowledge"] = "context"
+    kind: Literal["context", "knowledge", "product_owner"] = "context"
     is_ready_to_save: bool
     readiness_reason: str
     portfolio_context_id: str | None
@@ -230,3 +230,150 @@ class UploadRecord(BaseModel):
     context_id: str | None = None
     conversation_id: str | None = None
     created_at: str
+
+
+FIBONACCI_POINTS = (1, 2, 3, 5, 8, 13, 21)
+StoryPoints = Literal[1, 2, 3, 5, 8, 13, 21]
+
+
+def _clean_text(value: str, limit: int) -> str:
+    value = (value or "").strip()
+    if len(value) > limit:
+        raise ValueError(f"must be at most {limit} characters")
+    return value
+
+
+def _clean_items(items: list[str]) -> list[str]:
+    cleaned = [item.strip() for item in items or [] if item and item.strip()]
+    if len(cleaned) > 30 or any(len(item) > 1000 for item in cleaned):
+        raise ValueError("at most 30 items of 1000 characters")
+    return cleaned
+
+
+class StoryDraftContent(BaseModel):
+    """A user story as the Product Owner assistant proposes it and the user edits it.
+
+    No approval, execution or success fields: those decisions belong to SIP,
+    never to the model. Limits are validators, not schema keywords, so the same
+    model can serve as an OpenAI strict schema.
+    """
+
+    title: str = ""
+    role: str = ""
+    capability: str = ""
+    value: str = ""
+    entry_criteria: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    story_points: StoryPoints | None = None
+    estimation_reason: str = ""
+    target_kind: Literal["backlog", "sprint"] | None = None
+    iteration_path: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, value: str) -> str:
+        return _clean_text(value, 255)
+
+    @field_validator("role", "capability", "value", "estimation_reason")
+    @classmethod
+    def _text(cls, value: str) -> str:
+        return _clean_text(value, 2000)
+
+    @field_validator("entry_criteria", "acceptance_criteria")
+    @classmethod
+    def _items(cls, value: list[str]) -> list[str]:
+        return _clean_items(value)
+
+    @field_validator("iteration_path")
+    @classmethod
+    def _path(cls, value: str | None) -> str | None:
+        return _clean_text(value, 400) or None if value is not None else None
+
+
+class ProductOwnerTurn(BaseModel):
+    """One answer of the Product Owner app in Dify (or Foundry)."""
+
+    message: str
+    stage: Literal["clarifying", "draft_ready"]
+    draft: StoryDraftContent | None = None
+    # At most one current question; the rule is "one question at a time".
+    open_questions: list[str] = Field(default_factory=list)
+    # Titles of smaller stories when the work is too big for one.
+    split_suggestion: list[str] = Field(default_factory=list)
+
+    @field_validator("open_questions")
+    @classmethod
+    def _one_question(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item.strip()][:1]
+
+    @field_validator("split_suggestion")
+    @classmethod
+    def _split(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item.strip()][:8]
+
+
+StoryDraftStatus = Literal["draft", "creating", "created", "failed", "uncertain"]
+
+
+class StoryDraftRecord(BaseModel):
+    """A story proposal as SIP stores it: versioned, owned, with its DevOps outcome."""
+
+    id: str
+    conversation_id: str
+    version: int
+    status: StoryDraftStatus
+    content: StoryDraftContent
+    description: str
+    missing: list[str]
+    approved_version: int | None = None
+    approved_at: str | None = None
+    devops_id: int | None = None
+    devops_url: str | None = None
+    error: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ProductOwnerChatResponse(BaseModel):
+    message: str
+    conversation_id: str
+    draft: StoryDraftRecord | None = None
+    open_questions: list[str] = Field(default_factory=list)
+    split_suggestion: list[str] = Field(default_factory=list)
+
+
+class UpdateStoryDraftRequest(BaseModel):
+    version: int
+    content: StoryDraftContent
+
+
+class CreateStoryRequest(BaseModel):
+    # The version the user saw when they confirmed; a newer version needs a new confirmation.
+    version: int
+    # One id per confirmation click: a repeated request with it never writes twice.
+    confirmation_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+
+
+class StoryTarget(BaseModel):
+    kind: Literal["backlog", "sprint"]
+    name: str
+    iteration_path: str
+    timeframe: Literal["current", "future", ""] = ""
+    start: str | None = None
+    finish: str | None = None
+
+
+class ProductOwnerSettings(BaseModel):
+    devops_configured: bool
+    can_create: bool
+    organisation: str
+    project: str
+    targets: list[StoryTarget]
+    notice: str | None = None
+
+
+class CreatedStory(BaseModel):
+    id: int
+    url: str
+    title: str
+    iteration_path: str

@@ -316,6 +316,48 @@ body.sidebar-collapsed .sidebar-note { display: none; }
 .studio-offer-status:empty { display: none; }
 .studio-offer.dismissed { opacity: .7; box-shadow: none; }
 
+/* Product Owner: the story proposal, editable in the conversation. */
+.story-draft-row, .story-split-row { padding-left: 44px; }
+.story-draft {
+  position: relative;
+  width: min(760px, 100%);
+  padding: 18px 20px 16px 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(18, 18, 18, .06);
+  overflow: hidden;
+  animation: studio-offer-in 220ms cubic-bezier(.23,1,.32,1) both;
+}
+.story-draft::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: #7b4fd6; }
+.story-draft[data-status="created"]::before { background: var(--success); }
+.story-draft[data-status="failed"]::before, .story-draft[data-status="uncertain"]::before { background: var(--error); }
+.story-draft-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; margin-bottom: 10px; }
+.story-draft-header h3 { margin: 0; font-size: 17px; line-height: 1.3; }
+.story-draft-badge { padding: 3px 9px; border-radius: 999px; background: var(--seasal); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.story-draft[data-status="created"] .story-draft-badge { background: #edf5ef; color: var(--success); }
+.story-draft[data-status="failed"] .story-draft-badge, .story-draft[data-status="uncertain"] .story-draft-badge { background: #fbeeee; color: var(--error); }
+.story-draft-version { color: var(--muted); font-size: 12px; }
+.story-draft-sentence { margin: 0 0 14px; color: #34373b; font-size: 14px; font-style: italic; line-height: 1.55; }
+.story-draft-created { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.story-draft-created a { color: var(--focus); overflow-wrap: anywhere; }
+.story-draft-grid { gap: 14px 18px; }
+.story-draft .field textarea { min-height: 0; resize: vertical; }
+.story-draft .field :disabled { background: var(--seasal); color: #34373b; }
+.story-draft-notes p { margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.story-draft-notes .story-draft-error { color: var(--error); font-weight: 500; }
+.story-draft-notes .story-draft-detail { font-size: 12px; }
+.story-draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.story-draft-confirm { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--seasal); }
+.story-draft-confirm p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+.story-draft-confirm .text-button { margin: 0 0 0 12px; color: var(--muted); }
+.story-draft-status { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.story-draft-status:empty { display: none; }
+.story-split { width: min(560px, 100%); padding: 12px 16px; border: 1px dashed var(--border-strong); border-radius: 8px; font-size: 14px; }
+.story-split ol { margin: 8px 0 0; padding-left: 20px; line-height: 1.6; }
+@media (max-width: 640px) { .story-draft-row, .story-split-row { padding-left: 0; } }
+@media (prefers-reduced-motion: reduce) { .story-draft { animation: none; } }
+
 /* Marketing studio: Open Design embedded full height. */
 body.chat-open #marketing-view { width: 100%; max-width: none; height: 100%; display: flex; flex-direction: column; }
 .studio-header { margin-bottom: 12px; }
@@ -759,10 +801,12 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 .specialist-status-copy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
 .specialist.is-unavailable .specialist-stage { filter: saturate(.75); }
 
+/* Four specialists: two by two on medium screens, one row on wide ones. */
 @container home (min-width: 720px) {
-  .specialists { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .specialists { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; margin: 0 auto; }
 }
-@container home (min-width: 720px) and (max-width: 860px) {
+@container home (min-width: 1000px) {
+  .specialists { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: none; }
   .specialist-body { padding: 16px 18px 18px; }
 }
 /* Phones: one per row, image beside the text. */
