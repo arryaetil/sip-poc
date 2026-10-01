@@ -236,5 +236,10 @@ Software Developer and OpenCode are not built.
   (New, 1 point, no tags, unassigned), read back. Not closed or removed.
 - `backend/app/avatars/product-owner-base.webp` (eyes removed, by Claude) is
   left untracked: the living-eyes animation needs new eye coordinates first.
+- Live: merged to main (ab3fde6), pushed, deployed with `railway up --service sip-poc`,
+  deployment fa010e45 SUCCESS on 01-10; /health 200, new app.js served, PO API
+  answers 401 without sign-in. Railway variables added: DIFY_PRODUCT_OWNER_API_KEY,
+  SIP_PRODUCT_OWNER_WRITERS (= SIP_AUTH_EMAIL). Open Design was not deployed.
+- Not verified on production: a signed-in browser run (Arrya's login).
 - Not tested: Safari; the uncertain/timeout path against the real DevOps
   (only with fakes); several people at once on Railway.
