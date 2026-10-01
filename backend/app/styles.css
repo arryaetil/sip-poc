@@ -438,10 +438,10 @@ body.chat-open #marketing-view .view-header h1 { font-size: 24px; }
 .approval-document input { width: 18px; height: 18px; accent-color: var(--night); }
 
 body.chat-open .workspace { height: calc(100vh - var(--topbar-h)); padding: 18px 28px; overflow: hidden; }
-body.chat-open #builder-view, body.chat-open #knowledge-view { width: 100%; max-width: 1180px; height: 100%; display: flex; flex-direction: column; }
-body.chat-open #knowledge-chat { width: 100%; height: 100%; display: flex; flex-direction: column; }
-body.chat-open #builder-view .view-header, body.chat-open #knowledge-view .view-header { margin-bottom: 12px; }
-body.chat-open #builder-view .view-header h1, body.chat-open #knowledge-view .view-header h1 { font-size: 24px; }
+body.chat-open #builder-view, body.chat-open #knowledge-view, body.chat-open #product-owner-view { width: 100%; max-width: 1180px; height: 100%; display: flex; flex-direction: column; }
+body.chat-open #knowledge-chat, body.chat-open #po-chat { width: 100%; height: 100%; display: flex; flex-direction: column; }
+body.chat-open #builder-view .view-header, body.chat-open #knowledge-view .view-header, body.chat-open #product-owner-view .view-header { margin-bottom: 12px; }
+body.chat-open #builder-view .view-header h1, body.chat-open #knowledge-view .view-header h1, body.chat-open #product-owner-view .view-header h1 { font-size: 24px; }
 body.chat-open .readiness { flex: none; }
 body.chat-open .chat-surface { min-height: 0; flex: 1; display: flex; flex-direction: column; border: 0; }
 body.chat-open #messages, body.chat-open .knowledge-messages { height: auto; min-height: 0; flex: 1; }
@@ -801,12 +801,11 @@ body.chat-open .composer { flex: none; padding: 12px 0 4px; }
 .specialist-status-copy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
 .specialist.is-unavailable .specialist-stage { filter: saturate(.75); }
 
-/* Four specialists: two by two on medium screens, one row on wide ones. */
+/* Always three per row; a fourth specialist starts a new row. */
 @container home (min-width: 720px) {
-  .specialists { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; margin: 0 auto; }
+  .specialists { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@container home (min-width: 1000px) {
-  .specialists { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: none; }
+@container home (min-width: 720px) and (max-width: 860px) {
   .specialist-body { padding: 16px 18px 18px; }
 }
 /* Phones: one per row, image beside the text. */
