@@ -16,7 +16,8 @@ const I18N = {
     "nav.lead": "Lead intelligence",
     "nav.marketing": "Marketing studio",
 
-    "nav.home": "Home",
+    "nav.collapse": "Collapse menu",
+    "nav.expand": "Expand menu",
     "home.kicker": "Your digital team",
     "home.title": "Who would you like to work with?",
     "home.subtitle": "Choose the specialist who can help you further.",
@@ -272,7 +273,8 @@ const I18N = {
     "nav.lead": "Lead intelligence",
     "nav.marketing": "Marketing studio",
 
-    "nav.home": "Home",
+    "nav.collapse": "Menu inklappen",
+    "nav.expand": "Menu uitklappen",
     "home.kicker": "Jouw digitale team",
     "home.title": "Met wie ga je aan de slag?",
     "home.subtitle": "Kies de specialist die je verder helpt.",
@@ -528,7 +530,8 @@ const I18N = {
     "nav.lead": "Lead Intelligence",
     "nav.marketing": "Marketing Studio",
 
-    "nav.home": "Startseite",
+    "nav.collapse": "Menü einklappen",
+    "nav.expand": "Menü ausklappen",
     "home.kicker": "Dein digitales Team",
     "home.title": "Mit wem möchtest du arbeiten?",
     "home.subtitle": "Wähle die Fachkraft, die dir weiterhilft.",

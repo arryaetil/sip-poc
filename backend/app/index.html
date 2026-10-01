@@ -23,19 +23,18 @@
           <option value="de">DE</option>
         </select>
       </label>
-      <span class="environment" data-i18n="topbar.environment">Proof of concept</span>
       <form action="/api/auth/logout" method="post"><button class="logout-button" type="submit" data-i18n="topbar.sign_out">Sign out</button></form>
     </div>
   </header>
 
   <div class="app-shell">
     <aside class="sidebar" aria-label="SIP modules">
+      <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-expanded="true" aria-controls="sidebar-nav" data-i18n-aria-label="nav.collapse" aria-label="Collapse menu">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div id="sidebar-nav" class="sidebar-nav">
       <p class="nav-label" data-i18n="nav.workspace">Workspace</p>
       <nav class="nav-list">
-        <button id="nav-home" class="nav-item active" type="button" data-view="home" aria-current="page">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5M6.5 9.5V19h11V9.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="nav.home">Home</span>
-        </button>
         <button id="nav-create-context" class="nav-item" type="button" data-view="conversations">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span data-i18n="nav.create_context">Create context</span>
@@ -69,6 +68,7 @@
           <span data-i18n="nav.team">Team</span>
         </button>
       </nav>
+      </div>
     </aside>
 
     <main class="workspace">
