@@ -48,6 +48,12 @@ def test_time_manager_card_links_to_existing_app_without_sip_data(monkeypatch):
     assert 'href="https://tijdregistratie-production.up.railway.app/" target="_blank" rel="noopener noreferrer"' in page
     assert 'data-roles="admin product_owner sales"' in page
     assert 'data-i18n-alt="home.time_manager.alt"' in page
+    time_manager_card = page.split('data-specialist="time-manager"', 1)[1].split("</li>", 1)[0]
+    kyc_card = page.split('data-specialist="kyc"', 1)[1].split("</li>", 1)[0]
+    assert 'home.time_manager.new_tab' not in time_manager_card
+    assert 'specialist-time-manager-note' not in time_manager_card
+    assert 'd="M5 12h14m0 0-5-5m5 5-5 5"' in time_manager_card
+    assert 'd="M5 12h14m0 0-5-5m5 5-5 5"' in kyc_card
     assert 'data-base="/avatars/time-manager-base.webp"' not in page
     assert http.get("/avatars/time-manager.webp").headers["content-type"] == "image/webp"
     assert http.get("/avatars/time-manager.png").headers["content-type"] == "image/png"
