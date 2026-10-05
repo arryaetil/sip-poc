@@ -1,5 +1,9 @@
 # Handover — SIP POC (Dify provider, knowledge base, Marketing studio)
 
+## Time manager op Home (feature/time-manager-card, 05-10-2026)
+
+De homepage heeft een nieuwe externe specialistkaart **Time manager** met de digitale-klokrobot. De kaart opent uitsluitend `https://tijdregistratie-production.up.railway.app/` in een nieuw tabblad; SIP stuurt geen sessie of persoonsgegevens mee. De urenregistratie-app verzorgt haar eigen aanmelding. De opgegeven `time-manager-digitaal.png` is onveranderd gekopieerd naar `backend/app/avatars/time-manager.png`; `time-manager.webp` is een kleinere versie voor de browser. De robot blijft stilstaand. Geen wijzigingen aan Outlook, Twinfield, Dify of andere services.
+
 > Lessons for the Azure/C# build: [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md). Add new pitfalls there.
 
 ## Marketing studio images (feature/studio-image-library, 01-10)

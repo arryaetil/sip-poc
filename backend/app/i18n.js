@@ -32,6 +32,11 @@ const I18N = {
     "home.kyc.name": "KYC researcher",
     "home.kyc.text": "Get a clear picture of a customer or organisation.",
     "home.kyc.action": "Start customer research",
+    "home.time_manager.name": "Time manager",
+    "home.time_manager.text": "From your Outlook calendar to time tracking in Twinfield.",
+    "home.time_manager.action": "Open time tracking",
+    "home.time_manager.new_tab": "Opens in a new tab.",
+    "home.time_manager.alt": "Cream-coloured robot holding a digital clock showing 09:00.",
     "home.developer.name": "Software developer",
     "home.developer.text": "Create code and continue your saved projects in OpenCode.",
     "home.developer.action": "Open OpenCode",
@@ -402,6 +407,11 @@ const I18N = {
     "home.kyc.name": "KYC-onderzoeker",
     "home.kyc.text": "Breng een klant of organisatie in beeld.",
     "home.kyc.action": "Start klantonderzoek",
+    "home.time_manager.name": "Time manager",
+    "home.time_manager.text": "Van je Outlook-agenda naar je urenregistratie in Twinfield.",
+    "home.time_manager.action": "Open urenregistratie",
+    "home.time_manager.new_tab": "Opent in een nieuw tabblad.",
+    "home.time_manager.alt": "Crèmekleurige robot met een digitale klok die 09:00 toont.",
     "home.developer.name": "Software developer",
     "home.developer.text": "Maak code en werk verder aan opgeslagen projecten in OpenCode.",
     "home.developer.action": "Open OpenCode",
@@ -772,6 +782,11 @@ const I18N = {
     "home.kyc.name": "KYC-Rechercheur",
     "home.kyc.text": "Verschaffe dir ein Bild von einem Kunden oder einer Organisation.",
     "home.kyc.action": "Kundenprüfung starten",
+    "home.time_manager.name": "Time manager",
+    "home.time_manager.text": "Vom Outlook-Kalender zur Zeiterfassung in Twinfield.",
+    "home.time_manager.action": "Zeiterfassung öffnen",
+    "home.time_manager.new_tab": "Öffnet in einem neuen Tab.",
+    "home.time_manager.alt": "Cremefarbener Roboter mit einer Digitaluhr, die 09:00 anzeigt.",
     "home.developer.name": "Softwareentwickler",
     "home.developer.text": "Erstelle Code und arbeite in OpenCode an gespeicherten Projekten weiter.",
     "home.developer.action": "OpenCode öffnen",
@@ -1154,6 +1169,9 @@ function applyTranslations() {
   });
   document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
     element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+  });
+  document.querySelectorAll("[data-i18n-alt]").forEach((element) => {
+    element.setAttribute("alt", t(element.dataset.i18nAlt));
   });
   const switcher = document.querySelector("#language-switcher");
   if (switcher) switcher.value = getLanguage();
