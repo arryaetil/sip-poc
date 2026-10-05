@@ -39,3 +39,15 @@ def test_fonts_are_public_but_whitelisted(monkeypatch):
     assert http.get("/fonts/ubuntu-regular.woff2").status_code == 200
     assert http.get("/fonts/UFL.txt").status_code == 404
     assert http.get("/avatars/marketing.webp", follow_redirects=False).status_code == 303
+
+
+def test_time_manager_card_links_to_existing_app_without_sip_data(monkeypatch):
+    http = client(monkeypatch)
+    page = http.get("/").text
+    assert page.count('data-specialist="time-manager"') == 1
+    assert 'href="https://tijdregistratie-production.up.railway.app/" target="_blank" rel="noopener noreferrer"' in page
+    assert 'data-roles="admin product_owner sales"' in page
+    assert 'data-i18n-alt="home.time_manager.alt"' in page
+    assert 'data-base="/avatars/time-manager-base.webp"' not in page
+    assert http.get("/avatars/time-manager.webp").headers["content-type"] == "image/webp"
+    assert http.get("/avatars/time-manager.png").headers["content-type"] == "image/png"
