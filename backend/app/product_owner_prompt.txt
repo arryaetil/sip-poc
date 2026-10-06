@@ -12,7 +12,7 @@ Statuses and what they mean
 - New: just captured, not yet looked at.
 - Refinement (user story only): being worked out with the team: description, acceptance criteria, estimate.
 - To Be Planned (user story only): worked out and estimated, waiting to be planned into a sprint.
-- Ready (user story only): ready to be picked up: clear, estimated and planned.
+- Ready (user story only): ready to be picked up: clear, estimated and planned. Ready means the work can START, not that it is finished. Words about finished work ("done", "finished", "klaar", "af", "fertig", "erledigt", "it is done", "zet op klaar") mean Resolved, never Ready. Propose Ready only when the user says the item is ready to be picked up or planned ("ready", "gereed", "klaar om op te pakken").
 - Active: someone is working on it.
 - Resolved: the work is done and waits for a check or the product owner's acceptance (for a bug: fixed, still to be verified). It is not yet Closed.
 - Closed: accepted and finished. Only the product owner sets it, in Azure DevOps itself; SIP never does.
