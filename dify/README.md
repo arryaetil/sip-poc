@@ -11,6 +11,7 @@ the default, `foundry`, keeps the original path. The switch lives in
 | SIP — Business Context Finalizer (Dify) | `f7d3e6a6-aa5c-4159-93b9-2893b6a8a414` | saving a conversation to the portfolio | `BusinessContext` JSON |
 | SIP — Knowledge Assistant (Dify) | `e1950fd4-7d7e-4840-be5d-e27b71cf6922` | knowledge chat | answer + retriever resources |
 | SIP — Product Owner (Dify) | `08102bff-059c-463c-aad5-b827fbc6bb0d` | Product Owner chat (user story drafts) | `ProductOwnerTurn` JSON |
+| SIP — Lead finder (Dify) | `2266c4de-5764-4411-8b04-03f9b4f7cccc` | Lead finder intake and lead search steps | `LeadIntakeTurn`, `LeadQueryPlan`, `LeadCandidates` or `LeadExtraction` JSON |
 
 The knowledge app searches the Dify knowledge base *SIP — ETIL corpus (3-large)*
 (`cc833d3d-e595-41c7-a7ca-1bc1c5b7decd`), filled from `knowledge/markdown/etil`
@@ -27,6 +28,7 @@ difyctl import studio-app -f dify/strategist.yml --app-id 516e0f3c-866c-42d3-92f
 difyctl import studio-app -f dify/finalizer.yml  --app-id f7d3e6a6-aa5c-4159-93b9-2893b6a8a414
 difyctl import studio-app -f dify/knowledge.yml  --app-id e1950fd4-7d7e-4840-be5d-e27b71cf6922
 difyctl import studio-app -f dify/product_owner.yml --app-id 08102bff-059c-463c-aad5-b827fbc6bb0d
+difyctl import studio-app -f dify/lead_finder.yml --app-id 2266c4de-5764-4411-8b04-03f9b4f7cccc
 ```
 
 An import only updates the draft. **Publish each app in Studio afterwards**;
@@ -77,6 +79,22 @@ stores each version, checks it and creates the story itself after the user
 confirmed that version. There is deliberately no approved/success field.
 No knowledge base is attached.
 
+### Lead finder app
+
+One app for four tasks, so the Lead finder costs one app on the free plan. SIP
+sends `task` (`intake`, `queries`, `select` or `extract`), `language`, `history`
+and a ready-made `payload` (built by the same functions as the Foundry path in
+`assistants.py`); an if-else routes to one structured-output step per task. The
+intake runs on `gpt-5.6-terra`, the three search steps on `gpt-5.6-luna`.
+
+The app does not search. SIP runs the search itself (`backend/app/lead_search.py`):
+Serper for Google results, the companies' public pages (robots.txt respected,
+private addresses refused, never LinkedIn), and the model only for judgement.
+SIP then enforces what the model cannot be trusted with: at most 50 leads, a
+fetched source for every fact, generic contact details only, and the score,
+which is computed in code from the scorecard. See
+`docs/specs/2026-10-07-lead-intelligence-design.md`.
+
 ## Configuration
 
 | Variable | Value |
@@ -86,6 +104,7 @@ No knowledge base is attached.
 | `DIFY_FINALIZER_API_KEY` | app key of the Finalizer app |
 | `DIFY_KNOWLEDGE_API_KEY` | app key of the Knowledge Assistant app |
 | `DIFY_PRODUCT_OWNER_API_KEY` | app key of the Product Owner app; optional, without it only the Product Owner chat reports it is unavailable |
+| `DIFY_LEAD_FINDER_API_KEY` | app key of the Lead finder app; optional, without it the Lead finder page says it is not set up |
 | `DIFY_DATASET_API_KEY` | knowledge base API key (Knowledge → Service API, starts with `dataset-`) |
 | `DIFY_DATASET_ID` | optional, default the knowledge base above |
 | `DIFY_API_BASE` | optional, default `https://api.dify.ai/v1` |
