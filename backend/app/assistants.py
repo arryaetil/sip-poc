@@ -22,12 +22,14 @@ import logging
 import os
 import re
 import time
+from pathlib import Path
 from typing import Protocol
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.knowledge import load_knowledge_documents
+from app.leads import LeadCandidates, LeadExtraction, LeadIntakeTurn, LeadQueryPlan
 from app.models import (
     BusinessContext,
     ConversationMessage,
@@ -114,6 +116,60 @@ class Assistant(Protocol):
     def index_context(self, context: StoredBusinessContext, owner_id: str) -> None: ...
 
     def remove_context(self, context_id: str) -> None: ...
+
+    # Lead finder: the intake chat and the three judgement steps of the lead search.
+    def lead_available(self) -> bool: ...
+
+    def lead_intake_turn(
+        self,
+        history: list[ConversationMessage],
+        message: str,
+        language: str,
+        owner_id: str,
+        context_text: str,
+        brief_json: str,
+    ) -> LeadIntakeTurn: ...
+
+    def lead_queries(self, brief_json: str, previous_json: str, language: str, owner_id: str) -> LeadQueryPlan: ...
+
+    def lead_select(self, brief_json: str, results: str, needed: int, owner_id: str) -> LeadCandidates: ...
+
+    def lead_extract(self, brief_json: str, company_json: str, pages: str, language: str, owner_id: str) -> LeadExtraction: ...
+
+
+# --------------------------------------------------------------------------- Lead finder input
+
+LEAD_PROMPTS = {
+    task: (Path(__file__).parent / f"lead_{task}_prompt.txt").read_text(encoding="utf-8").strip()
+    for task in ("intake", "queries", "select", "extract")
+}
+LEAD_MODELS = {"intake": LeadIntakeTurn, "queries": LeadQueryPlan, "select": LeadCandidates, "extract": LeadExtraction}
+
+
+def lead_intake_payload(context_text: str, brief_json: str) -> str:
+    """What both providers send besides the conversation: the context and the brief so far."""
+    return (
+        f"<business_context>\n{context_text}\n</business_context>\n\n"
+        f"Search brief agreed so far (\"none\" if there is none):\n<current_brief>\n{brief_json or 'none'}\n</current_brief>"
+    )
+
+
+def lead_queries_payload(brief_json: str, previous_json: str) -> str:
+    return f"<brief>\n{brief_json}\n</brief>\n\nQueries already used:\n<queries_used>\n{previous_json}\n</queries_used>"
+
+
+def lead_select_payload(brief_json: str, results: str, needed: int) -> str:
+    return (
+        f"<brief>\n{brief_json}\n</brief>\n\nPick at most {needed} organisations.\n\n"
+        f"Search results (title | url | snippet):\n<results>\n{results}\n</results>"
+    )
+
+
+def lead_extract_payload(brief_json: str, company_json: str, pages: str, language: str) -> str:
+    return (
+        f"User language: {LANGUAGE_NAMES.get(language, 'English')}\n\n<brief>\n{brief_json}\n</brief>\n\n"
+        f"<candidate>\n{company_json}\n</candidate>\n\n<pages>\n{pages}\n</pages>"
+    )
 
 
 # --------------------------------------------------------------------------- Foundry
@@ -245,6 +301,38 @@ class FoundryAssistant:
 
     def remove_context(self, context_id):
         pass
+
+    def lead_available(self):
+        return True
+
+    def _lead(self, task: str, user_input: str, history=None, instructions_prefix: str = ""):
+        response = self._client().responses.parse(
+            model=self._model(),
+            instructions=f"{instructions_prefix}{LEAD_PROMPTS[task]}",
+            input=[*_as_input(history or []), {"role": "user", "content": user_input}],
+            text_format=LEAD_MODELS[task],
+        )
+        if response.output_parsed is None:
+            raise ValueError("The model did not return a valid response")
+        return response.output_parsed
+
+    def lead_intake_turn(self, history, message, language, owner_id, context_text, brief_json):
+        name = LANGUAGE_NAMES.get(language, "English")
+        return self._lead(
+            "intake",
+            f"{lead_intake_payload(context_text, brief_json)}\n\nLatest user message:\n{message}",
+            history,
+            f"Reply in the language of the user's latest message; if unclear, use {name}.\n\n",
+        )
+
+    def lead_queries(self, brief_json, previous_json, language, owner_id):
+        return self._lead("queries", lead_queries_payload(brief_json, previous_json))
+
+    def lead_select(self, brief_json, results, needed, owner_id):
+        return self._lead("select", lead_select_payload(brief_json, results, needed))
+
+    def lead_extract(self, brief_json, company_json, pages, language, owner_id):
+        return self._lead("extract", lead_extract_payload(brief_json, company_json, pages, language))
 
 
 # --------------------------------------------------------------------------- Dify
@@ -452,6 +540,8 @@ class DifyAssistant:
         # Optional: the Product Owner app arrived later. Without its key the rest of
         # SIP keeps running and only the Product Owner chat reports it is unavailable.
         self.keys["product_owner"] = os.getenv("DIFY_PRODUCT_OWNER_API_KEY", "").strip()
+        # Optional as well: one Lead finder app answers all four lead tasks.
+        self.keys["lead_finder"] = os.getenv("DIFY_LEAD_FINDER_API_KEY", "").strip()
         self.http = httpx.Client(timeout=httpx.Timeout(180.0, connect=10.0))
         self.knowledge_base = DifyKnowledgeBase(
             self.base_url,
@@ -598,6 +688,39 @@ class DifyAssistant:
 
     def remove_context(self, context_id):
         self.knowledge_base.delete(f"context:{context_id}:")
+
+    def lead_available(self):
+        return bool(self.keys["lead_finder"])
+
+    def _lead(self, task: str, payload: str, owner_id: str, query: str = "run", language: str = "en", history=None):
+        if not self.keys["lead_finder"]:
+            raise AssistantUnavailable("The Lead finder is not available yet.")
+        body = self._run(
+            "lead_finder",
+            query,
+            {
+                "task": task,
+                "language": LANGUAGE_NAMES.get(language, "English"),
+                "history": _transcript(history or []),
+                "payload": payload[:HISTORY_LIMIT],
+            },
+            owner_id,
+        )
+        return _parse_json(LEAD_MODELS[task], body.get("answer", ""))
+
+    def lead_intake_turn(self, history, message, language, owner_id, context_text, brief_json):
+        return self._lead(
+            "intake", lead_intake_payload(context_text, brief_json), owner_id, query=message, language=language, history=history
+        )
+
+    def lead_queries(self, brief_json, previous_json, language, owner_id):
+        return self._lead("queries", lead_queries_payload(brief_json, previous_json), owner_id)
+
+    def lead_select(self, brief_json, results, needed, owner_id):
+        return self._lead("select", lead_select_payload(brief_json, results, needed), owner_id)
+
+    def lead_extract(self, brief_json, company_json, pages, language, owner_id):
+        return self._lead("extract", lead_extract_payload(brief_json, company_json, pages, language), owner_id)
 
 
 # --------------------------------------------------------------------------- selection

@@ -7,8 +7,10 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 from uuid import uuid4
 
+from app.leads import RETENTION_DAYS, LeadBrief, LeadRow
 from app.models import (
     BusinessContext,
     ContextSummary,
@@ -21,7 +23,7 @@ from app.models import (
     UserRecord,
 )
 
-CONVERSATION_KINDS = ("context", "knowledge", "product_owner")
+CONVERSATION_KINDS = ("context", "knowledge", "product_owner", "lead")
 # Statuses in which the user (or the model) may still change a story proposal.
 EDITABLE_STORY_STATUSES = ("draft", "failed")
 
@@ -237,6 +239,45 @@ class ContextStore:
                 )
             except sqlite3.OperationalError:
                 pass  # column already exists
+            # Lead finder. A list and its rows expire together (RETENTION_DAYS); see
+            # purge_expired_leads. Rows hold organisation facts only (app/leads.py).
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lead_lists (
+                    id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    conversation_id TEXT,
+                    context_id TEXT NOT NULL,
+                    context_name TEXT NOT NULL,
+                    brief TEXT NOT NULL,
+                    language TEXT NOT NULL DEFAULT 'nl',
+                    status TEXT NOT NULL DEFAULT 'running'
+                        CHECK (status IN ('running', 'done', 'failed', 'interrupted')),
+                    error TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lead_rows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    list_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (list_id) REFERENCES lead_lists(id)
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_lead_rows_list ON lead_rows(list_id, id)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_lead_lists_expires ON lead_lists(expires_at)")
+            try:
+                # The search brief the intake conversation has agreed so far.
+                connection.execute("ALTER TABLE conversations ADD COLUMN lead_brief TEXT")
+            except sqlite3.OperationalError:
+                pass
 
     def backfill_owner(self, owner_id: str) -> None:
         """Claim legacy rows for the bootstrap account; NULL must never mean public."""
@@ -1006,3 +1047,133 @@ class ContextStore:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    # --- Lead finder --------------------------------------------------------
+    # Every role that reaches these methods (sales, admin) sees every list: the
+    # routes decide who may call them. Deleting is limited to the creator or an admin.
+
+    def save_lead_brief(self, conversation_id: str, brief: LeadBrief | None) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE conversations SET lead_brief = ? WHERE id = ?",
+                (brief.model_dump_json() if brief else None, conversation_id),
+            )
+
+    def lead_brief(self, conversation_id: str) -> LeadBrief | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT lead_brief FROM conversations WHERE id = ?", (conversation_id,)).fetchone()
+        return LeadBrief.model_validate_json(row["lead_brief"]) if row and row["lead_brief"] else None
+
+    def create_lead_list(
+        self, owner_id: str, conversation_id: str | None, context_id: str, context_name: str, brief: LeadBrief, language: str
+    ) -> str:
+        list_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute(
+                f"""
+                INSERT INTO lead_lists (id, owner_id, conversation_id, context_id, context_name, brief, language, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', '+{int(RETENTION_DAYS)} days'))
+                """,
+                (list_id, owner_id, conversation_id, context_id, context_name, brief.model_dump_json(), language),
+            )
+        return list_id
+
+    def list_lead_lists(self) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT l.*, (SELECT COUNT(*) FROM lead_rows r WHERE r.list_id = l.id) AS found
+                FROM lead_lists l
+                WHERE l.expires_at > datetime('now')
+                ORDER BY l.created_at DESC
+                """
+            ).fetchall()
+
+    def get_lead_list(self, list_id: str) -> SimpleNamespace | None:
+        """The list with its rows, or None when it does not exist or has expired."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM lead_lists WHERE id = ? AND expires_at > datetime('now')", (list_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            rows = connection.execute(
+                "SELECT content FROM lead_rows WHERE list_id = ? ORDER BY id", (list_id,)
+            ).fetchall()
+        return SimpleNamespace(
+            **{**dict(row), "brief": LeadBrief.model_validate_json(row["brief"])},
+            rows=[LeadRow.model_validate_json(item["content"]) for item in rows],
+        )
+
+    def add_lead_row(self, list_id: str, row: LeadRow) -> bool:
+        with self._connect() as connection:
+            exists = connection.execute("SELECT 1 FROM lead_lists WHERE id = ?", (list_id,)).fetchone()
+            if exists is None:
+                return False  # deleted while the search ran
+            connection.execute("INSERT INTO lead_rows (list_id, content) VALUES (?, ?)", (list_id, row.model_dump_json()))
+            connection.execute("UPDATE lead_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (list_id,))
+        return True
+
+    def lead_row_count(self, list_id: str) -> int:
+        with self._connect() as connection:
+            return connection.execute("SELECT COUNT(*) FROM lead_rows WHERE list_id = ?", (list_id,)).fetchone()[0]
+
+    def lead_list_running(self, list_id: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute("SELECT status FROM lead_lists WHERE id = ?", (list_id,)).fetchone()
+        return row is not None and row["status"] == "running"
+
+    def finish_lead_list(self, list_id: str, status: str, error: str | None) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE lead_lists SET status = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'",
+                (status, error, list_id),
+            )
+
+    def update_lead_brief(self, list_id: str, brief: LeadBrief) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE lead_lists SET brief = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND expires_at > datetime('now')",
+                (brief.model_dump_json(), list_id),
+            )
+        return bool(cursor.rowcount)
+
+    def delete_lead_list(self, list_id: str, owner_id: str, is_admin: bool = False) -> bool:
+        with self._connect() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM lead_lists WHERE id = ? AND (? OR owner_id = ?)", (list_id, int(is_admin), owner_id)
+            ).fetchone()
+            if exists is None:
+                return False
+            connection.execute("DELETE FROM lead_rows WHERE list_id = ?", (list_id,))
+            connection.execute("DELETE FROM lead_lists WHERE id = ?", (list_id,))
+        return True
+
+    def interrupt_running_lead_lists(self) -> int:
+        """After a restart no thread is filling these lists any more."""
+        with self._connect() as connection:
+            return connection.execute(
+                "UPDATE lead_lists SET status = 'interrupted', updated_at = CURRENT_TIMESTAMP WHERE status = 'running'"
+            ).rowcount
+
+    def purge_expired_leads(self) -> list[str]:
+        """Delete lists past their retention date, and lead chats idle for as long.
+
+        Returns the deleted list ids so the caller can log what went (never the contents).
+        """
+        with self._connect() as connection:
+            ids = [row["id"] for row in connection.execute("SELECT id FROM lead_lists WHERE expires_at <= datetime('now')")]
+            for list_id in ids:
+                connection.execute("DELETE FROM lead_rows WHERE list_id = ?", (list_id,))
+                connection.execute("DELETE FROM lead_lists WHERE id = ?", (list_id,))
+            stale = [
+                row["id"]
+                for row in connection.execute(
+                    "SELECT id FROM conversations WHERE kind = 'lead' "
+                    f"AND updated_at <= datetime('now', '-{int(RETENTION_DAYS)} days')"
+                )
+            ]
+            for conversation_id in stale:
+                connection.execute("DELETE FROM conversation_messages WHERE conversation_id = ?", (conversation_id,))
+                connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+        return ids

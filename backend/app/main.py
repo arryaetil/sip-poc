@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -105,7 +106,15 @@ def _knowledge_prompt_for(language: str) -> str:
         f"{KNOWLEDGE_ASSISTANT_PROMPT}"
     )
 
-app = FastAPI(title="Solution Intelligence Platform", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    from app.lead_routes import start_housekeeping
+
+    start_housekeeping()
+    yield
+
+
+app = FastAPI(title="Solution Intelligence Platform", version="0.1.0", lifespan=lifespan)
 
 # Fail closed: a misconfigured provider stops startup instead of failing per request.
 get_assistant()
@@ -119,6 +128,7 @@ PUBLIC_PATHS = {
     "/login-hero.jpg",
     "/styles.css",
     "/app.js",
+    "/leads.js",
     "/i18n.js",
 }
 
@@ -247,6 +257,9 @@ def _role_allows(role: str, method: str, path: str) -> bool:
         return True
     if path.startswith("/api/users"):
         return role == "admin"
+    if path.startswith("/api/leads"):
+        # Lead finder: sales and admin only (docs/specs/2026-10-07-lead-intelligence-design.md).
+        return role in ("admin", "sales")
     if role in ("admin", "product_owner"):
         return True
     if role == "sales":
@@ -428,7 +441,7 @@ REVALIDATE = {"Cache-Control": "no-cache"}
 
 AVATAR_DIR = APP_DIR / "avatars"
 FONT_DIR = APP_DIR / "fonts"
-AVATAR_NAMES = {"marketing", "kennis", "kyc", "product-owner", "developer", "time-manager"}
+AVATAR_NAMES = {"marketing", "kennis", "kyc", "product-owner", "developer", "time-manager", "lead-finder"}
 # Eyeless versions under the movable eyes on the home page.
 AVATAR_FILES = AVATAR_NAMES | {f"{name}-base" for name in AVATAR_NAMES - {"time-manager"}}
 AVATAR_TYPES = {".png": "image/png", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm"}
@@ -463,6 +476,11 @@ def styles() -> FileResponse:
 @app.get("/app.js", response_class=FileResponse)
 def frontend_script() -> FileResponse:
     return FileResponse(APP_DIR / "app.js", headers=REVALIDATE)
+
+
+@app.get("/leads.js", response_class=FileResponse)
+def leads_script() -> FileResponse:
+    return FileResponse(APP_DIR / "leads.js", headers=REVALIDATE)
 
 
 @app.get("/i18n.js", response_class=FileResponse)
@@ -1754,3 +1772,8 @@ def delete_context(context_id: str, request: Request) -> Response:
         Path(path).unlink(missing_ok=True)
         Path(f"{path}.txt").unlink(missing_ok=True)
     return Response(status_code=204)
+
+
+from app.lead_routes import router as lead_router  # noqa: E402 - the routes use helpers defined above
+
+app.include_router(lead_router)

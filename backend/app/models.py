@@ -73,7 +73,7 @@ class StudioProjectRequest(BaseModel):
 
 class ConversationCreateRequest(BaseModel):
     language: Literal["en", "nl", "de"] = "en"
-    kind: Literal["context", "knowledge", "product_owner"] = "context"
+    kind: Literal["context", "knowledge", "product_owner", "lead"] = "context"
 
 
 class UserInfo(BaseModel):
@@ -118,7 +118,7 @@ class ConversationSummary(BaseModel):
     title: str
     preview: str
     language: Literal["en", "nl", "de"]
-    kind: Literal["context", "knowledge", "product_owner"] = "context"
+    kind: Literal["context", "knowledge", "product_owner", "lead"] = "context"
     is_ready_to_save: bool
     readiness_reason: str
     portfolio_context_id: str | None
