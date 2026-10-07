@@ -532,3 +532,23 @@ def test_home_offers_the_product_owner_to_the_right_roles(monkeypatch):
     # Product Owner is the fourth card, so it starts the second row of three.
     order = [page.index(f'data-specialist="{name}"') for name in ("marketing", "knowledge", "kyc", "product-owner")]
     assert order == sorted(order)
+
+
+def test_a_sprint_question_with_a_filter_searches_in_that_sprint(monkeypatch):
+    """'The resolved stories of this sprint' must not list the whole sprint (seen live: kind sprint + state)."""
+    from app.models import StoryTarget, WorkItemQuery
+
+    calls: dict = {}
+    monkeypatch.setattr(devops, "sprint_items", lambda path: calls.setdefault("sprint", path) and [])
+    monkeypatch.setattr(devops, "search_items", lambda *args: calls.setdefault("search", args) and [])
+    targets = [StoryTarget(kind="sprint", name="Sprint 28", iteration_path=SPRINT, timeframe="current")]
+
+    payload = main._run_query(WorkItemQuery(kind="sprint", state="Resolved", work_item_type="User Story"), targets, [], None)
+
+    assert "sprint" not in calls
+    assert calls["search"] == (None, "User Story", "Resolved", False, None, SPRINT)
+    assert payload["label"] == "User Story · Resolved · Sprint 28"
+
+    calls.clear()
+    main._run_query(WorkItemQuery(kind="sprint"), targets, [], None)
+    assert calls == {"sprint": SPRINT}  # without a filter it is still the whole sprint
