@@ -412,6 +412,24 @@ def test_intake_chat_keeps_the_cleaned_brief(app_env):
     assert other.get(f"/api/leads/conversations/{body['conversation_id']}").status_code == 404
 
 
+def test_a_website_service_is_a_starting_point_too(app_env):
+    store, assistant, started = app_env
+    http = signed_in("sales@test.nl", "sales-pass")
+    sources = http.get("/api/leads/sources").json()
+    assert sources and all(source["id"].startswith("web:") for source in sources)
+    assert {"service", "product"} >= {source["offering_type"] for source in sources}
+    source = sources[0]
+    assistant.intake.append(LeadIntakeTurn(message="Voor wie?", brief=brief(count=None), ready=False))
+    chat = http.post("/api/leads/chat", json={"message": "Gemeenten", "context_id": source["id"], "language": "nl"})
+    assert chat.status_code == 200, chat.text
+    assert chat.json()["context_name"] == source["name"]
+    created = http.post("/api/leads/lists", json={"context_id": source["id"], "brief": brief().model_dump()})
+    assert created.status_code == 201 and created.json()["context_name"] == source["name"]
+    assert "reviewed website page" in started[0][4]
+    # Only service and solution pages qualify; an unknown or non-offering page does not.
+    assert http.post("/api/leads/lists", json={"context_id": "web:etil:does-not-exist", "brief": brief().model_dump()}).status_code == 404
+
+
 def test_a_list_needs_a_count_and_never_exceeds_fifty(app_env):
     store, _, started = app_env
     context_id = approved_context(store)

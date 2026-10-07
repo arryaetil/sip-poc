@@ -48,7 +48,8 @@
   const drawerFooter = $("#lead-drawer-footer");
 
   let settings = { available: false, missing: null, max_leads: 50, retention_days: 90 };
-  let contexts = [];
+  let contexts = []; // approved Business Contexts
+  let websiteSources = []; // services and solutions from the ETIL / ibc group websites
   let session = { conversationId: null, contextId: null, contextName: "", brief: null, ready: false };
   let list = null;
   let shownRows = new Set();
@@ -139,14 +140,16 @@
   }
 
   async function loadHome(preselect = null) {
-    const [loadedSettings, loadedContexts, lists, chats] = await Promise.all([
+    const [loadedSettings, loadedContexts, loadedSources, lists, chats] = await Promise.all([
       api("/api/leads/settings").catch(() => settings),
       api("/api/contexts").catch(() => []),
+      api("/api/leads/sources").catch(() => []),
       api("/api/leads/lists").catch(() => []),
       api("/api/leads/conversations").catch(() => []),
     ]);
     settings = loadedSettings;
     contexts = loadedContexts.filter((context) => context.status === "approved").sort((a, b) => a.name.localeCompare(b.name));
+    websiteSources = loadedSources;
     $("#lead-lists-subtitle").textContent = t("lead.lists_subtitle", { days: settings.retention_days });
     renderContextOptions(preselect);
     renderAvailability();
@@ -154,18 +157,32 @@
     renderChats(chats);
   }
 
+  // Everything a search can start from: Business Contexts first, then the website
+  // services and solutions per organisation.
+  function startingPoints() {
+    return [...contexts, ...websiteSources];
+  }
+
   function renderContextOptions(preselect) {
     const previous = preselect || contextSelect.value;
     contextSelect.replaceChildren(new Option(t("lead.context_placeholder"), ""));
-    contexts.forEach((context) => contextSelect.add(new Option(context.name, context.id)));
-    if (contexts.some((context) => context.id === previous)) contextSelect.value = previous;
-    else if (contexts.length === 1) contextSelect.value = contexts[0].id;
+    const group = (label, items) => {
+      if (!items.length) return;
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = label;
+      items.forEach((item) => optgroup.append(new Option(item.name, item.id)));
+      contextSelect.append(optgroup);
+    };
+    group(t("lead.group_contexts"), contexts);
+    [...new Set(websiteSources.map((source) => source.organisation))].forEach((organisation) =>
+      group(t("lead.group_website", { organisation }), websiteSources.filter((source) => source.organisation === organisation)));
+    if (startingPoints().some((item) => item.id === previous)) contextSelect.value = previous;
   }
 
   function renderAvailability() {
     let notice = "";
     if (!settings.available) notice = t(`lead.unavailable_${settings.missing || "assistant"}`);
-    else if (!contexts.length) notice = t("lead.no_contexts");
+    else if (!startingPoints().length) notice = t("lead.no_contexts");
     unavailable.textContent = notice;
     unavailable.hidden = !notice;
     const usable = !notice;
@@ -393,7 +410,7 @@
   startForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const message = startMessage.value.trim();
-    const context = contexts.find((item) => item.id === contextSelect.value);
+    const context = startingPoints().find((item) => item.id === contextSelect.value);
     if (!message || !context) {
       if (!context) contextSelect.focus();
       return;

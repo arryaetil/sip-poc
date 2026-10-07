@@ -8,6 +8,7 @@ RETENTION_DAYS and a housekeeping thread deletes them (see `start_housekeeping`)
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 import logging
 import re
 import threading
@@ -20,6 +21,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.assistants import _context_text
+from app.knowledge import create_website_offering_profile, get_knowledge_document, load_knowledge_documents
 from app.lead_search import LeadSearch, Serper, serper_key
 from app.leads import (
     MAX_LEADS,
@@ -51,6 +53,15 @@ class LeadSettings(BaseModel):
     missing: Literal["search", "assistant"] | None
     max_leads: int
     retention_days: int
+
+
+class LeadSource(BaseModel):
+    """A service or solution from the reviewed ETIL / ibc group website pages."""
+
+    id: str
+    name: str
+    organisation: str
+    offering_type: str
 
 
 class LeadChatRequest(BaseModel):
@@ -115,11 +126,28 @@ class LeadListDetail(LeadListSummary):
 # --------------------------------------------------------------------------- helpers
 
 
-def _approved_context(context_id: str, owner_id: str, is_admin: bool) -> StoredBusinessContext:
-    context = _main().get_context_store().get(context_id, owner_id, is_admin)
+WEB_PREFIX = "web:"
+WEB_TEXT_LIMIT = 6_000
+
+
+def _approved_context(context_id: str, owner_id: str, is_admin: bool) -> SimpleNamespace:
+    """What a lead search starts from: an approved Business Context, or a service or
+    solution page from the reviewed website corpus (id "web:<source id>")."""
+    if context_id.startswith(WEB_PREFIX):
+        document = get_knowledge_document(context_id.removeprefix(WEB_PREFIX))
+        profile = create_website_offering_profile(document) if document else None
+        if profile is None or not profile.offering_type:
+            raise HTTPException(status_code=404, detail="Website service or solution not found")
+        name = profile.name or document.title
+        text = (
+            f"{name}: {profile.offering_type} of {document.organisation}, from its reviewed website page "
+            f"({document.canonical_url}).\n\n{document.content[:WEB_TEXT_LIMIT]}"
+        )
+        return SimpleNamespace(id=context_id, name=name, text=text)
+    context: StoredBusinessContext | None = _main().get_context_store().get(context_id, owner_id, is_admin)
     if context is None or context.status != "approved":
         raise HTTPException(status_code=404, detail="Approved Business Context not found")
-    return context
+    return SimpleNamespace(id=context.id, name=context.name, text=_context_text(context))
 
 
 def _missing() -> Literal["search", "assistant"] | None:
@@ -182,6 +210,22 @@ def lead_settings() -> LeadSettings:
     return LeadSettings(available=missing is None, missing=missing, max_leads=MAX_LEADS, retention_days=RETENTION_DAYS)
 
 
+@router.get("/sources", response_model=list[LeadSource])
+def lead_sources() -> list[LeadSource]:
+    """The services and solutions on the ETIL and ibc group websites, to search leads for."""
+    sources = []
+    for document in load_knowledge_documents():
+        profile = create_website_offering_profile(document)
+        if profile.offering_type:
+            sources.append(LeadSource(
+                id=f"{WEB_PREFIX}{document.source_id}",
+                name=profile.name or document.title,
+                organisation=document.organisation,
+                offering_type=profile.offering_type,
+            ))
+    return sorted(sources, key=lambda item: (item.organisation, item.name.casefold()))
+
+
 @router.post("/chat", response_model=LeadChatResponse)
 def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     """One intake turn. The brief the assistant proposes is cleaned and kept with the chat."""
@@ -207,7 +251,7 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
             body.message,
             body.language,
             owner_id,
-            _context_text(context),
+            context.text,
             current.model_dump_json() if current else "",
         )
     except RuntimeError as exc:
@@ -253,7 +297,10 @@ def lead_conversation(conversation_id: str, request: Request) -> LeadConversatio
     main = _main()
     owner_id, is_admin = main._actor(request)
     conversation = _owned_lead_conversation(conversation_id, owner_id)
-    context = main.get_context_store().get(conversation.portfolio_context_id or "", owner_id, is_admin)
+    try:
+        context = _approved_context(conversation.portfolio_context_id or "", owner_id, is_admin)
+    except HTTPException:
+        context = None  # deleted or no longer approved; the chat can still be read
     return LeadConversation(
         conversation=ConversationSummary(**conversation.model_dump(exclude={"messages"})),
         messages=conversation.messages,
@@ -291,7 +338,7 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
         raise HTTPException(status_code=422, detail="Say how many leads you want first")
     list_id = store.create_lead_list(owner_id, body.conversation_id, context.id, context.name, brief, body.language)
     search = LeadSearch(store, main.get_assistant(), Serper(serper_key()))
-    start_search(search, list_id, owner_id, body.language, _context_text(context))
+    start_search(search, list_id, owner_id, body.language, context.text)
     logger.info("lead_list_started list=%s count=%s", list_id, brief.count)
     return _detail(store.get_lead_list(list_id), owner_id)
 
