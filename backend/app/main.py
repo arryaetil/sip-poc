@@ -930,12 +930,17 @@ def _run_query(
             payload["items"] = [WorkItemSummary(**detail.model_dump(include=set(WorkItemSummary.model_fields))).model_dump()]
             return payload
         sprint = sprints.get(query.iteration_path or "") or (current if query.kind == "sprint" or query.iteration_path else None)
-        if query.kind == "sprint":
+        # A sprint question with a filter ("the resolved stories of this sprint") is a search in that
+        # sprint: listing the whole sprint would ignore the state or type the user asked for.
+        kind = query.kind
+        if kind == "sprint" and (query.state or query.work_item_type or query.text or query.person):
+            kind = "search"
+        if kind == "sprint":
             if sprint is None:
                 raise ValueError("There is no current sprint for the team.")
             payload["label"] = sprint.name
             payload["items"] = [item.model_dump() for item in devops.sprint_items(sprint.iteration_path)]
-        elif query.kind == "search":
+        elif kind == "search":
             person = None
             if query.person:
                 person = me if query.person.strip().casefold() in ("me", "mij", "ik", "mich", "ich") else devops.resolve_person(query.person, members)
