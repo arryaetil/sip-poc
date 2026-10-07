@@ -260,6 +260,8 @@ def brief_for_model(brief: LeadBrief, context_text: str) -> str:
             "description": brief.description,
             "industries": brief.industries,
             "regions": brief.regions,
+            "size": brief.size,
+            "exclude": brief.exclude,
             "extra_columns": [column.model_dump() for column in brief.extra_columns],
         },
         ensure_ascii=False,

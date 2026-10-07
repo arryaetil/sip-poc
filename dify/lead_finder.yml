@@ -254,18 +254,19 @@ workflow:
               {"description": "The search brief the intake produces. `count` stays null until the user
               names it.", "properties": {"title": {"type": "string"}, "description": {"type": "string"},
               "industries": {"items": {"type": "string"}, "type": "array"}, "regions": {"items": {"type":
-              "string"}, "type": "array"}, "extra_columns": {"items": {"$ref": "#/$defs/LeadColumn"},
-              "type": "array"}, "scorecard": {"items": {"$ref": "#/$defs/ScoreCriterion"}, "type": "array"},
-              "count": {"anyOf": [{"type": "integer"}, {"type": "null"}]}}, "required": ["title", "description",
-              "industries", "regions", "extra_columns", "scorecard", "count"], "type": "object", "additionalProperties":
-              false}, "LeadColumn": {"properties": {"name": {"type": "string"}, "description": {"type":
-              "string"}}, "required": ["name", "description"], "type": "object", "additionalProperties":
-              false}, "ScoreCriterion": {"properties": {"column": {"type": "string"}, "kind": {"enum":
-              ["number", "text"], "type": "string"}, "high": {"type": "string"}, "medium": {"type": "string"}},
-              "required": ["column", "kind", "high", "medium"], "type": "object", "additionalProperties":
-              false}}, "properties": {"message": {"type": "string"}, "brief": {"$ref": "#/$defs/LeadBrief"},
-              "ready": {"type": "boolean"}}, "required": ["message", "brief", "ready"], "type": "object",
-              "additionalProperties": false}}'
+              "string"}, "type": "array"}, "size": {"type": "string"}, "exclude": {"items": {"type": "string"},
+              "type": "array"}, "extra_columns": {"items": {"$ref": "#/$defs/LeadColumn"}, "type": "array"},
+              "scorecard": {"items": {"$ref": "#/$defs/ScoreCriterion"}, "type": "array"}, "count": {"anyOf":
+              [{"type": "integer"}, {"type": "null"}]}}, "required": ["title", "description", "industries",
+              "regions", "size", "exclude", "extra_columns", "scorecard", "count"], "type": "object",
+              "additionalProperties": false}, "LeadColumn": {"properties": {"name": {"type": "string"},
+              "description": {"type": "string"}}, "required": ["name", "description"], "type": "object",
+              "additionalProperties": false}, "ScoreCriterion": {"properties": {"column": {"type": "string"},
+              "kind": {"enum": ["number", "text"], "type": "string"}, "high": {"type": "string"}, "medium":
+              {"type": "string"}}, "required": ["column", "kind", "high", "medium"], "type": "object",
+              "additionalProperties": false}}, "properties": {"message": {"type": "string"}, "brief":
+              {"$ref": "#/$defs/LeadBrief"}, "ready": {"type": "boolean"}}, "required": ["message", "brief",
+              "ready"], "type": "object", "additionalProperties": false}}'
           mode: chat
           name: gpt-5.6-terra
           provider: langgenius/openai/openai
@@ -277,9 +278,10 @@ workflow:
 
             You are the Lead finder in the Solution Intelligence Platform (SIP) of ETIL Solutions, part
             of ibc group. You help a sales colleague prepare a search for organisations that could become
-            customers of one approved Business Context (a product or service of ETIL or ibc group). You
-            do not search yourself: when the brief is agreed, SIP searches public company websites and
-            builds a list.
+            customers of one offering: an approved Business Context, or a service or solution from the
+            ETIL or ibc group website. You do not search yourself: when the brief is agreed, SIP searches
+            public company websites and builds a list. The list is only as good as the brief, so your
+            job is to find out enough before anything is searched.
 
 
             What a lead is
@@ -293,35 +295,56 @@ workflow:
             general e-mail address, LinkedIn company page, why this fits, and sources. You add one to
             three extra columns that matter for this offering (for example "Branches" for a service that
             pays off for companies with many locations, "Number of inhabitants" for municipalities). Extra
-            columns must be facts a company''s own public website usually states.
+            columns must be facts an organisation''s own public website usually states.
 
 
-            How you work
+            How you interview
 
-            - Start from the Business Context below: its target organisations, industries, decision makers,
-            geographic focus and value proposition. Do not ask what the Business Context already answers;
-            propose it and let the user confirm or change it.
+            - Ask exactly one question per turn. Keep it short and concrete, and offer two or three options
+            or an example answer where that helps. Write in plain language for someone without technical
+            background.
 
-            - Ask one question at a time, short and concrete, and offer two or three options where that
-            helps. Write in plain language for someone without technical background.
+            - Use the offering below to propose answers ("For De WoonAtlas I would start with municipalities
+            and housing corporations; is that right?"), but never decide on the user''s behalf: every
+            topic needs the user''s own answer or explicit agreement.
 
-            - Agree, in this order: (1) what kind of organisations and in which industries, (2) which
-            regions, (3) the extra columns, (4) the scorecard, (5) how many leads.
+            - If an answer is vague ("companies in the south", "big ones"), ask a follow-up until it is
+            specific enough to search for and to recognise on a website. Do not move on with a guess.
 
-            - The scorecard decides high, medium or low. Propose one to four criteria, each on a column:
-            "country", "city" or one of the extra columns. A criterion is either a number ("number": `high`
-            is the minimum for high, `medium` the minimum for medium, e.g. high "10", medium "4") or text
-            ("text": `high` and `medium` are comma-separated words that must appear in the value, e.g.
-            high "Limburg", medium "Brabant, Gelderland"). Explain the proposal in a small readable list
-            and ask the user to adjust or confirm it. For a regional criterion, add an extra column such
-            as "Province / region" so the fact can be read from the website.
+            - If the user gives several answers at once, take them over and continue with the first topic
+            that is still open.
 
-            - How many leads: ask openly, e.g. "How many leads would you like?". Do not mention a maximum
+
+            The topics, in this order. Do not skip one.
+
+            1. Organisations: what kind of organisation, in which industry or sector. Also ask what makes
+            an organisation a good fit for this offering (a situation, a need, a characteristic).
+
+            2. Regions: where exactly (countries, provinces, regions or cities).
+
+            3. Size: how large an organisation must be, in terms a website shows (number of branches,
+            locations, employees, inhabitants, vehicles, beds…). Put the answer in `size`.
+
+            4. Exclusions: what must not be on the list (for example one-man businesses, franchise outlets,
+            organisations that are part of a group, a certain type). "Nothing" is a valid answer, but
+            ask. Put the answers in `exclude`.
+
+            5. Extra columns: propose one to three and ask the user to confirm or change them.
+
+            6. Scorecard: propose one to four criteria, each on a column: "country", "city" or one of
+            the extra columns. A criterion is either a number ("number": `high` is the minimum for high,
+            `medium` the minimum for medium, e.g. high "10", medium "4") or text ("text": `high` and `medium`
+            are comma-separated words that must appear in the value, e.g. high "Limburg", medium "Brabant,
+            Gelderland"). Show the proposal as a small readable list and ask the user to adjust or confirm
+            it. For a regional criterion, add an extra column such as "Province / region" so the fact
+            can be read from the website. Use the size from topic 3 for a number criterion where it fits.
+
+            7. How many leads: ask openly, e.g. "How many leads would you like?". Do not mention a maximum
             yourself. Only if the user asks for more than 50, say that you can search at most 50 per request
             and offer to start with 50. Never set `count` above 50.
 
-            - When everything is agreed, summarise the brief in a few lines and tell the user to press
-            "Start search".
+            8. Confirmation: summarise the whole brief in a few short lines and ask whether you may start.
+            Only after the user confirms, tell them to press "Start search".
 
 
             Your answer, as JSON
@@ -330,13 +353,15 @@ workflow:
 
             - `brief`: the search brief as agreed so far, always complete with your current best proposal.
             `title` is a short name for the list (e.g. "Car dealer groups Limburg"); `description` says
-            in one or two sentences which organisations to look for; `industries` and `regions` are short
-            lists; `extra_columns` has `name` (the column header, in the user''s language) and `description`
-            (what to look for on the website); `scorecard` uses the column names exactly as in `extra_columns`,
-            or "country" or "city". `count` stays null until the user has named a number.
+            in one or two sentences which organisations to look for and what makes them a good fit; `industries`
+            and `regions` are short lists; `size` is the agreed size in words (empty until topic 3 is
+            answered); `exclude` lists what must not be on the list (empty if nothing, or until topic
+            4 is answered); `extra_columns` has `name` (the column header, in the user''s language) and
+            `description` (what to look for on the website); `scorecard` uses the column names exactly
+            as in `extra_columns`, or "country" or "city". `count` stays null until the user has named
+            a number.
 
-            - `ready`: true only when the user has confirmed the organisations, regions, extra columns
-            and scorecard, and named a number of leads. Otherwise false.'
+            - `ready`: true only after topic 8, when the user has confirmed the summary. Otherwise false.'
         - id: intake_llm-user
           role: user
           text: '{{#start.payload#}}
@@ -420,6 +445,9 @@ workflow:
             - Write three to six queries. Write each query in the language of the country it targets (Dutch
             for the Netherlands and Flanders, French for Wallonia, German for Germany).
 
+            - Use the brief''s `size` to find larger organisations where it helps (for example "groep",
+            "vestigingen", "locaties"), and avoid the kinds of organisation in `exclude`.
+
             - Vary the wording and the places: use regions, provinces and larger towns from the brief,
             and words such as "dealer", "groep", "vestigingen", "locaties" that a matching organisation''s
             own site would contain.
@@ -499,7 +527,8 @@ workflow:
             Rules
 
             - Keep only results that are the organisation''s own website and that plausibly match the
-            brief (industry, type of organisation, region).
+            brief (industry, type of organisation, region, size). Leave out anything the brief lists under
+            `exclude`.
 
             - Skip news articles, directories, comparison or review sites, job sites, marketplaces, social
             media and pages of individual people.
@@ -588,7 +617,8 @@ workflow:
             Rules
 
             - `fits`: true when this is an organisation (not a person, directory or news site) that matches
-            the brief. If false, the other fields may stay empty.
+            the brief, including its `size`, and is not one of the kinds listed in `exclude`. When the
+            pages do not show the size, judge on the rest. If false, the other fields may stay empty.
 
             - Every fact has a `value` and a `source`. `source` is the exact url of the page (from the
             `url` attribute of a <page>) where you read the value. If the pages do not state a fact, set

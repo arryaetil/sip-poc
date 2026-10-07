@@ -60,6 +60,8 @@ def brief(count: int | None = 3, **changes) -> LeadBrief:
         description="Dealergroepen met meerdere vestigingen",
         industries=["automotive"],
         regions=["NL-Limburg"],
+        size="Minimaal 4 vestigingen",
+        exclude=["Eenmanszaken"],
         extra_columns=[BRANCHES],
         scorecard=SCORECARD,
         count=count,
@@ -428,6 +430,30 @@ def test_a_website_service_is_a_starting_point_too(app_env):
     assert "reviewed website page" in started[0][4]
     # Only service and solution pages qualify; an unknown or non-offering page does not.
     assert http.post("/api/leads/lists", json={"context_id": "web:etil:does-not-exist", "brief": brief().model_dump()}).status_code == 404
+
+
+def test_start_needs_a_complete_brief_and_a_real_conversation(app_env):
+    store, assistant, _ = app_env
+    context_id = approved_context(store)
+    http = signed_in("sales@test.nl", "sales-pass")
+    # The model says ready on the first turn: SIP does not believe it yet.
+    assistant.intake.append(LeadIntakeTurn(message="Klaar!", brief=brief(), ready=True))
+    first = http.post("/api/leads/chat", json={"message": "Dealers", "context_id": context_id}).json()
+    assert first["ready"] is False
+    for answer in ("Limburg", "Ja, start maar"):
+        assistant.intake.append(LeadIntakeTurn(message="Volgende vraag", brief=brief(size=""), ready=True))
+        turn = http.post("/api/leads/chat", json={"message": answer, "conversation_id": first["conversation_id"]}).json()
+        assert turn["ready"] is False  # no size agreed
+    assistant.intake.append(LeadIntakeTurn(message="Druk op Start zoeken", brief=brief(), ready=True))
+    assert http.post("/api/leads/chat", json={"message": "5 vestigingen", "conversation_id": first["conversation_id"]}).json()["ready"] is True
+    incomplete = {"context_id": context_id, "brief": brief(size="").model_dump()}
+    assert http.post("/api/leads/lists", json=incomplete).status_code == 422
+
+
+def test_briefs_saved_before_size_and_exclude_still_load():
+    old = '{"title": "t", "description": "d", "industries": [], "regions": [], "extra_columns": [], "scorecard": [], "count": 5}'
+    loaded = LeadBrief.model_validate_json(old)
+    assert loaded.size == "" and loaded.exclude == []
 
 
 def test_a_list_needs_a_count_and_never_exceeds_fifty(app_env):

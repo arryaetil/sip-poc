@@ -384,6 +384,8 @@
         briefRow("description", t("lead.brief.organisations"), el("span", "", brief.description || t("lead.brief_open"))),
         briefRow("industries", t("lead.brief.industries"), chips(brief.industries)),
         briefRow("regions", t("lead.brief.regions"), chips(brief.regions)),
+        briefRow("size", t("lead.brief.size"), el("span", brief.size ? "" : "lead-muted", brief.size || t("lead.brief_open"))),
+        briefRow("exclude", t("lead.brief.exclude"), chips(brief.exclude || [])),
         briefRow("columns", t("lead.brief.columns"), [fixed, chips(brief.extra_columns.map((column) => column.name), "lead-chip-accent")]),
         briefRow("scorecard", t("lead.brief.scorecard"), scorecardList(brief.scorecard)),
         briefRow("count", t("lead.brief.count"), el("span", brief.count ? "lead-count" : "lead-muted",

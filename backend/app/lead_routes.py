@@ -25,11 +25,13 @@ from app.knowledge import create_website_offering_profile, get_knowledge_documen
 from app.lead_search import LeadSearch, Serper, serper_key
 from app.leads import (
     MAX_LEADS,
+    MIN_USER_TURNS,
     RETENTION_DAYS,
     LeadBrief,
     LeadRow,
     LeadScore,
     ScoreCriterion,
+    brief_complete,
     clean_brief,
     export_xlsx,
     score_row,
@@ -278,7 +280,10 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
         conversation_id=conversation.id,
         message=updated.messages[-1],
         brief=brief,
-        ready=turn.ready and brief.count is not None,
+        # The model may say ready too early; SIP also wants a complete brief and a real
+        # conversation (the opening message plus at least two answers).
+        ready=turn.ready and brief_complete(brief)
+        and sum(1 for message in updated.messages if message.role == "user") >= MIN_USER_TURNS,
         context_id=context.id,
         context_name=context.name,
     )
@@ -336,6 +341,8 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
     brief = clean_brief(body.brief)
     if brief.count is None:
         raise HTTPException(status_code=422, detail="Say how many leads you want first")
+    if not brief_complete(brief):
+        raise HTTPException(status_code=422, detail="The search brief is not complete yet; finish the conversation first")
     list_id = store.create_lead_list(owner_id, body.conversation_id, context.id, context.name, brief, body.language)
     search = LeadSearch(store, main.get_assistant(), Serper(serper_key()))
     start_search(search, list_id, owner_id, body.language, context.text)

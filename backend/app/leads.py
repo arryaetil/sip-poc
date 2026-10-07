@@ -16,7 +16,7 @@ import re
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 MAX_LEADS = 50
 BATCH_SIZE = 10
@@ -50,9 +50,21 @@ class LeadBrief(BaseModel):
     description: str
     industries: list[str]
     regions: list[str]
+    size: str  # e.g. "at least 5 branches", "more than 50,000 inhabitants"
+    exclude: list[str]  # what must not be on the list, e.g. "one-man businesses"
     extra_columns: list[LeadColumn]
     scorecard: list[ScoreCriterion]
     count: int | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _stored_before_size_and_exclude(cls, data):
+        # Lists and chats saved before these fields existed still load. Not a schema
+        # default: the model must always answer both fields.
+        if isinstance(data, dict):
+            data.setdefault("size", "")
+            data.setdefault("exclude", [])
+        return data
 
 
 class LeadIntakeTurn(BaseModel):
@@ -152,10 +164,20 @@ def clean_brief(brief: LeadBrief) -> LeadBrief:
         description=brief.description.strip()[:1000],
         industries=[item.strip()[:80] for item in brief.industries if item.strip()][:8],
         regions=[item.strip()[:80] for item in brief.regions if item.strip()][:8],
+        size=brief.size.strip()[:300],
+        exclude=[item.strip()[:120] for item in brief.exclude if item.strip()][:8],
         extra_columns=columns,
         scorecard=criteria,
         count=count,
     )
+
+
+MIN_USER_TURNS = 3
+
+
+def brief_complete(brief: LeadBrief) -> bool:
+    """Everything the search needs. What to exclude may be empty: "nothing" is an answer."""
+    return bool(brief.description and brief.industries and brief.regions and brief.size and brief.scorecard and brief.count)
 
 
 def _column_key(name: str, columns: list[LeadColumn]) -> str:
