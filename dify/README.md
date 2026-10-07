@@ -11,7 +11,7 @@ the default, `foundry`, keeps the original path. The switch lives in
 | SIP — Business Context Finalizer (Dify) | `f7d3e6a6-aa5c-4159-93b9-2893b6a8a414` | saving a conversation to the portfolio | `BusinessContext` JSON |
 | SIP — Knowledge Assistant (Dify) | `e1950fd4-7d7e-4840-be5d-e27b71cf6922` | knowledge chat | answer + retriever resources |
 | SIP — Product Owner (Dify) | `08102bff-059c-463c-aad5-b827fbc6bb0d` | Product Owner chat (user story drafts) | `ProductOwnerTurn` JSON |
-| SIP — Lead finder (Dify) | not created yet | Lead finder intake and lead search steps | `LeadIntakeTurn`, `LeadQueryPlan`, `LeadCandidates` or `LeadExtraction` JSON |
+| SIP — Lead finder (Dify) | `2266c4de-5764-4411-8b04-03f9b4f7cccc` | Lead finder intake and lead search steps | `LeadIntakeTurn`, `LeadQueryPlan`, `LeadCandidates` or `LeadExtraction` JSON |
 
 The knowledge app searches the Dify knowledge base *SIP — ETIL corpus (3-large)*
 (`cc833d3d-e595-41c7-a7ca-1bc1c5b7decd`), filled from `knowledge/markdown/etil`
@@ -28,8 +28,7 @@ difyctl import studio-app -f dify/strategist.yml --app-id 516e0f3c-866c-42d3-92f
 difyctl import studio-app -f dify/finalizer.yml  --app-id f7d3e6a6-aa5c-4159-93b9-2893b6a8a414
 difyctl import studio-app -f dify/knowledge.yml  --app-id e1950fd4-7d7e-4840-be5d-e27b71cf6922
 difyctl import studio-app -f dify/product_owner.yml --app-id 08102bff-059c-463c-aad5-b827fbc6bb0d
-# First time only: import without --app-id creates the Lead finder app; note its id here.
-difyctl import studio-app -f dify/lead_finder.yml
+difyctl import studio-app -f dify/lead_finder.yml --app-id 2266c4de-5764-4411-8b04-03f9b4f7cccc
 ```
 
 An import only updates the draft. **Publish each app in Studio afterwards**;
