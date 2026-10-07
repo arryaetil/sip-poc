@@ -39,7 +39,7 @@ themselves via the LinkedIn company page link.
  ───                               ────
  Ask ibc group: "find leads  ─┐
  for this"                    ├──▶ 1. LEAD FINDER (chatflow)
- or open Lead finder  ───────┘       reads the Business Context, asks targeted
+ or open Lead finder  ────────┘      reads the Business Context, asks targeted
                                       questions, proposes a scorecard
                                       └─▶ search brief (JSON)
                                                │
