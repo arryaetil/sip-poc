@@ -217,7 +217,11 @@ def fact_for(row: LeadRow, column: str) -> LeadFact:
 
 
 def score_row(row: LeadRow, scorecard: list[ScoreCriterion]) -> LeadScore:
-    """High / medium / low from the scorecard. An unknown fact can never give high."""
+    """High / medium / low from the scorecard. An unknown fact can never give high.
+
+    High means mostly high: with two criteria both must be high, with three two high
+    and one medium. An even mix of high and medium is medium.
+    """
     criteria = [
         CriterionScore(column=c.column, value=fact_for(row, c.column).value, level=_criterion_level(c, fact_for(row, c.column).value))
         for c in scorecard
@@ -226,7 +230,7 @@ def score_row(row: LeadRow, scorecard: list[ScoreCriterion]) -> LeadScore:
         return LeadScore(level=None, criteria=[])
     average = sum(POINTS[item.level] for item in criteria) / len(criteria)
     has_unknown = any(item.level == "unknown" for item in criteria)
-    if average >= 1.5 and not has_unknown:
+    if average > 1.5 and not has_unknown:
         level = "high"
     elif average >= 0.75:
         level = "medium"

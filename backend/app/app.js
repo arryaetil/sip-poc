@@ -185,8 +185,10 @@ function applyRolePermissions() {
     if (field.name) field.disabled = !canEdit;
   });
 
-  // Mirrors _role_allows: Sales has no access to the Product Owner.
+  // Mirrors _role_allows: Sales has no access to the Product Owner, and the
+  // Lead finder is for sales and admin only.
   navProductOwner.hidden = currentRole === "sales";
+  document.querySelector("#nav-lead").hidden = !["admin", "sales"].includes(currentRole);
 
   const isAdmin = currentRole === "admin";
   navTeam.hidden = !isAdmin;
@@ -305,6 +307,7 @@ function revealMessage(message, text, container) {
 
 // Each chat shows the robot of its specialist from the home page.
 function chatAvatarFor(container) {
+  if (container.id === "lead-messages") return "lead-finder";
   return container === poMessages ? "product-owner" : "kennis";
 }
 
@@ -520,6 +523,7 @@ async function loadConversations() {
 }
 
 function fillContextForm(context, status = "draft") {
+  window.leadFinder?.syncReview({ ...context, status });
   contextFields.forEach((name) => {
     const field = contextForm.elements.namedItem(name);
     const value = context[name];
@@ -943,6 +947,7 @@ function openSourcePanel(source, trigger) {
     sourcePanelOpen.textContent = t(isPdf ? "source_panel.open_pdf" : "source_panel.download");
     sourcePanelAction = () => window.open(`/api/uploads/${source.item_id}${isPdf ? "?inline=true" : ""}`, "_blank", "noopener");
   }
+  window.leadFinder?.syncSourcePanel(source);
   sourcePanel.hidden = false;
   document.querySelector("#source-panel-close").focus();
 }
@@ -1468,8 +1473,15 @@ document.querySelectorAll("[data-return='portfolio']").forEach((button) => {
 confirmDelete.addEventListener("click", async () => {
   if (!pendingDelete) return;
   confirmDelete.disabled = true;
-  const { kind, id } = pendingDelete;
+  const { kind, id, action } = pendingDelete;
   try {
+    if (action) {
+      // Other modules (the Lead finder) bring their own delete.
+      await action();
+      deleteDialog.close();
+      pendingDelete = null;
+      return;
+    }
     await api(kind === "conversation" ? `/api/conversations/${id}` : `/api/contexts/${id}`, {
       method: "DELETE",
     });

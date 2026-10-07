@@ -96,7 +96,7 @@ def test_brief_is_clamped_to_fifty_and_three_columns():
 def test_score_comes_from_the_scorecard_and_unknown_is_never_high():
     assert score_row(row("27 vestigingen"), SCORECARD).level == "high"
     assert score_row(row("6", country="Duitsland"), SCORECARD).level == "medium"
-    assert score_row(row("6"), SCORECARD).level == "high"  # medium and high average to high
+    assert score_row(row("6"), SCORECARD).level == "medium"  # one high, one medium: not mostly high
     assert score_row(row("2", country="Frankrijk"), SCORECARD).level == "low"
     unknown = score_row(row(None), SCORECARD)
     assert unknown.level == "medium"  # country high, branches unknown: capped below high
@@ -361,6 +361,15 @@ def signed_in(email: str, password: str) -> TestClient:
     http = TestClient(main.app)
     assert http.post("/api/auth/login", json={"email": email, "password": password}).status_code == 200
     return http
+
+
+def test_home_card_images_are_served(monkeypatch):
+    monkeypatch.delenv("SIP_SESSION_SECRET", raising=False)
+    http = TestClient(main.app)
+    for name in ("lead-finder.webp", "lead-finder.png", "lead-finder-base.webp", "../leads.py"):
+        assert http.get(f"/avatars/{name}").status_code == (404 if name.startswith("..") else 200)
+    assert 'data-specialist="lead-finder"' in http.get("/").text
+    assert http.get("/leads.js").status_code == 200
 
 
 def test_only_sales_and_admin_reach_the_lead_finder(app_env):

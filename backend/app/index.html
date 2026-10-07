@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/styles.css">
   <script src="/i18n.js" defer></script>
   <script src="/app.js" defer></script>
+  <script src="/leads.js" defer></script>
 </head>
 <body class="home-open">
   <header class="topbar">
@@ -50,14 +51,14 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14M15 5v14M6 9h1M11 9h2M11 13h2M17 9h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span data-i18n="nav.product_owner">Product Owner</span>
         </button>
+        <button id="nav-lead" class="nav-item" type="button" data-view="lead">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.7"/><path d="M12 12l5.5-5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span data-i18n="nav.lead">Lead finder</span>
+        </button>
       </nav>
 
       <p class="nav-label nav-label-spaced" data-i18n="nav.integrations">Integrations</p>
       <nav class="nav-list">
-        <button class="nav-item" type="button" data-view="lead">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19v-5m5 5V9m5 10v-8m5 8V5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <span data-i18n="nav.lead">Lead intelligence</span>
-        </button>
         <button class="nav-item" type="button" data-view="marketing">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6h14v12H5zM8 10h8M8 14h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span data-i18n="nav.marketing">Marketing studio</span>
@@ -171,6 +172,30 @@
               <div class="specialist-unavailable" hidden>
                 <p class="specialist-status" data-i18n="home.status.role"></p>
                 <p class="specialist-status-copy" data-i18n="home.role_copy"></p>
+              </div>
+            </div>
+          </li>
+          <li class="specialist" data-specialist="lead-finder" style="--specialist-accent: #0e7c86; --specialist-stage: #f3f9fa;">
+            <div class="specialist-stage" aria-hidden="true">
+              <picture>
+                <source srcset="/avatars/lead-finder.webp" type="image/webp">
+                <img class="specialist-image" src="/avatars/lead-finder.png" alt="" width="720" height="720" decoding="async">
+              </picture>
+              <div class="robot-live" data-base="/avatars/lead-finder-base.webp" data-eyes-src="/avatars/lead-finder.webp" data-eyes="551,302,62;726,357,60" style="--breath-delay: -0.9s;"></div>
+              <video class="specialist-video" data-video="/avatars/lead-finder.mp4" poster="/avatars/lead-finder.webp" muted loop playsinline preload="none" disablepictureinpicture tabindex="-1"></video>
+            </div>
+            <div class="specialist-body">
+              <h2 id="specialist-lead-finder-name" class="specialist-name" data-i18n="home.lead_finder.name"></h2>
+              <p id="specialist-lead-finder-text" class="specialist-text" data-i18n="home.lead_finder.text"></p>
+              <div class="specialist-actions">
+              <button class="specialist-action" type="button" data-view="lead" data-roles="admin sales" aria-describedby="specialist-lead-finder-name specialist-lead-finder-text">
+                <span data-i18n="home.lead_finder.action"></span>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              </div>
+              <div class="specialist-unavailable" hidden>
+                <p class="specialist-status" data-i18n="home.status.role"></p>
+                <p class="specialist-status-copy" data-i18n="home.lead_finder.role_copy"></p>
               </div>
             </div>
           </li>
@@ -290,7 +315,10 @@
             <h1 id="review-title" data-i18n="review.title_default">Review Business Context</h1>
             <p data-i18n="review.subtitle">Check the structured record saved from the conversation before approving it.</p>
           </div>
-          <span id="review-state" class="state-label" data-i18n="review.state_working">Working context</span>
+          <div class="header-actions">
+            <button id="review-find-leads" class="secondary-button" type="button" data-i18n="lead.find_for_context" hidden>Find leads</button>
+            <span id="review-state" class="state-label" data-i18n="review.state_working">Working context</span>
+          </div>
         </header>
 
         <form id="context-form" class="context-form">
@@ -594,11 +622,128 @@
         </div>
       </section>
 
-      <section id="lead-view" class="view under-construction" aria-labelledby="lead-title" hidden>
-        <p class="section-kicker" data-i18n="lead.kicker">Lead intelligence</p>
-        <h1 id="lead-title" data-i18n="lead.title">Under construction</h1>
-        <p data-i18n="lead.copy">This workspace will use approved Business Contexts to identify and evaluate relevant organisations.</p>
-        <button class="secondary-button" type="button" data-return="portfolio" data-i18n="under_construction.view_portfolio">View ibc group Portfolio</button>
+      <section id="lead-view" class="view lead-view" aria-labelledby="lead-title" hidden>
+        <div id="lead-home" class="lead-home">
+          <section class="conversation-launcher lead-launcher">
+            <p class="launcher-kicker" data-i18n="lead.kicker">Lead finder</p>
+            <h1 id="lead-title" data-i18n="lead.prompt_title">Which organisations are you looking for?</h1>
+            <p id="lead-unavailable" class="lead-notice" role="status" hidden></p>
+            <form id="lead-start-form" class="launcher-form">
+              <label class="lead-context-field">
+                <span data-i18n="lead.context_label">For</span>
+                <select id="lead-context" required></select>
+              </label>
+              <textarea id="lead-start-message" rows="2" data-i18n-placeholder="lead.start_placeholder" placeholder="For example: car dealer groups in Limburg with several branches" required></textarea>
+              <div class="launcher-actions">
+                <span data-i18n="lead.start_hint">A few questions first, then the search starts</span>
+                <button id="lead-start-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <header class="history-header">
+            <div>
+              <h2 data-i18n="lead.lists_title">Lead lists</h2>
+              <p id="lead-lists-subtitle" data-i18n="lead.lists_subtitle">Shared with sales. Every list is deleted automatically after 90 days.</p>
+            </div>
+          </header>
+          <div id="lead-lists" class="lead-lists" aria-live="polite"></div>
+
+          <div id="lead-chats-section" class="lead-chats" hidden>
+            <h2 class="lead-subheading" data-i18n="lead.chats_title">Your unfinished searches</h2>
+            <div id="lead-conversations" class="conversation-list"></div>
+          </div>
+        </div>
+
+        <div id="lead-intake" class="lead-intake" hidden>
+          <header class="view-header">
+            <div>
+              <button id="lead-back-from-intake" class="text-button" type="button" data-i18n="lead.back">← All lead lists</button>
+              <h1 data-i18n="lead.kicker">Lead finder</h1>
+              <p id="lead-intake-context" class="lead-intake-context"></p>
+            </div>
+          </header>
+          <div class="lead-intake-grid">
+            <section class="chat-surface" data-i18n-aria-label="lead.chat_label" aria-label="Lead finder conversation">
+              <div id="lead-messages" class="knowledge-messages" aria-live="polite"></div>
+              <div class="composer">
+                <form id="lead-chat-form" class="chat-form">
+                  <textarea id="lead-message" rows="1" data-i18n-aria-label="composer.message" aria-label="Message" data-i18n-placeholder="lead.reply_placeholder" placeholder="Answer, or ask for a change…" required></textarea>
+                  <button id="lead-send" class="send-button" type="submit" data-i18n-aria-label="composer.send" aria-label="Send">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </form>
+                <div class="composer-meta">
+                  <p id="lead-status" class="status" role="status"></p>
+                  <p class="privacy-note" data-i18n="lead.privacy_note">Organisations only: no names of people.</p>
+                </div>
+              </div>
+            </section>
+            <aside class="lead-brief" aria-labelledby="lead-brief-title">
+              <p class="lead-brief-kicker" data-i18n="lead.brief_kicker">Search brief</p>
+              <h2 id="lead-brief-title" data-i18n="lead.brief_empty_title">Takes shape as you talk</h2>
+              <div id="lead-brief-body" class="lead-brief-body"></div>
+              <div class="lead-brief-footer">
+                <button id="lead-start-search" class="primary-button" type="button" disabled data-i18n="lead.start_search">Start search</button>
+                <p id="lead-brief-hint" class="lead-brief-hint" data-i18n="lead.brief_hint_waiting">The Lead finder lets you know when the brief is complete.</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <div id="lead-result" class="lead-result" hidden>
+          <header class="view-header">
+            <div>
+              <button id="lead-back-from-result" class="text-button" type="button" data-i18n="lead.back">← All lead lists</button>
+              <h1 id="lead-result-title"></h1>
+              <p id="lead-result-meta" class="lead-result-meta"></p>
+            </div>
+            <div class="header-actions">
+              <button id="lead-edit-scorecard" class="secondary-button" type="button" data-i18n="lead.scorecard">Scorecard</button>
+              <a id="lead-export" class="primary-button lead-export" href="#" data-i18n="lead.export">Export to Excel</a>
+            </div>
+          </header>
+
+          <div id="lead-progress" class="lead-progress" role="status" hidden>
+            <div class="lead-progress-track"><div id="lead-progress-bar" class="lead-progress-bar"></div></div>
+            <p id="lead-progress-text" class="lead-progress-text"></p>
+          </div>
+          <p id="lead-result-notice" class="lead-notice" role="status" hidden></p>
+
+          <div class="lead-toolbar">
+            <div id="lead-filters" class="lead-filters" role="group" data-i18n-aria-label="lead.filter_label" aria-label="Filter by score"></div>
+            <label class="lead-search">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              <span class="visually-hidden" data-i18n="lead.search_label">Search the list</span>
+              <input id="lead-search" type="search" data-i18n-placeholder="lead.search_placeholder" placeholder="Search company or city">
+            </label>
+          </div>
+
+          <div class="lead-table-wrap">
+            <table class="lead-table">
+              <thead><tr id="lead-table-head"></tr></thead>
+              <tbody id="lead-table-body"></tbody>
+            </table>
+          </div>
+          <div id="lead-empty" class="empty-state" hidden></div>
+          <p class="lead-footnote" data-i18n="lead.footnote">Found on public websites: organisation data and generic contact details only. Check a lead before you contact it; every value links to its source.</p>
+        </div>
+
+        <aside id="lead-drawer" class="source-panel lead-drawer" aria-labelledby="lead-drawer-title" hidden>
+          <header class="source-panel-header">
+            <div>
+              <p id="lead-drawer-kicker" class="source-panel-kind"></p>
+              <h2 id="lead-drawer-title"></h2>
+            </div>
+            <button id="lead-drawer-close" class="source-panel-close" type="button" data-i18n-aria-label="source_panel.close" aria-label="Close">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </header>
+          <div id="lead-drawer-body" class="lead-drawer-body"></div>
+          <footer id="lead-drawer-footer" class="source-panel-footer lead-drawer-footer"></footer>
+        </aside>
       </section>
 
       <section id="marketing-view" class="view studio-view" aria-labelledby="marketing-title" hidden>
