@@ -24,6 +24,10 @@ number of branches and a link to the company's LinkedIn people page).
 
 **Users:** sales. Roles `sales` and `admin` only.
 
+**Name in SIP:** the homepage robot and the chat assistant are called **Lead finder**
+(replaces the placeholder "Lead intelligence"). The search step behind it is the
+*lead search workflow*.
+
 **A lead is an organisation, never a person.** SIP stores no names, personal e-mail
 addresses or personal phone numbers of decision makers. Sales finds the right person
 themselves via the LinkedIn company page link.
@@ -34,13 +38,13 @@ themselves via the LinkedIn company page link.
  SIP                               Dify
  ───                               ────
  Ask ibc group: "find leads  ─┐
- for this"                    ├──▶ 1. SALES SPECIALIST (chatflow)
- or open Sales specialist  ───┘       reads the Business Context, asks targeted
+ for this"                    ├──▶ 1. LEAD FINDER (chatflow)
+ or open Lead finder  ───────┘       reads the Business Context, asks targeted
                                       questions, proposes a scorecard
                                       └─▶ search brief (JSON)
                                                │
  SIP validates brief (max 50),                 ▼
- splits into batches of 10  ──────▶ 2. LEAD FINDER (workflow), per batch
+ splits into batches of 10  ──────▶ 2. LEAD SEARCH (workflow), per batch
                                       a. LLM writes search queries
                                       b. Serper: Google results
                                       c. LLM keeps real companies, drops news,
@@ -74,7 +78,7 @@ The structured result of the intake. Example for SAM:
 }
 ```
 
-### Intake rules (Sales specialist)
+### Intake rules (Lead finder)
 
 - Starts from the Business Context fields `target_organisations`, `relevant_industries`,
   `relevant_roles_and_decision_makers`, `geographic_focus`, `value_proposition`.
@@ -129,7 +133,7 @@ The structured result of the intake. Example for SAM:
 ## 6. Volume
 
 - The user chooses the number; **maximum 50 per request.**
-- SIP enforces the maximum in code before starting the Lead finder, regardless of what the
+- SIP enforces the maximum in code before starting the lead search, regardless of what the
   assistant said (fail closed). The assistant instruction alone is not enough.
 - SIP runs the workflow in **batches of 10** and shows progress ("10 of 30 found"). A failed
   batch keeps the results of earlier batches.
@@ -149,7 +153,7 @@ The structured result of the intake. Example for SAM:
 ## 8. Dify or LangGraph
 
 **Dify first.** All SIP assistants already run on Dify, and the C# version talks to Dify
-through `IKnowledgeAssistant`. LangGraph only replaces the Lead finder (step 2) if the
+through `IKnowledgeAssistant`. LangGraph only replaces the lead search workflow (step 2) if the
 pilot shows Dify cannot handle the run time, step limits or per-cell sources. That
 decision is for the senior developer.
 
@@ -164,7 +168,7 @@ decision is for the senior developer.
 
 ## 10. Smallest first version
 
-**Step 1 — Dify only, nothing in SIP.** Build the Lead finder workflow with a fixed SAM
+**Step 1 — Dify only, nothing in SIP.** Build the lead search workflow with a fixed SAM
 search brief, 10 leads, extra column "branches". Compare against the SAM list as the gold
 standard and measure:
 
@@ -178,6 +182,6 @@ the search brief and scorecard through a **simple form** (no chat yet), get a sc
 edit the scorecard, export to Excel. Storage, 90-day cleanup and `sales`/`admin` access as
 in section 7. Requires the open items in section 9.
 
-**Step 3 — Sales specialist chat** and the "find leads for this" button in Ask ibc group.
+**Step 3 — Lead finder chat** and the "find leads for this" button in Ask ibc group.
 
 Step 1 answers the question everything else depends on: is the data good enough?
