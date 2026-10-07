@@ -366,7 +366,7 @@ class LeadSearch:
             if not extraction.fits:
                 return
             row = build_row(candidate, pages, extraction, brief.extra_columns)
-            row.linkedin = self._linkedin(row.name, row.country.value)
+            row.linkedin = self._linkedin(row.name, row.country.value, row.website)
         except SearchUnavailable:
             raise
         except Exception as exc:  # noqa: BLE001 - one company failing must not stop the list
@@ -376,10 +376,21 @@ class LeadSearch:
             if self._found(list_id) < target:
                 self.store.add_lead_row(list_id, row)
 
-    def _linkedin(self, name: str, country: str | None) -> str | None:
-        """From a Google result only; SIP never opens LinkedIn itself."""
-        for item in self.serper.search(f'"{name}" site:linkedin.com/company', country_code(country), num=5):
-            page = linkedin_people_page(item.link)
-            if page:
-                return page
+    def _linkedin(self, name: str, country: str | None, website: str = "") -> str | None:
+        """From a Google result only; SIP never opens LinkedIn itself.
+
+        First the exact name, then the website's name ("mengelers" for mengelers.nl),
+        which finds "Mengelers Groep" when the site calls itself "Mengelers".
+        """
+        stem = domain_of(website).split(".")[0] if website else ""
+        queries = [f'"{name}" site:linkedin.com/company']
+        if stem and stem.casefold() not in name.casefold().replace(" ", ""):
+            queries.append(f"{stem} site:linkedin.com/company")
+        elif stem:
+            queries.append(f"{name} {stem} site:linkedin.com/company")
+        for query in queries:
+            for item in self.serper.search(query, country_code(country), num=5):
+                page = linkedin_people_page(item.link)
+                if page:
+                    return page
         return None
