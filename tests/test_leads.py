@@ -209,6 +209,22 @@ def test_redirects_to_private_addresses_are_refused_and_robots_txt_is_respected(
     assert fetcher.fetch("https://dealer.example/about")[1] == "ok"
 
 
+def test_compressed_pages_are_read():
+    import gzip
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        body = gzip.compress("<p>Welkom bij de dealer</p>".encode())
+        return httpx.Response(200, content=body, headers={"content-type": "text/html; charset=utf-8", "content-encoding": "gzip"})
+
+    def resolver(host, port):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    fetcher = PageFetcher(http=httpx.Client(transport=httpx.MockTransport(handler)), resolver=resolver)
+    assert fetcher.site_pages("https://dealer.example") == {"https://dealer.example": "Welkom bij de dealer"}
+
+
 def test_page_text_keeps_contact_links_and_drops_scripts():
     text = page_text("<script>var x=1</script><p>Welkom</p><a href='mailto:info@x.nl'>mail</a><a href='tel:0464521000'>bel</a>")
     assert "var x" not in text

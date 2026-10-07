@@ -57,9 +57,11 @@ NOT_A_COMPANY_SITE = (
     "gelbeseiten.de", "dasoertliche.de", "pagesdor.be", "tripadvisor.com", "autoscout24.nl", "autoscout24.be",
     "marktplaats.nl", "2dehands.be", "anwb.nl", "nu.nl", "telegraaf.nl", "nieuwsblad.be", "hln.be",
 )
-PAGE_HINTS = (
-    "contact", "kontakt", "vestiging", "locatie", "location", "filiale", "standort", "over-ons", "overons",
-    "about", "wie-zijn-wij", "impressum", "adres", "showroom",
+# One page per kind, so the extra pages cover contact details, locations and the company.
+PAGE_KINDS = (
+    ("vestiging", "locatie", "location", "filiale", "standort", "showroom", "onze-bedrijven", "bedrijven"),
+    ("contact", "kontakt", "impressum"),
+    ("over-ons", "overons", "about", "wie-zijn-wij", "ueber-uns", "uber-uns", "over"),
 )
 
 
@@ -142,6 +144,14 @@ def page_text(markup: str) -> str:
     return text[:PAGE_TEXT]
 
 
+@dataclass
+class Fetched:
+    url: str
+    status: int
+    content_type: str
+    text: str
+
+
 class PageFetcher:
     def __init__(self, http: httpx.Client | None = None, resolver=socket.getaddrinfo) -> None:
         self.http = http or httpx.Client(timeout=12, follow_redirects=False, headers={"User-Agent": USER_AGENT})
@@ -149,7 +159,7 @@ class PageFetcher:
         self._robots: dict[str, RobotFileParser | None] = {}
         self._lock = threading.Lock()
 
-    def _get(self, url: str) -> httpx.Response | None:
+    def _get(self, url: str) -> Fetched | None:
         for _ in range(4):  # the request and at most three redirects, each checked
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https") or parsed.port not in (None, 80, 443):
@@ -160,12 +170,19 @@ class PageFetcher:
                 if response.is_redirect:
                     url = urljoin(url, response.headers.get("location", ""))
                     continue
+                # iter_bytes already undoes gzip/brotli; keep the decoded text, not a
+                # second response that would try to decompress it again.
                 body = b""
                 for chunk in response.iter_bytes():
                     body += chunk
                     if len(body) > MAX_BYTES:
                         break
-                return httpx.Response(response.status_code, headers=response.headers, content=body, request=response.request)
+                return Fetched(
+                    url=str(response.request.url),
+                    status=response.status_code,
+                    content_type=response.headers.get("content-type", ""),
+                    text=body.decode(response.encoding or "utf-8", errors="replace"),
+                )
         return None
 
     def _allowed(self, url: str) -> bool:
@@ -177,7 +194,7 @@ class PageFetcher:
             parser: RobotFileParser | None = None
             try:
                 response = self._get(f"{origin}/robots.txt")
-                if response is not None and response.status_code == 200:
+                if response is not None and response.status == 200:
                     parser = RobotFileParser()
                     parser.parse(response.text.splitlines())
             except httpx.HTTPError:
@@ -195,10 +212,9 @@ class PageFetcher:
             response = self._get(url)
         except httpx.HTTPError:
             return None
-        if response is None or response.status_code != 200 or "html" not in response.headers.get("content-type", ""):
+        if response is None or response.status != 200 or "html" not in response.content_type:
             return None
-        markup = response.text
-        return str(response.request.url), page_text(markup), markup
+        return response.url, page_text(response.text), response.text
 
     def site_pages(self, website: str) -> dict[str, str]:
         """The home page plus the contact, location and about pages it links to."""
@@ -209,19 +225,26 @@ class PageFetcher:
         url, text, markup = home
         pages = {url: text}
         site = domain_of(url)
-        ranked: list[tuple[int, str]] = []
+        best: dict[int, tuple[int, str]] = {}
         for href, label in HREFS.findall(markup):
-            target = urljoin(url, href.strip())
-            if domain_of(target) != site or target.split("#")[0] in pages:
+            target = urljoin(url, href.strip()).split("#")[0].split("?")[0]
+            if domain_of(target) != site or target.rstrip("/") == url.rstrip("/"):
                 continue
-            haystack = f"{urlparse(target).path} {TAGS.sub(' ', label)}".casefold()
-            rank = next((index for index, hint in enumerate(PAGE_HINTS) if hint in haystack), None)
-            if rank is not None:
-                ranked.append((rank, target.split("#")[0]))
-        for _, target in sorted(set(ranked))[: PAGE_LIMIT * 2]:
+            path = urlparse(target).path.casefold()
+            depth = len([part for part in path.split("/") if part])
+            if depth > 3:
+                continue  # a deep page (an advert, an article), not the company's own page
+            haystack = f"{path} {TAGS.sub(' ', label).casefold()}"
+            for kind, hints in enumerate(PAGE_KINDS):
+                if any(hint in haystack for hint in hints):
+                    # The shallowest link of each kind: /vestigingen over /vestigingen/heerlen.
+                    if kind not in best or (depth, len(path)) < (best[kind][0], len(urlparse(best[kind][1]).path)):
+                        best[kind] = (depth, target)
+                    break
+        for kind in sorted(best):
             if len(pages) >= PAGE_LIMIT:
                 break
-            page = self.fetch(target)
+            page = self.fetch(best[kind][1])
             if page and page[0] not in pages:
                 pages[page[0]] = page[1]
         return pages
