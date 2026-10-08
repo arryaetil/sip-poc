@@ -160,3 +160,36 @@ def test_contexts_from_before_versions_start_at_one_and_versions_go_with_the_con
     assert [row["source"] for row in store.list_context_versions("old")] == ["existing"]
     assert store.delete_context("old", "x")
     assert store.list_context_versions("old") == []
+
+
+def test_private_draft_chat_update_stays_private_and_does_not_overwrite_without_review(env):
+    store, assistant = env
+    draft = store.create(context("Private QA"), "draft", main._find_user("po@test.nl")["id"])
+    po = signed_in("po@test.nl", "po-pass")
+    conversation = po.post("/api/conversations", json={"updates_context_id": draft.id, "language": "nl"}).json()
+    turn = po.post(f"/api/conversations/{conversation['id']}/messages", json={"message": "Voeg een checklist toe"})
+    assert turn.status_code == 200
+    assistant.next_context = context("Private QA").model_copy(update={"core_capabilities": ["Checklist"]})
+    proposal = po.post(f"/api/conversations/{conversation['id']}/update-proposal").json()
+    assert proposal["current_status"] == "draft"
+    assert store.get(draft.id, main._find_user("po@test.nl")["id"]).core_capabilities == []
+    assert len(store.list_context_versions(draft.id)) == 1
+    saved = po.put(f"/api/contexts/{draft.id}", json={"context": proposal["proposal"], "status": "draft",
+        "source": "conversation", "conversation_id": conversation["id"]})
+    assert saved.status_code == 200 and saved.json()["status"] == "draft"
+    assert saved.json()["core_capabilities"] == ["Checklist"]
+    assert po.get("/api/portfolio/solutions").json()["items"] == []
+    assert store.list_context_versions(draft.id)[0]["source"] == "conversation"
+    # The saved chat cannot silently accept changes that have no review/save route.
+    before = len(assistant.strategist_calls)
+    assert po.post(f"/api/conversations/{conversation['id']}/messages", json={"message": "Nog meer wijzigingen"}).status_code == 409
+    assert len(assistant.strategist_calls) == before
+
+
+def test_chat_continuation_never_exposes_another_users_private_draft(env):
+    store, _ = env
+    draft = store.create(context("Private QA"), "draft", main._find_user("po@test.nl")["id"])
+    other = signed_in("po2@test.nl", "po2-pass")
+    assert other.post("/api/conversations", json={"updates_context_id": draft.id}).status_code == 404
+    assert other.get(f"/api/contexts/{draft.id}").status_code == 404
+

@@ -22,6 +22,7 @@ EXACT: dict[str, tuple[str, str]] = {
     "User not found": ("Gebruiker niet gevonden.", "Benutzer nicht gefunden."),
     "You cannot delete your own account.": ("Je kunt je eigen account niet verwijderen.", "Du kannst dein eigenes Konto nicht löschen."),
     "Not found": ("Niet gevonden.", "Nicht gefunden."),
+    "This conversation is saved. Start a new update conversation to review further changes.": ("Dit gesprek is opgeslagen. Begin een nieuw wijzigingsgesprek om verdere wijzigingen te beoordelen.", "Dieses Gespräch ist gespeichert. Beginne ein neues Änderungsgespräch, um weitere Änderungen zu prüfen."),
     "Conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
     "Context conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
     "Knowledge conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
@@ -164,3 +165,4 @@ def translate(message, language: str):
         if pattern.match(message):
             return pattern.sub(targets[index], message)
     return message
+

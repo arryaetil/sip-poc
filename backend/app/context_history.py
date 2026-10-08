@@ -125,5 +125,5 @@ def update_proposal(conversation_id: str, request: Request) -> ContextUpdateProp
         raise HTTPException(status_code=502, detail="Preparing the changes failed; please try again.") from exc
     before = BusinessContext(**current.model_dump())
     return ContextUpdateProposal(
-        context_id=current.id, current=before, proposal=proposal, changes=diff(before.model_dump(), proposal.model_dump())
+        context_id=current.id, current_status=current.status, current=before, proposal=proposal, changes=diff(before.model_dump(), proposal.model_dump())
     )
