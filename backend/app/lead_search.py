@@ -6,7 +6,7 @@ provider seam intact and lets SIP enforce what the model cannot be trusted with:
 maximum, the per-cell sources and the contact rules (see app/leads.py).
 
 What the search may do (docs/specs/2026-10-07-lead-intelligence-design.md, section 5):
-public pages only, robots.txt respected, never LinkedIn itself — the LinkedIn company
+public pages only, robots.txt respected, never LinkedIn itself â€” the LinkedIn company
 link comes from a Google result.
 """
 
@@ -519,20 +519,20 @@ class LeadSearch:
         row.sources = list(dict.fromkeys([*row.sources, *evidence, *(fact.source for fact in row.signals.values() if fact.source)]))
 
     def _linkedin(self, name: str, country: str | None, website: str = "") -> str | None:
-        """From a Google result only; SIP never opens LinkedIn itself.
+        """Keep a company link only when the search evidence names its exact website.
 
-        First the exact name, then the website's name ("mengelers" for mengelers.nl),
-        which finds "Mengelers Groep" when the site calls itself "Mengelers".
+        A matching company name alone can belong to an unrelated organisation in
+        another country. LinkedIn itself is never fetched; missing evidence is unknown.
         """
-        stem = domain_of(website).split(".")[0] if website else ""
-        queries = [f'"{name}" site:linkedin.com/company']
-        if stem and stem.casefold() not in name.casefold().replace(" ", ""):
-            queries.append(f"{stem} site:linkedin.com/company")
-        elif stem:
-            queries.append(f"{name} {stem} site:linkedin.com/company")
+        domain = domain_of(website) if website else ""
+        if not domain:
+            return None
+        evidence = re.compile(r"(?<![a-z0-9.-])(?:www\.)?" + re.escape(domain) + r"(?![a-z0-9.-])", re.IGNORECASE)
+        queries = [f'"{name}" "{domain}" site:linkedin.com/company',
+                   f'"{domain}" site:linkedin.com/company']
         for query in queries:
             for item in self.serper.search(query, country_code(country), num=5):
                 page = linkedin_people_page(item.link)
-                if page:
+                if page and evidence.search(item.title + " " + item.snippet):
                     return page
         return None
