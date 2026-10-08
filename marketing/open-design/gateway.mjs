@@ -73,8 +73,8 @@ function deny(res) {
   res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><meta charset="utf-8"><title>Marketing studio</title>
 <body style="font-family:Ubuntu,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0;background:#F8F9FA;color:#121212">
-<div style="text-align:center"><h1 style="font-size:22px">Open the Marketing studio from SIP</h1>
-<p><a href="${SIP_ORIGIN}" style="color:#0066cc">Go to SIP</a></p></div></body>`);
+<div style="text-align:center"><h1 style="font-size:22px">Open Marketing studio via je digitale team</h1>
+<p><a href="${SIP_ORIGIN}" style="color:#0066cc">Naar je digitale team</a></p></div></body>`);
 }
 
 async function claimOnce(jti, exp) {
@@ -354,7 +354,8 @@ function proxy(req, res) {
 // Parts of Open Design they do not need (Cloud sign-in, community, plugins, design
 // system editing, settings, model and working-directory pickers, example prompts)
 // are hidden with one style block added to every page. Open Design itself is not
-// changed, so an image update cannot break it; at worst a part shows again.
+// changed. An upstream update can still change APIs, selectors or stored data;
+// follow UPDATE-RUNBOOK.md before changing the pinned release.
 // Selectors are Open Design v0.24.0's own test ids and class names.
 const STUDIO_CSS = '[data-testid="entry-nav-community"], [data-testid="entry-nav-design-systems"],'
   + ' [data-testid="entry-nav-plugins"], [data-testid="entry-settings-button"],'
@@ -362,6 +363,7 @@ const STUDIO_CSS = '[data-testid="entry-nav-community"], [data-testid="entry-nav
   + ' [data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],'
   + ' [data-testid="plugins-home-section"], .home-hero [aria-label="Creation type"], [class*="ExperienceSurvey-module__"] { display: none !important; }'
   + ' .present-trigger {width:auto!important;gap:6px;padding:6px 10px!important;} .present-trigger::after {content:var(--sip-big,"Groot bekijken");font-size:12px;}'
+  + ' .present-exit-btn {padding:0!important;display:grid!important;place-items:center;} .present-exit-btn svg {width:14px!important;min-width:14px;flex-shrink:0;}'
   + ' .entry.entry--rail-open {grid-template-columns:240px minmax(0,1fr)!important;} .entry-nav-rail.is-open {width:240px!important;min-width:240px!important;}'
   + ' .home-hero__title { font-size:0!important; } .home-hero__title>* { display:none!important; }'
   + ' .home-hero__title::after { content:var(--sip-title,"Wat wil je maken?");font:600 36px Ubuntu,sans-serif; }'

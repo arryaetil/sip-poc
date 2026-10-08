@@ -1,0 +1,11 @@
+{
+  "upstreamRelease": "open-design-v0.24.0",
+  "upstreamImage": "ghcr.io/nexu-io/od@sha256:01f4157acb4b6b115911135aa65d9f78f14d51f7a3e5010eb18ac8cebdf1286b",
+  "openCodeVersion": "1.18.32",
+  "dependencies": {
+    "jszip": "3.10.1",
+    "pdf-lib": "1.17.1",
+    "playwright-core": "1.64.0",
+    "pptxgenjs": "4.0.1"
+  }
+}
