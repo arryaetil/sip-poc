@@ -94,4 +94,14 @@ try{
  await page.waitForFunction(()=>document.querySelector('[role=status]').textContent==='Een afbeelding ontbreekt.');
  assert.equal(await page.getByRole('button',{name:'Save'}).isEnabled(),true);
  console.log('Normal image-dialog download contains every carousel page; truthful error and retry passed');
+ const app=await readFile(new URL('../../backend/app/app.js',import.meta.url),'utf8');
+ const handler=app.slice(app.indexOf('window.addEventListener("message", event => {'),app.indexOf('\n\nasync function openPreparedStudio()'));
+ assert.ok(handler.includes('sip-studio-download'));
+ await page.route('http://embedded.invalid/**',route=>route.fulfill({contentType:'text/html',body:'<iframe id="studio-frame" src="http://download.invalid/projects/fixture/conversations/one/files/post.html"></iframe><script>const studioFrame=document.querySelector("iframe");const studioLastLink="http://download.invalid";let studioProjectId="";'+handler+'</script>'}));
+ await page.unroute('http://download.invalid/**');
+ await page.route('http://download.invalid/**',route=>route.request().method()==='POST'?route.fulfill({status:200,contentType:'application/zip',headers:{'content-disposition':'attachment; filename="embedded.zip"','x-sip-export-pages':'2'},body:carousel.buffer}):route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT.replace("\'SIP_DOWNLOAD_PARENT_ORIGIN\'",JSON.stringify('http://embedded.invalid'))+'</head><body><div class="image-export-modal"><button>Save</button></div></body></html>'}));
+ await page.goto('http://embedded.invalid/');
+ const embeddedDownload=page.waitForEvent('download');await page.frameLocator('iframe').getByRole('button',{name:'Save'}).click();const embedded=await embeddedDownload;
+ assert.equal(embedded.suggestedFilename(),'embedded.zip');assert.deepEqual(await readFile(await embedded.path()),carousel.buffer);
+ console.log('Embedded Studio download through the actual SIP message handler passed');
 }finally{await browser.close();}

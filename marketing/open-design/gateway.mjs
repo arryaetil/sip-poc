@@ -159,7 +159,8 @@ const BRANDS = ['etil', 'ibc-group'];
 const ASSET_TYPES = /\.(png|jpe?g|svg|webp|ttf)$/i;
 const NO_INVENTION = 'Never invent customers, figures, results or capabilities. Never download or hotlink photos from the internet: '
   + 'use the brand images, CSS in the brand colours, or a generated image labelled as AI-generated. '
-  + 'Before you design, open the matching brand example in brand/<brand>/examples/. Use its visual brand principles while preserving the requested format, exact approved hook, page count and outline. Keep captions ready to publish, with technical source audit notes in a separate sources.md. In particular: place the official logo PNG for the background (the white one on dark) whole, with its colour spectrum '
+  + 'For a single-topic social post, use one coherent full-bleed image or a calm CSS background. Never use a multi-panel hero collage, two half-images, or a hard visual split. '
+  + 'Before you design, open the matching brand example in brand/<brand>/examples/. Use its visual brand principles while preserving the requested format, exact approved hook, page count and outline. Deliver a separate caption.txt for every social post. Keep captions and visible artwork ready to publish; put internal file paths, line numbers and technical source audit notes only in sources.md. In particular: place the official logo PNG for the background (the white one on dark) whole, with its colour spectrum '
   + 'bar (never a white bar, never a logo drawn in HTML), and use the AI label HTML and CSS from the design system (an outlined '
   + 'pill "AI-GENERATED VISUAL" with "provided by ibc group marketing" under it), never a plain line of text.';
 const ASK_BRAND = 'This project was started in the studio without a house style. Before you design anything, ask the user one short '
@@ -385,7 +386,8 @@ function forward(req, res, body) {
           if(artwork)text=bundlePreviewAssets(text,pathname,req);
           const previewScript = STUDIO_PREVIEW_SCRIPT.replace('SIP_PARENT_ORIGIN', JSON.stringify(SIP_ORIGIN));
           const base = new URL(pathname, `https://${req.headers.host}`).href.replaceAll('&','&amp;').replaceAll('"','&quot;');
-          const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + STUDIO_EXPORT_SCRIPT + previewScript;
+          const exportScript=STUDIO_EXPORT_SCRIPT.replace("'SIP_DOWNLOAD_PARENT_ORIGIN'",JSON.stringify(SIP_ORIGIN));
+          const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + exportScript + previewScript;
           const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${insert}</head>`) : text);
           delete out['etag'];
           delete out['last-modified'];

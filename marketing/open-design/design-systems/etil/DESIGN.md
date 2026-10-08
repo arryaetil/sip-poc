@@ -102,6 +102,7 @@ From the *AI-Generated Images Guideline*: always label an image when someone cou
 
 Portrait 4:5 (1080×1350). **Before you design, open the example for the domain** (`brand/etil/examples/linkedin-menskracht.jpg`, `-data`, `-beleid`, `-technologie`) and look at it; before you finish, compare your post with it side by side and fix every difference in logo, label, type and spacing.
 - Full-bleed dark image in the colour world of the domain (Data red/pink, Technologie blue, Beleid silver/soft peach, Menskracht orange), darker on the left so text reads.
+- Use one coherent, continuous image for a single-topic social post. Do not use the multi-panel services hero, collages, two half-images or a hard split. Choose the matching individual domain image instead.
 - Top left (about 55px from the left, 120px from the top): a short thin white rule (about 95×2px), then "Perspective on" in Ubuntu Light (about 36px), then the domain name in capitals in Ubuntu Medium in its service colour (BELEID `#F1D490`, DATA `#ff3333`, MENSKRACHT `#ff6600`, TECHNOLOGIE `#0066cc`).
 - Below: one short statement in white Ubuntu Bold, large (about 76px, line height 1.15), three to four lines, ending with a full stop. One idea, no hashtags on the image.
 - Bottom left (55px from the left and bottom): `brand/etil/etil-logo-lockup-white.png`, about 30% of the width, whole, with its **spectrum bar** in colour.
