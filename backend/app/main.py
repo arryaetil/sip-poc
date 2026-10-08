@@ -1686,10 +1686,17 @@ def add_conversation_message(
             turn = clarification_turn(intent)
         else:
             history, extra = _website_history(conversation), ""
+            if conversation.kind == "context":
+                extra = ("The platform currently has no public product name. Do not name it SIP or Etellegence. "
+                         "You can prepare private Business Context drafts and reviewed changes. "
+                         "The user saves via the interface; chat alone never saves or approves. "
+                         "Do not ask the user to approve a private QA test. Explain that it remains private. "
+                         "Describe the review step in the user's language, without quoting English button names.")
             if conversation.updates_context_id:
-                history, extra = _update_history(conversation, owner_id, is_admin), UPDATE_INSTRUCTIONS
+                history = _update_history(conversation, owner_id, is_admin)
+                extra += " " + UPDATE_INSTRUCTIONS
             if conversation.website_source_id:
-                extra = "Supplement the SIP website baseline with the user's information. This creates a Business Context for review; it does not edit the public website. Keep the original source URL, distinguish new user claims from website facts, and preserve unchanged facts."
+                extra += " Supplement the website baseline with the user's information. This creates a Business Context for review; it does not edit the public website. Keep the original source URL, distinguish new user claims from website facts, and preserve unchanged facts."
             turn = get_assistant().strategist_turn(
                 history, request.message, conversation.language, owner_id, extra
             )
