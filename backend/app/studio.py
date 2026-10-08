@@ -30,7 +30,7 @@ LINK_SECONDS = 120
 BRANDS = {"etil": "user:etil", "ibc-group": "user:ibc-group"}
 
 FORMAT_BRIEFS = {
-    "instagram_carousel": "an Instagram carousel with separate portrait 4:5 pages (1080x1350). Use exactly the page count, order, hook and content agreed in the brief. Do not add pages or replace the hook. Mark each page with data-slide and provide a clear previous/next preview control. Save the caption separately",
+    "instagram_carousel": "an Instagram carousel with separate portrait 4:5 pages (1080x1350). Use exactly the page count, order, hook and content agreed in the brief. Do not add pages or replace the hook. Use a .deck container and .slide pages with data-slide and data-title so Studio recognises every page for export. Provide obvious previous/next controls and a page counter; fit the whole page in the available preview area without clipped text or logos. Save the caption separately",
     "linkedin_post": (
         "a LinkedIn post: one portrait 4:5 image (1080x1350) following the Etil LinkedIn post "
         "pattern in the design system, plus the post text (max 1,300 characters) as a separate note"
