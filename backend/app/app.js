@@ -594,7 +594,7 @@ function renderConversations(conversations) {
 async function loadConversations() {
   conversationList.innerHTML = '<div class="loading-state" aria-label="Loading conversations"><span></span><span></span></div>';
   try {
-    renderConversations(await api("/api/conversations"));
+    renderConversations(await api("/api/conversations?kind=context"));
   } catch (error) {
     conversationList.textContent = error.message;
   }
