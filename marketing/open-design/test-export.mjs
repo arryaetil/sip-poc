@@ -143,5 +143,31 @@ try{
  await page.getByRole('menuitem',{name:'Export as PPTX'}).click();
  assert.equal(await page.locator('[data-sip-pptx-dialog]').isVisible(),true);
  await page.locator('[data-sip-pptx-cancel]').click();
+ await page.evaluate(()=>{
+  const panel=document.createElement('aside');panel.className='artifact-version-panel';
+  panel.innerHTML='<div role="menu" class="file-version-download-menu"><button role="menuitem">Download as .zip</button></div>';
+  panel.querySelector('button').onclick=()=>{panel.dataset.historicalClick='preserved';};document.body.appendChild(panel);
+ });
+ await page.locator('.artifact-version-panel [role="menuitem"]').click();
+ assert.equal(await page.locator('.artifact-version-panel').getAttribute('data-historical-click'),'preserved');
+ assert.equal(await page.locator('.artifact-version-panel [data-sip-export-pptx-menu]').count(),0,'Historical exports must never be relabelled as current-file exports');
+ let historicalPosts=[];let historyUnavailable=false;
+ await page.route('http://history.invalid/**',route=>{
+  if(route.request().url().endsWith('/versions'))return route.fulfill({status:historyUnavailable?503:200,contentType:'application/json',body:JSON.stringify({versions:[{version:2,fileName:'post.html',id:'selected-old-version'}]})});
+  if(route.request().method()==='POST'){historicalPosts.push(route.request().postDataJSON());return route.fulfill({contentType:'application/zip',headers:{'content-disposition':'attachment; filename="historical.zip"'},body:carousel.buffer});}
+  return route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT+'</head><body><aside class="artifact-version-panel"><button role="option" aria-selected="true"><span class="artifact-version-card__mark">v2</span>Version 2</button><div role="menu"><button role="menuitem">Export as image</button></div></aside><script>document.querySelector("[role=menuitem]").onclick=()=>{document.querySelector("aside").remove();const modal=document.createElement("div");modal.className="image-export-modal";modal.innerHTML="<button>Save</button><button>Cancel</button>";modal.lastChild.onclick=()=>modal.remove();document.body.appendChild(modal);};</script></body></html>'});
+ });
+ await page.goto('http://history.invalid/projects/fixture/conversations/one/files/post.html');
+ await page.getByRole('menuitem',{name:'Export as image'}).click();
+ const historyDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Save',exact:true}).click();await historyDownload;
+ assert.deepEqual(historicalPosts,[{fileName:'post.html',imageFormat:'png',versionId:'selected-old-version'}]);
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.evaluate(()=>document.body.insertAdjacentHTML('beforeend','<div class="image-export-modal"><button>Save</button></div>'));
+ const currentDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Save',exact:true}).click();await currentDownload;
+ assert.deepEqual(historicalPosts[1],{fileName:'post.html',imageFormat:'png'});
+ historyUnavailable=true;await page.reload();await page.getByRole('menuitem',{name:'Export as image'}).click();await page.getByRole('button',{name:'Save',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[role=status]')?.textContent.includes('niet worden geladen'));
+ assert.equal(historicalPosts.length,2,'Unavailable historical metadata must never fall back to current artwork');
+ console.log('Historical image selection, cancel isolation and fail-closed errors passed');
  console.log('ZIP menu downloads artwork pages, and the PPTX menu opens the official editable-template choice');
 }finally{await browser.close();}

@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded',addPowerPoint);setInterval(addPower
 function ensureExportMenu(){
 if(!document.querySelector('[data-sip-pptx]'))return;
 for(const menu of document.querySelectorAll('[role="menu"]')){
+if(menu.closest('.artifact-version-panel,.file-version-export-backdrop'))continue;
 const items=[...menu.querySelectorAll('[role="menuitem"]')];
 const zip=items.find(item=>['Download as .zip','Download als ZIP','Als ZIP herunterladen'].includes(item.textContent.trim()));
 if(!zip||items.some(item=>['Export as PPTX','PowerPoint downloaden','PowerPoint herunterladen'].includes(item.textContent.trim())))continue;
@@ -37,9 +38,35 @@ setInterval(ensureExportMenu,1000);
 
 // The upstream ZIP contains project source files. In the marketing export menu,
 // ZIP means the artwork pages. Keep both PowerPoint entry points consistent.
+// Bind a historical selection to the image dialog before the history panel closes.
+// A missing/changed history response must fail closed, never export today's file.
+const historicalImageDialogs=new WeakMap();let pendingHistoricalImage=null;
+new MutationObserver(()=>{
+const modal=document.querySelector('.image-export-modal');
+if(modal&&pendingHistoricalImage){historicalImageDialogs.set(modal,pendingHistoricalImage);pendingHistoricalImage=null;}
+}).observe(document.documentElement,{childList:true,subtree:true});
+document.addEventListener('click',event=>{
+const item=event.target.closest?.('[role="menuitem"]');if(!item)return;
+if(!['Export as image','Download als afbeelding','Als Bild herunterladen'].includes(item.textContent.trim()))return;
+pendingHistoricalImage=null;
+const panel=item.closest('.artifact-version-panel');if(!panel)return;
+const current=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]+)\\/.*\\/files\\/(.+\\.html?)$/);
+const selected=panel.querySelector('[role="option"][aria-selected="true"]');
+const number=selected?.querySelector('.artifact-version-card__mark')?.textContent.trim().match(/^v(\\d+)$/i)?.[1];
+const path=location.pathname;
+pendingHistoricalImage=(async()=>{
+if(!current||!number)throw new Error('De gekozen versie kon niet worden vastgesteld. Open de versie opnieuw.');
+const fileName=decodeURIComponent(current[2]);
+const response=await original('/api/projects/'+current[1]+'/files/'+encodeURIComponent(fileName)+'/versions');
+if(!response.ok)throw new Error('De gekozen versie kon niet worden geladen. Probeer opnieuw.');
+const data=await response.json();const matches=(data.versions||[]).filter(version=>String(version.version)===number&&version.fileName===fileName);
+if(matches.length!==1||!matches[0].id)throw new Error('De gekozen versie kon niet worden vastgesteld. Open de versie opnieuw.');
+return {versionId:matches[0].id,path};
+})().catch(error=>({error:error.message}));
+},true);
 let zipBusy=false;
 document.addEventListener('click',async event=>{
-const item=event.target.closest?.('[role="menuitem"]');if(!item)return;
+const item=event.target.closest?.('[role="menuitem"]');if(!item||item.closest('.artifact-version-panel,.file-version-export-backdrop'))return;
 const label=item.textContent.trim();
 const current=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]+)\\/.*\\/files\\/(.+\\.html?)$/);if(!current)return;
 if(['Export as PPTX','PowerPoint downloaden','PowerPoint herunterladen'].includes(label)){
@@ -64,8 +91,10 @@ const project=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]{1,128})/);
 const file=location.pathname.match(/\\/files\\/(.+)$/);if(!project||!file)return;
 event.preventDefault();event.stopImmediatePropagation();button.disabled=true;const label=button.textContent;button.textContent='Exporteren…';
 let status=modal.querySelector('[data-sip-export-status]');if(!status){status=document.createElement('p');status.dataset.sipExportStatus='';status.setAttribute('role','status');modal.appendChild(status);}status.textContent='Je bestand wordt klaargemaakt…';
-try{const format=modal.querySelector('input[type=radio]:checked')?.value||'png';
-const response=await original('/api/projects/'+project[1]+'/export/images',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:decodeURIComponent(file[1]),imageFormat:format})});
+try{const selection=historicalImageDialogs.has(modal)?await historicalImageDialogs.get(modal):null;
+if(selection?.error)throw new Error(selection.error);if(selection&&selection.path!==location.pathname)throw new Error('Het ontwerp is veranderd. Open de gekozen versie opnieuw.');
+const format=modal.querySelector('input[type=radio]:checked')?.value||'png';
+const response=await original('/api/projects/'+project[1]+'/export/images',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:decodeURIComponent(file[1]),imageFormat:format,versionId:selection?.versionId})});
 if(!response.ok){let data=await response.json().catch(()=>({}));throw new Error(data.error?.message||'Exporteren is niet gelukt. Probeer opnieuw.');}
 const pages=Number(response.headers.get('x-sip-export-pages')||1);await download(response,'ontwerp.zip');status.textContent=pages>1?'Download klaar: alle '+pages+' pagina’s staan als losse afbeeldingen in het ZIP-bestand.':'Download klaar: de afbeelding staat in het ZIP-bestand bij je downloads.';
 }catch(error){status.textContent=error.message;}finally{button.disabled=false;button.textContent=label;}
