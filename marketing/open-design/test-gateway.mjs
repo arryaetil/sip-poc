@@ -67,8 +67,10 @@ const upstream = http.createServer((req, res) => {
     if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(url.pathname)) runs.push(JSON.parse(body.toString()));
     if (url.pathname === '/api/projects/p1/raw/post.html') {
       res.writeHead(200, {'content-type':'text/html; charset=utf-8'});
-      return res.end('<html><head><title>Post</title></head><body><main class="post">Artwork</main></body></html>');
+      return res.end('<html><head><title>Post</title><style>@font-face{font-family:Test;src:url("brand/etil/fonts/Ubuntu-Regular.ttf")}</style></head><body><main class="post">Artwork<img src="brand/etil/logo.png"></main></body></html>');
     }
+    if(url.pathname==='/api/projects/p1/raw/brand/etil/logo.png'){res.writeHead(200,{'content-type':'image/png'});return res.end('logo');}
+    if(url.pathname==='/api/projects/p1/raw/brand/etil/fonts/Ubuntu-Regular.ttf'){res.writeHead(200,{'content-type':'font/ttf'});return res.end('font');}
     if (url.pathname === '/page') {
       // Like Open Design: pages are compressed when the browser allows it.
       if (String(req.headers['accept-encoding'] || '').includes('gzip')) { res.writeHead(500); return res.end('compressed'); }
@@ -178,6 +180,8 @@ try {
   assert.match(pageText, /<script id="sip-studio-keep">/);
   const preview = await (await fetch(`${base}/api/projects/p1/raw/post.html`, {headers:{cookie}})).text();
   assert.match(preview, /sip-artwork-preview/);
+  assert.ok(preview.includes('data:image/png;base64,bG9nbw=='));
+  assert.ok(preview.includes('data:font/ttf;base64,Zm9udA=='));
   assert.ok(preview.includes(`<base href="${base.replace('http:','https:')}/api/projects/p1/raw/post.html">`));
   assert.doesNotMatch(preview, /sip-studio-simplify|sip-studio-export/);
   assert.doesNotMatch(await (await fetch(`${base}/other`, { headers: { cookie } })).text(), /sip-studio-simplify/);
