@@ -44,6 +44,7 @@ class ContextUpdateProposal(BaseModel):
     """What a conversation would change, before anything is saved."""
 
     context_id: str
+    current_status: Literal["draft", "approved"] = "approved"
     current: BusinessContext
     proposal: BusinessContext
     changes: list[FieldChange]

@@ -1579,10 +1579,11 @@ def create_conversation(http_request: Request, request: ConversationCreateReques
     owner_id, is_admin = _actor(http_request)
     target = request.updates_context_id if request else None
     if target:
-        # Updating is for an approved context, by the roles that may change one.
+        # Same visibility and editing rules as the form: own private drafts,
+        # or approved contexts for Product Owner/admin. Never expose another draft.
         context = get_context_store().get(target, owner_id, is_admin)
-        if kind != "context" or context is None or context.status != "approved" or not _may_edit_approved(http_request):
-            raise HTTPException(status_code=404, detail="Approved Business Context not found")
+        if kind != "context" or context is None or not _may_edit_approved(http_request):
+            raise HTTPException(status_code=404, detail="Business Context not found")
     return get_context_store().create_conversation(owner_id, language, kind, target)
 
 
@@ -1596,11 +1597,12 @@ def _changed_by(request: Request) -> str | None:
 
 
 UPDATE_INSTRUCTIONS = (
-    "This conversation updates an existing, approved Business Context; it does not create a new one. "
+    "This conversation updates an existing Business Context; it does not create a new one. "
     "Its current version is the first message of the conversation (from SIP). Ask what has changed "
     "(new offerings, target groups, regions, evidence, wording) one question at a time, and keep everything "
     "the user does not change. Set is_ready_to_save to true once the changes are clear; the user then "
-    "reviews old and new side by side before saving."
+    "reviews old and new side by side before saving. Nothing is saved or published by chat alone. "
+    "Do not claim changes have already been saved. Private drafts remain private until explicitly approved."
 )
 
 
@@ -1663,6 +1665,9 @@ def add_conversation_message(
     conversation = store.get_conversation(conversation_id, owner_id, is_admin)
     if conversation is None or conversation.kind == "product_owner":
         raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if conversation.kind == "context" and conversation.portfolio_context_id:
+        raise HTTPException(status_code=409, detail="This conversation is saved. Start a new update conversation to review further changes.")
 
     try:
         intent = None

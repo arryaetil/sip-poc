@@ -668,7 +668,7 @@ async function reviewConversationChanges() {
     pendingUpdate = { conversationId: currentConversation.id };
     reviewOrigin = "builder";
     backFromReview.textContent = t("review.back");
-    fillContextForm(proposal.proposal, "approved");
+    fillContextForm(proposal.proposal, proposal.current_status);
     renderContextChanges(proposal.changes, reviewChangesList);
     renderConversation(currentConversation);
     showView("review");
@@ -721,6 +721,10 @@ async function saveContext(status) {
         conversation_id: pendingUpdate ? pendingUpdate.conversationId : null,
       }),
     });
+    if (pendingUpdate && currentConversation?.id === pendingUpdate.conversationId) {
+      currentConversation.portfolio_context_id = saved.id;
+      renderConversation(currentConversation);
+    }
     pendingUpdate = null;
     currentContextId = saved.id;
     fillContextForm(saved, saved.status);
@@ -1472,12 +1476,21 @@ chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = input.value.trim();
   if (!message || !currentConversation) return;
-  const userRow = addMessage(message, "user");
+  let userRow = addMessage(message, "user");
   input.value = "";
   resizeTextArea(input);
   send.disabled = true;
   setStatus(chatStatus, t("builder.thinking"), "success");
   try {
+    if (currentConversation.portfolio_context_id) {
+      const continuation = await api("/api/conversations", {
+        method: "POST",
+        body: JSON.stringify({ language: getLanguage(), kind: "context", updates_context_id: currentConversation.portfolio_context_id }),
+      });
+      renderConversation(continuation);
+      userRow = addMessage(message, "user");
+      setStatus(chatStatus, t("builder.thinking"), "success");
+    }
     const data = await api(`/api/conversations/${currentConversation.id}/messages`, {
       method: "POST",
       body: JSON.stringify({ message }),
@@ -2809,3 +2822,4 @@ resetKnowledgeChat();
 loadCurrentUser();
 loadConversations();
 window.addEventListener("load", startRobots);
+
