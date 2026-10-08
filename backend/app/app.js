@@ -1079,6 +1079,10 @@ const studioStatus = document.querySelector("#studio-status");
 let studioLastLink = "";
 let studioProjectId = "";
 let pendingStudioOffer = null;
+window.addEventListener("message", event => {
+  if (!studioLastLink || event.source !== studioFrame.contentWindow || event.origin !== new URL(studioLastLink).origin) return;
+  if (event.data?.type === "sip-studio-project" && /^[a-zA-Z0-9_-]{1,128}$/.test(event.data.projectId || "")) studioProjectId = event.data.projectId;
+});
 
 async function openPreparedStudio() {
   if (!pendingStudioOffer || pendingStudioOffer.conversationId !== knowledgeConversationId) return openMarketingStudio();
@@ -1227,6 +1231,10 @@ async function openKnowledgeConversation(conversationId) {
   knowledgeConversationId = conversation.id;
   knowledgeMessages.replaceChildren();
   conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
+  const lastAnswer = conversation.messages.filter(message => message.role === "assistant").at(-1);
+  if (lastAnswer && /marketing studio|carousel|linkedin.{0,20}post|powerpoint/i.test(lastAnswer.content)) {
+    appendStudioOffer({format:"linkedin_post", brief:"Gebruik de laatste afgesproken marketingbriefing uit dit gesprek.", title:"", brand:"etil"}, [], conversation.id);
+  }
   knowledgeHistory.value = conversation.id;
   showKnowledgeConversation();
   knowledgeInput.focus();
