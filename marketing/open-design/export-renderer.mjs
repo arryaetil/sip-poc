@@ -93,7 +93,7 @@ export async function renderExport(projectId, format, body, upstream, executable
       const buffer=await target.screenshot({type:jpeg?'jpeg':'png',...(jpeg?{quality:95}:{}),timeout:20000});
       captures.push({buffer,width:box.width,height:box.height,jpeg});
     }
-    if(format==='images' && captures.length>1){
+    if(format==='images'){
       const {default:JSZip}=await import('jszip');const zip=new JSZip();
       for(let i=0;i<captures.length;i++){
         let buffer=captures[i].buffer;let ext=captures[i].jpeg?'jpg':'png';

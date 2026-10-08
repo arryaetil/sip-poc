@@ -22,7 +22,7 @@ let status=modal.querySelector('[data-sip-export-status]');if(!status){status=do
 try{const format=modal.querySelector('input[type=radio]:checked')?.value||'png';
 const response=await original('/api/projects/'+project[1]+'/export/images',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:decodeURIComponent(file[1]),imageFormat:format})});
 if(!response.ok){let data=await response.json().catch(()=>({}));throw new Error(data.error?.message||'Exporteren is niet gelukt. Probeer opnieuw.');}
-const pages=Number(response.headers.get('x-sip-export-pages')||1);await download(response,'ontwerp.'+format);status.textContent=pages>1?'Download klaar: alle '+pages+' pagina’s staan als losse afbeeldingen in het ZIP-bestand.':'Download klaar. Je bestand staat bij je downloads.';
+const pages=Number(response.headers.get('x-sip-export-pages')||1);await download(response,'ontwerp.zip');status.textContent=pages>1?'Download klaar: alle '+pages+' pagina’s staan als losse afbeeldingen in het ZIP-bestand.':'Download klaar: de afbeelding staat in het ZIP-bestand bij je downloads.';
 }catch(error){status.textContent=error.message;}finally{button.disabled=false;button.textContent=label;}
 },true);
 window.fetch=async function(input,options){
