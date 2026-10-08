@@ -12,7 +12,6 @@ const I18N = {
     "nav.create_context": "Create context",
     "nav.portfolio": "ibc group Portfolio",
     "nav.knowledge": "Ask ibc group",
-    "nav.integrations": "Integrations",
     "nav.lead": "Lead finder",
     "nav.marketing": "Marketing studio",
 
@@ -495,7 +494,6 @@ const I18N = {
     "nav.create_context": "Context aanmaken",
     "nav.portfolio": "ibc group Portfolio",
     "nav.knowledge": "Vraag ibc group",
-    "nav.integrations": "Integraties",
     "nav.lead": "Lead finder",
     "nav.marketing": "Marketing studio",
 
@@ -978,7 +976,6 @@ const I18N = {
     "nav.create_context": "Kontext erstellen",
     "nav.portfolio": "ibc group Portfolio",
     "nav.knowledge": "ibc group fragen",
-    "nav.integrations": "Integrationen",
     "nav.lead": "Lead finder",
     "nav.marketing": "Marketing Studio",
 
