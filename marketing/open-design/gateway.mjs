@@ -230,11 +230,32 @@ function proxy(req, res) {
   forward(req, res, null);
 }
 
+// The studio is for marketing colleagues making posts, one-pagers and presentations.
+// Parts of Open Design they do not need (Cloud sign-in, community, plugins, design
+// system editing, settings, model and working-directory pickers, example prompts)
+// are hidden with one style block added to every page. Open Design itself is not
+// changed, so an image update cannot break it; at worst a part shows again.
+// Selectors are Open Design v0.24.0's own test ids and class names.
+export const STUDIO_STYLE = `<style id="sip-studio-simplify">
+[data-testid="entry-nav-community"], [data-testid="entry-nav-design-systems"],
+[data-testid="entry-nav-plugins"], [data-testid="entry-settings-button"],
+.entry-nav-rail__footer, .home-hero__workdir-row, .home-hero__execution-switcher,
+[data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],
+[data-testid="plugins-home-section"] { display: none !important; }
+</style>`;
+
+function wantsPage(req) {
+  return req.method === 'GET' && String(req.headers.accept || '').includes('text/html');
+}
+
 function forward(req, res, body) {
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
     if (!HOP_BY_HOP.has(key) && key !== 'cookie' && key !== 'authorization' && key !== 'host') headers[key] = value;
   }
+  // A page is changed before it is sent on, so ask for it uncompressed.
+  const page = wantsPage(req);
+  if (page) delete headers['accept-encoding'];
   headers.authorization = `Bearer ${TOKEN}`;
   headers.host = `127.0.0.1:${UPSTREAM_PORT}`;
   if (body) headers['content-length'] = String(body.length);
@@ -246,6 +267,20 @@ function forward(req, res, body) {
         if (!HOP_BY_HOP.has(key) && key !== 'content-security-policy' && key !== 'x-frame-options') out[key] = value;
       }
       out['content-security-policy'] = `frame-ancestors 'self' ${SIP_ORIGIN}`;
+      const html = String(response.headers['content-type'] || '').includes('text/html');
+      if (page && html && !response.headers['content-encoding']) {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}</head>`) : text);
+          delete out['content-length'];
+          out['content-length'] = String(changed.length);
+          res.writeHead(response.statusCode || 502, out);
+          res.end(changed);
+        });
+        return;
+      }
       res.writeHead(response.statusCode || 502, out);
       // Piping keeps Server-Sent Events streaming instead of buffering them.
       response.pipe(res);

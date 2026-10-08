@@ -48,6 +48,12 @@ const upstream = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end('{}');
     }
+    if (url.pathname === '/page') {
+      // Like Open Design: pages are compressed when the browser allows it.
+      if (String(req.headers['accept-encoding'] || '').includes('gzip')) { res.writeHead(500); return res.end('compressed'); }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>OD</title></head><body>studio</body></html>');
+    }
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('upstream');
   });
@@ -111,7 +117,15 @@ try {
   const cookie = entered.headers.get('set-cookie').split(';')[0];
   assert.equal((await fetch(`${base}/`, { headers: { cookie } })).status, 200);
   assert.equal((await fetch(`${base}/__sip/enter?t=${cookie.split('=')[1]}`, { redirect: 'manual' })).status, 401);
-  console.log('studio gateway: brand files from disk, house style for studio projects, pass-through and session cookie checks passed');
+
+  // Pages get the style that hides what marketing does not need; other responses do not.
+  const page = await fetch(`${base}/page`, { headers: { cookie, accept: 'text/html', 'accept-encoding': 'gzip, br' } });
+  const pageText = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(pageText, /<style id="sip-studio-simplify">[\s\S]*entry-nav-community[\s\S]*home-hero-prompt-examples[\s\S]*<\/style><\/head>/);
+  assert.equal(Number(page.headers.get('content-length')), Buffer.byteLength(pageText));
+  assert.doesNotMatch(await (await fetch(`${base}/other`, { headers: { cookie } })).text(), /sip-studio-simplify/);
+  console.log('studio gateway: brand files from disk, house style for studio projects, pass-through, session cookie and simplified page checks passed');
 } finally {
   child.kill();
   upstream.close();
