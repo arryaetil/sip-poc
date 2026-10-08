@@ -17,6 +17,26 @@ The knowledge app searches the Dify knowledge base *SIP — ETIL corpus (3-large
 (`cc833d3d-e595-41c7-a7ca-1bc1c5b7decd`), filled from `knowledge/markdown/etil`
 with `text-embedding-3-large`, the same embedding model SIP uses.
 
+## Access for maintenance
+
+Use `difyctl` for Studio maintenance, as in the commands below. Authenticate with
+its browser device sign-in (`auth login --host https://cloud.dify.ai` in the
+published command reference; newer edge builds use `login --server ...`). Check
+`difyctl --help` for the installed version. This avoids manually copying browser
+cookies. Check the active account/workspace before changing an app. App API keys
+(`app-...`) run published apps; they are not Studio maintenance credentials.
+Official reference: https://github.com/langgenius/dify-docs/blob/main/en/cli/reference/auth-and-contexts.mdx
+
+The Windows machine used on 2026-10-08 had no `difyctl` on PATH or local saved
+CLI session. A direct Console API check authenticated successfully with the
+access and CSRF tokens, but `/apps/imports` rejected the update with the Sandbox
+app limit. No Lead finder update was applied. Arrya explicitly skipped this
+import. Do not treat the generated Lead finder YAML as already published.
+
+The chat-driven Business Context selection uses the existing published
+Strategist schema and its runtime `extra_instructions` input; it requires no
+Dify app import.
+
 ## How the apps are built
 
 The YAML files here are generated. Do not edit them in the Dify UI and then

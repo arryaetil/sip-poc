@@ -320,6 +320,14 @@ class ContextStore:
                 connection.execute("ALTER TABLE conversations ADD COLUMN updates_context_id TEXT")
             except sqlite3.OperationalError:
                 pass
+            for column, definition in (("website_source_id", "TEXT"), ("context_intent", "TEXT NOT NULL DEFAULT 'pending'")):
+                try:
+                    connection.execute(f"ALTER TABLE conversations ADD COLUMN {column} {definition}")
+                    if column == "context_intent":
+                        connection.execute("UPDATE conversations SET context_intent = CASE WHEN updates_context_id IS NOT NULL THEN 'update' ELSE 'create' END")
+                except sqlite3.OperationalError:
+                    pass
+
             try:
                 # Who started a lead list, shown to the sales team that shares the lists.
                 connection.execute("ALTER TABLE lead_lists ADD COLUMN created_by TEXT")
@@ -507,10 +515,22 @@ class ContextStore:
         conversation_id = str(uuid4())
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO conversations (id, language, owner_id, kind, updates_context_id) VALUES (?, ?, ?, ?, ?)",
-                (conversation_id, language, owner_id, kind, updates_context_id),
+                "INSERT INTO conversations (id, language, owner_id, kind, updates_context_id, context_intent) VALUES (?, ?, ?, ?, ?, ?)",
+                (conversation_id, language, owner_id, kind, updates_context_id, "update" if updates_context_id else "pending"),
             )
         return self.get_conversation(conversation_id, owner_id)  # type: ignore[return-value]
+
+    def set_context_intent(
+        self, conversation_id: str, owner_id: str, intent: str,
+        target: str | None = None, source: str | None = None, is_admin: bool = False,
+    ) -> ConversationDetail | None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE conversations SET context_intent = ?, updates_context_id = ?, website_source_id = ? "
+                "WHERE id = ? AND (? OR owner_id = ?) AND kind = 'context' AND portfolio_context_id IS NULL",
+                (intent, target, source, conversation_id, int(is_admin), owner_id),
+            )
+        return self.get_conversation(conversation_id, owner_id, is_admin)
 
     def delete_conversation(self, conversation_id: str, owner_id: str, is_admin: bool = False) -> bool:
         with self._connect() as connection:
@@ -685,6 +705,8 @@ class ContextStore:
             readiness_reason=row["readiness_reason"],
             portfolio_context_id=row["portfolio_context_id"],
             updates_context_id=row["updates_context_id"],
+            website_source_id=row["website_source_id"],
+            context_intent=row["context_intent"],
             message_count=row["message_count"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],

@@ -142,9 +142,6 @@ let pendingDelete = null;
 let currentRole = "admin";
 // Set while the review page shows changes proposed by an update conversation.
 let pendingUpdate = null;
-let updatableContexts = [];
-const conversationTarget = document.querySelector("#conversation-target");
-const conversationTargetField = document.querySelector("#conversation-target-field");
 const reviewChanges = document.querySelector("#review-changes");
 const reviewChangesList = document.querySelector("#review-changes-list");
 
@@ -491,12 +488,10 @@ conversationStartForm.addEventListener("submit", async (event) => {
   readiness.hidden = true;
   showView("builder");
   setStatus(chatStatus, t("builder.thinking"), "success");
-  const target = updatableContexts.find((item) => item.id === conversationTarget.value);
-  if (target) builderTitle.textContent = t("builder.updating", { name: target.name });
   try {
     const conversation = await api("/api/conversations", {
       method: "POST",
-      body: JSON.stringify({ language: getLanguage(), kind: "context", updates_context_id: target ? target.id : null }),
+      body: JSON.stringify({ language: getLanguage(), kind: "context", updates_context_id: null }),
     });
     const turn = await api(`/api/conversations/${conversation.id}/messages`, {
       method: "POST",
@@ -598,46 +593,12 @@ function renderConversations(conversations) {
 
 async function loadConversations() {
   conversationList.innerHTML = '<div class="loading-state" aria-label="Loading conversations"><span></span><span></span></div>';
-  loadUpdatableContexts();
   try {
     renderConversations(await api("/api/conversations"));
   } catch (error) {
     conversationList.textContent = error.message;
   }
 }
-
-// Product Owner and admin can also update an approved context through a conversation.
-async function loadUpdatableContexts() {
-  const allowed = currentRole === "admin" || currentRole === "product_owner";
-  conversationTargetField.hidden = true;
-  if (!allowed) return;
-  try {
-    updatableContexts = (await api("/api/contexts")).filter((item) => item.status === "approved")
-      .sort((a, b) => a.name.localeCompare(b.name));
-  } catch {
-    updatableContexts = [];
-  }
-  const previous = conversationTarget.value;
-  conversationTarget.replaceChildren(new Option(t("conversations.target_new"), ""));
-  if (updatableContexts.length) {
-    const group = document.createElement("optgroup");
-    group.label = t("conversations.target_update_group");
-    updatableContexts.forEach((item) => group.append(new Option(item.name, item.id)));
-    conversationTarget.append(group);
-  }
-  conversationTarget.value = updatableContexts.some((item) => item.id === previous) ? previous : "";
-  conversationTargetField.hidden = !updatableContexts.length;
-  syncConversationPlaceholder();
-}
-
-function syncConversationPlaceholder() {
-  const target = updatableContexts.find((item) => item.id === conversationTarget.value);
-  conversationStartMessage.placeholder = target
-    ? t("conversations.update_placeholder", { name: target.name })
-    : t("conversations.prompt_placeholder");
-}
-
-conversationTarget.addEventListener("change", syncConversationPlaceholder);
 
 function fillContextForm(context, status = "draft") {
   window.leadFinder?.syncReview({ ...context, status });

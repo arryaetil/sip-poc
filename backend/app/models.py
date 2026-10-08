@@ -125,6 +125,8 @@ class ConversationSummary(BaseModel):
     readiness_reason: str
     portfolio_context_id: str | None
     updates_context_id: str | None = None
+    website_source_id: str | None = None
+    context_intent: Literal["pending", "create", "update", "website"] = "pending"
     message_count: int
     created_at: str
     updated_at: str
