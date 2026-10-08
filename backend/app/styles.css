@@ -311,7 +311,7 @@ body.sidebar-collapsed .sidebar-note { display: none; }
 @keyframes studio-offer-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .studio-offer-badge { display: inline-block; margin-bottom: 8px; padding: 3px 9px; border-radius: 999px; background: var(--seasal); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
 .studio-offer h3 { margin: 0 0 6px; font-size: 17px; line-height: 1.3; }
-.studio-offer-brief { margin: 0 0 14px; color: #34373b; font-size: 14px; line-height: 1.55; }
+.studio-offer-brief { margin: 0 0 14px; color: #34373b; font-size: 14px; line-height: 1.55; white-space: pre-wrap; }
 .studio-offer-actions { display: flex; align-items: center; gap: 14px; }
 .studio-offer-actions .text-button { margin: 0; color: var(--muted); }
 .studio-offer-status { margin: 10px 0 0; color: var(--muted); font-size: 13px; }

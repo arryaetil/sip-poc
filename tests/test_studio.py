@@ -11,6 +11,33 @@ from app import studio
 from app.models import KnowledgeChatSource, MarketingRequest
 
 
+def test_handoff_keeps_approved_carousel_instead_of_short_linkedin_offer():
+    from types import SimpleNamespace
+    hook = "Wie de arbeidsmarkt wil versterken, moet eerst weten wat er speelt."
+    brief = hook + "\n" + "\n".join(f"Pagina {i}: afgesproken inhoud {i}" for i in range(1, 7))
+    calls = []
+    class Assistant:
+        def strategist_turn(self, *args):
+            calls.append(args)
+            return SimpleNamespace(message=json.dumps(dict(format="instagram_carousel", brief=brief, title="AIZ", brand="etil")))
+    history = [SimpleNamespace(content="six approved pages")]
+    request = studio.prepare_brief(Assistant(), MarketingRequest(format="linkedin_post", brief="Kort AIZ"), history, "nl", "alice")
+    assert request.format == "instagram_carousel"
+    assert hook in request.brief and "Pagina 6:" in request.brief
+    assert calls[0][0] is history
+    assert "page count/order" in calls[0][4]
+    text = studio.context_document(request, [SimpleNamespace(content="private@example.org")], [])
+    assert "private@example.org" not in text
+    assert brief in text
+
+
+def test_handoff_refuses_invalid_response_instead_of_silent_brief_loss():
+    from types import SimpleNamespace
+    assistant = SimpleNamespace(strategist_turn=lambda *args: SimpleNamespace(message="Looks good!"))
+    with pytest.raises(ValueError):
+        studio.prepare_brief(assistant, MarketingRequest(format="linkedin_post", brief="AIZ"), [object()], "nl", "alice")
+
+
 @pytest.fixture
 def configured(monkeypatch):
     monkeypatch.setenv("OPEN_DESIGN_INTERNAL_URL", "http://od.internal:8080")
