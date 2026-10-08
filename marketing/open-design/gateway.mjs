@@ -296,7 +296,8 @@ const STUDIO_CSS = '[data-testid="entry-nav-community"], [data-testid="entry-nav
   + ' [data-testid="entry-nav-plugins"], [data-testid="entry-settings-button"],'
   + ' .entry-nav-rail__footer, .home-hero__workdir-row, .home-hero__execution-switcher,'
   + ' [data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],'
-  + ' [data-testid="plugins-home-section"], .home-hero [aria-label="Creation type"] { display: none !important; }'
+  + ' [data-testid="plugins-home-section"], .home-hero [aria-label="Creation type"], [class*="ExperienceSurvey-module__"] { display: none !important; }'
+  + ' .present-trigger {width:auto!important;gap:6px;padding:6px 10px!important;} .present-trigger::after {content:"Groot bekijken";font-size:12px;}'
   + ' .home-hero__title { font-size:0!important; } .home-hero__title>* { display:none!important; }'
   + ' .home-hero__title::after { content:"Wat wil je maken?";font:600 36px Ubuntu,sans-serif; }'
   + ' .home-hero__subtitle { font-size:0!important; } .home-hero__subtitle::after { content:"Beschrijf je post, carousel of presentatie. Kies de huisstijl; SIP-kennis wordt automatisch meegenomen.";font:14px Ubuntu,sans-serif; }';

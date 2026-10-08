@@ -4,6 +4,8 @@ import {PDFDocument} from 'pdf-lib';
 import {STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT} from './studio-preview-script.mjs';
 import {STUDIO_EXPORT_SCRIPT} from './studio-export-script.mjs';
 import {Script} from 'node:vm';
+import JSZip from 'jszip';
+import {readFile} from 'node:fs/promises';
 for(const script of [STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT,STUDIO_EXPORT_SCRIPT])new Script(script.replace(/^<script[^>]*>|<\/script>$/g,''));
 const executable = process.env.STUDIO_CHROMIUM_PATH;
 assert.ok(executable, 'Set STUDIO_CHROMIUM_PATH for the real browser test');
@@ -39,6 +41,11 @@ await assert.rejects(renderExport('fixture','image',{fileName:'post.html'},async
 const first=await renderExport('fixture','image',{fileName:'post.html',index:0},upstream,executable);
 const second=await renderExport('fixture','image',{fileName:'post.html',index:1},upstream,executable);
 assert.notDeepEqual(first.buffer,second.buffer,'Selecting another carousel page must change the exported image');
+const carousel=await renderExport('fixture','images',{fileName:'post.html'},upstream,executable);
+const zip=await JSZip.loadAsync(carousel.buffer);
+assert.equal(carousel.pages,2);
+assert.deepEqual(Object.keys(zip.files),['pagina-01.png','pagina-02.png']);
+assert.notDeepEqual(await zip.file('pagina-01.png').async('nodebuffer'),await zip.file('pagina-02.png').async('nodebuffer'));
 // A previous failed render must release the browser/semaphore.
 assert.equal((await renderExport('fixture','image',{fileName:'post.html'},upstream,executable)).pages,1);
 console.log('Real Chromium exports: PNG, two-page PDF/PPTX, historical version, failed asset, isolation and recovery passed');
@@ -59,4 +66,21 @@ try{
  await frame.getByRole('button',{name:'Op ware grootte'}).click();
  assert.ok((await frame.locator('main').boundingBox()).width>1000);
  console.log('Preview fit and full-size toggle passed');
+ let requests=0;
+ await page.route('http://download.invalid/**',route=>{
+   if(route.request().method()==='POST'){
+     requests++;assert.deepEqual(route.request().postDataJSON(),{fileName:'post.html',imageFormat:'png'});
+     return requests===1?route.fulfill({status:200,contentType:'application/zip',headers:{'content-disposition':'attachment; filename="carousel.zip"','x-sip-export-pages':'2'},body:carousel.buffer}):route.fulfill({status:422,contentType:'application/json',body:JSON.stringify({error:{message:'Een afbeelding ontbreekt.'}})});
+   }
+   return route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT+'</head><body><div class="image-export-modal" role="dialog"><input type="radio" value="png" checked><button>Save</button></div></body></html>'});
+ });
+ await page.goto('http://download.invalid/projects/fixture/conversations/one/files/post.html');
+ const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'Save'}).click();const downloaded=await downloading;
+ assert.equal(downloaded.suggestedFilename(),'carousel.zip');
+ assert.deepEqual(await readFile(await downloaded.path()),carousel.buffer);
+ assert.match(await page.getByRole('status').innerText(),/alle 2 pagina/);
+ await page.getByRole('button',{name:'Save'}).click();
+ await page.waitForFunction(()=>document.querySelector('[role=status]').textContent==='Een afbeelding ontbreekt.');
+ assert.equal(await page.getByRole('button',{name:'Save'}).isEnabled(),true);
+ console.log('Normal image-dialog download contains every carousel page; truthful error and retry passed');
 }finally{await browser.close();}

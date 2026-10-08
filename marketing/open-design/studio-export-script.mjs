@@ -3,6 +3,22 @@ export const STUDIO_EXPORT_SCRIPT = `<script id="sip-studio-export">(function(){
 // Use normal browser downloads, including embedded browsers without a native save dialog.
 try{window.showSaveFilePicker=undefined;}catch{}
 const original=window.fetch.bind(window);
+async function download(result,fallback){const blob=await result.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=/filename="([^"]+)"/.exec(result.headers.get('content-disposition')||'')?.[1]||fallback;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+// The desktop image dialog captures the iframe itself. In a hosted Studio,
+// use the authenticated renderer so the downloaded artwork is complete.
+document.addEventListener('click',async event=>{
+const button=event.target.closest?.('button');const modal=button?.closest('.image-export-modal');
+if(!modal||modal.closest('.file-version-export-backdrop')||!['Save','Speichern','Opslaan'].includes(button.textContent.trim()))return;
+const project=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]{1,128})/);
+const file=location.pathname.match(/\\/files\\/(.+)$/);if(!project||!file)return;
+event.preventDefault();event.stopImmediatePropagation();button.disabled=true;const label=button.textContent;button.textContent='Exporteren…';
+let status=modal.querySelector('[data-sip-export-status]');if(!status){status=document.createElement('p');status.dataset.sipExportStatus='';status.setAttribute('role','status');modal.appendChild(status);}status.textContent='Je bestand wordt klaargemaakt…';
+try{const format=modal.querySelector('input[type=radio]:checked')?.value||'png';
+const response=await original('/api/projects/'+project[1]+'/export/images',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:decodeURIComponent(file[1]),imageFormat:format})});
+if(!response.ok){let data=await response.json().catch(()=>({}));throw new Error(data.error?.message||'Exporteren is niet gelukt. Probeer opnieuw.');}
+const pages=Number(response.headers.get('x-sip-export-pages')||1);await download(response,'ontwerp.'+format);status.textContent=pages>1?'Download klaar: alle '+pages+' pagina’s staan als losse afbeeldingen in het ZIP-bestand.':'Download klaar. Je bestand staat bij je downloads.';
+}catch(error){status.textContent=error.message;}finally{button.disabled=false;button.textContent=label;}
+},true);
 window.fetch=async function(input,options){
   const url=new URL(typeof input==='string'?input:input.url,location.href);
   const method=options?.method||(typeof input==='object'?input.method:'GET');
@@ -12,8 +28,6 @@ window.fetch=async function(input,options){
   if(typeof input==='object'){requestOptions.headers=options?.headers||input.headers;requestOptions.body=options?.body||await input.clone().text();}
   const result=await original(url.toString(),{...requestOptions,method:'POST'});
   if(!result.ok)return result;
-  const blob=await result.blob();const downloadUrl=URL.createObjectURL(blob);const a=document.createElement('a');
-  a.href=downloadUrl;a.download=/filename="([^"]+)"/.exec(result.headers.get('content-disposition')||'')?.[1]||'ontwerp.pdf';
-  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(downloadUrl),60000);
+  await download(result,'ontwerp.pdf');
   return new Response(JSON.stringify({ok:true}),{status:200,headers:{'content-type':'application/json'}});
 };})();</script>`;
