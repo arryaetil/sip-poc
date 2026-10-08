@@ -2,7 +2,7 @@
 let busy = false;
 const error = (status, message) => Object.assign(new Error(message), { status });
 export function exportRoute(pathname) {
-  return /^\/api\/projects\/([a-zA-Z0-9_-]{1,128})\/export\/(image|pdf-image|pptx)$/.exec(pathname);
+  return /^\/api\/projects\/([a-zA-Z0-9_-]{1,128})\/export\/(image|images|pdf-image|pptx)$/.exec(pathname);
 }
 export function validateExport(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw error(400, 'Ongeldige exportaanvraag.');
@@ -75,11 +75,23 @@ export async function renderExport(projectId, format, body, upstream, executable
       }
       const box=await target.boundingBox();
       if(!box || box.width<1 || box.height<1 || box.width>8000 || box.height>16000 || box.width*box.height>16000000)throw error(422,'Deze pagina heeft geen bruikbare exportafmetingen.');
-      const jpeg=format==='image'&&['jpg','jpeg'].includes(body.imageFormat);
+      const jpeg=['image','images'].includes(format)&&['jpg','jpeg'].includes(body.imageFormat);
       const buffer=await target.screenshot({type:jpeg?'jpeg':'png',...(jpeg?{quality:95}:{}),timeout:20000});
       captures.push({buffer,width:box.width,height:box.height,jpeg});
     }
-    if(format==='image'){
+    if(format==='images' && captures.length>1){
+      const {default:JSZip}=await import('jszip');const zip=new JSZip();
+      for(let i=0;i<captures.length;i++){
+        let buffer=captures[i].buffer;let ext=captures[i].jpeg?'jpg':'png';
+        if(body.imageFormat==='webp'){
+          const data=await page.evaluate(async source=>{const image=new Image();image.src=source;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;canvas.getContext('2d').drawImage(image,0,0);return canvas.toDataURL('image/webp',0.95).split(',')[1];},'data:image/png;base64,'+buffer.toString('base64'));
+          buffer=Buffer.from(data,'base64');ext='webp';
+        }
+        zip.file(`pagina-${String(i+1).padStart(2,'0')}.${ext}`,buffer);
+      }
+      return {buffer:await zip.generateAsync({type:'nodebuffer'}),type:'application/zip',ext:'zip',pages:captures.length};
+    }
+    if(format==='image'||format==='images'){
       if(body.imageFormat==='webp'){
         const data=await page.evaluate(async source=>{const image=new Image();image.src=source;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;canvas.getContext('2d').drawImage(image,0,0);return canvas.toDataURL('image/webp',0.95).split(',')[1];},'data:image/png;base64,'+captures[0].buffer.toString('base64'));
         return {buffer:Buffer.from(data,'base64'),type:'image/webp',ext:'webp',pages:1};

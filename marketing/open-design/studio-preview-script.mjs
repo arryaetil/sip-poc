@@ -2,7 +2,7 @@
 export const STUDIO_PREVIEW_SCRIPT = `<script id="sip-studio-preview">(function(){function update(){
 const project=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]{1,128})(?:\\/|$)/);
 if(project&&window.parent!==window)window.parent.postMessage({type:'sip-studio-project',projectId:project[1]},SIP_PARENT_ORIGIN);
-for(const frame of document.querySelectorAll('iframe')){const src=frame.getAttribute('src')||'';if(src.includes('/raw/')||src==='about:blank'){frame.style.width='100%';frame.style.height='100%';}}
+for(const frame of document.querySelectorAll('iframe')){const src=frame.getAttribute('src')||'';if(src.includes('odPreviewBridge=')||src==='about:blank'){frame.style.width='100%';frame.style.height='100%';}}
 }document.addEventListener('load',update,true);window.addEventListener('resize',update);setInterval(update,1000);})();</script>`;
 
 // Runs inside the preview sandbox and changes display only.

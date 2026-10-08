@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "playwright-core": "1.64.0",
+    "jszip": "3.10.1",
     "pdf-lib": "1.17.1",
+    "playwright-core": "1.64.0",
     "pptxgenjs": "4.0.1"
   },
   "overrides": {
