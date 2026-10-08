@@ -174,6 +174,11 @@ def test_private_draft_chat_update_stays_private_and_does_not_overwrite_without_
     assert proposal["current_status"] == "draft"
     assert store.get(draft.id, main._find_user("po@test.nl")["id"]).core_capabilities == []
     assert len(store.list_context_versions(draft.id)) == 1
+    rejected = po.put(f"/api/contexts/{draft.id}", json={"context": proposal["proposal"], "status": "approved",
+        "source": "conversation", "conversation_id": conversation["id"]})
+    assert rejected.status_code == 409
+    assert store.get(draft.id, main._find_user("po@test.nl")["id"]).status == "draft"
+    assert len(store.list_context_versions(draft.id)) == 1
     saved = po.put(f"/api/contexts/{draft.id}", json={"context": proposal["proposal"], "status": "draft",
         "source": "conversation", "conversation_id": conversation["id"]})
     assert saved.status_code == 200 and saved.json()["status"] == "draft"
@@ -192,4 +197,3 @@ def test_chat_continuation_never_exposes_another_users_private_draft(env):
     other = signed_in("po2@test.nl", "po2-pass")
     assert other.post("/api/conversations", json={"updates_context_id": draft.id}).status_code == 404
     assert other.get(f"/api/contexts/{draft.id}").status_code == 404
-

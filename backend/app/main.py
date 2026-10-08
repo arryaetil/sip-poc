@@ -1878,6 +1878,14 @@ def create_context(request: SaveContextRequest, http_request: Request) -> Stored
 @app.put("/api/contexts/{context_id}", response_model=StoredBusinessContext)
 def update_context(context_id: str, request: SaveContextRequest, http_request: Request) -> StoredBusinessContext:
     owner_id, is_admin = _actor(http_request)
+    if request.conversation_id:
+        store = get_context_store()
+        conversation = store.get_conversation(request.conversation_id, owner_id, is_admin)
+        current = store.get(context_id, owner_id, is_admin)
+        if current is None or conversation is None or conversation.updates_context_id != context_id:
+            raise HTTPException(status_code=404, detail="Update conversation not found")
+        if request.status != current.status:
+            raise HTTPException(status_code=409, detail="Chat changes preserve the current visibility. Review approval separately.")
     context = get_context_store().update(
         context_id, request.context, request.status, owner_id, is_admin,
         may_edit_approved=_may_edit_approved(http_request),

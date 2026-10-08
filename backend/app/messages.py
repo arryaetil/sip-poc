@@ -28,6 +28,7 @@ EXACT: dict[str, tuple[str, str]] = {
     "Knowledge conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
     "Product Owner conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
     "Lead conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
+    "Chat changes preserve the current visibility. Review approval separately.": ("Chatwijzigingen behouden de huidige zichtbaarheid. Beoordeel goedkeuring apart.", "Chatänderungen behalten die aktuelle Sichtbarkeit bei. Prüfe die Freigabe separat."),
     "Update conversation not found": ("Gesprek niet gevonden.", "Gespräch nicht gefunden."),
     "Business Context not found": ("Business Context niet gevonden.", "Business Context nicht gefunden."),
     "Approved Business Context not found": ("Goedgekeurde Business Context niet gevonden.", "Genehmigter Business Context nicht gefunden."),
@@ -165,4 +166,3 @@ def translate(message, language: str):
         if pattern.match(message):
             return pattern.sub(targets[index], message)
     return message
-

@@ -665,7 +665,7 @@ async function reviewConversationChanges() {
   try {
     const proposal = await api(`/api/conversations/${currentConversation.id}/update-proposal`, { method: "POST" });
     currentContextId = proposal.context_id;
-    pendingUpdate = { conversationId: currentConversation.id };
+    pendingUpdate = { conversationId: currentConversation.id, status: proposal.current_status };
     reviewOrigin = "builder";
     backFromReview.textContent = t("review.back");
     fillContextForm(proposal.proposal, proposal.current_status);
@@ -702,6 +702,8 @@ async function saveConversationContext() {
 }
 
 async function saveContext(status) {
+  // Reviewing chat edits preserves visibility; approval remains an explicit form action.
+  if (pendingUpdate) status = pendingUpdate.status;
   if (!contextForm.reportValidity()) return;
   const buttons = [saveDraftButton, approveContextButton];
   buttons.forEach((button) => { button.disabled = true; });
@@ -1522,7 +1524,7 @@ document.querySelector("#back-to-conversations").addEventListener("click", async
   showView("conversations");
 });
 saveDraftButton.addEventListener("click", () => saveContext("draft"));
-approveContextButton.addEventListener("click", () => saveContext("approved"));
+approveContextButton.addEventListener("click", () => saveContext(pendingUpdate?.status || "approved"));
 portfolioCreate.addEventListener("click", createConversation);
 portfolioSearch.addEventListener("input", renderPortfolio);
 portfolioFilterType.addEventListener("change", renderPortfolio);
@@ -2822,4 +2824,3 @@ resetKnowledgeChat();
 loadCurrentUser();
 loadConversations();
 window.addEventListener("load", startRobots);
-
