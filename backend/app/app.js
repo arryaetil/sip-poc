@@ -1134,7 +1134,8 @@ document.querySelector("#studio-new-tab").addEventListener("click", async () => 
   }
 });
 
-function appendStudioOffer(marketingRequest, sources, conversationId) {
+function appendStudioOffer(marketingRequest, sources, conversationId, restored = false) {
+  if (marketingRequest.format === "linkedin_post" && /instagram.{0,30}carousel/i.test(marketingRequest.brief)) marketingRequest = {...marketingRequest,format:"instagram_carousel"};
   pendingStudioOffer = {marketingRequest, sources, conversationId};
   knowledgeMessages.querySelectorAll(".studio-offer-row").forEach(row => row.remove());
   const row = document.createElement("div");
@@ -1146,7 +1147,7 @@ function appendStudioOffer(marketingRequest, sources, conversationId) {
 
   const badge = document.createElement("span");
   badge.className = "studio-offer-badge";
-  badge.textContent = t(`studio.format_${marketingRequest.format}`);
+  badge.textContent = restored ? t("studio.agreed_brief") : t(`studio.format_${marketingRequest.format}`);
   const title = document.createElement("h3");
   title.textContent = t("studio.offer_title");
   const brief = document.createElement("p");
@@ -1233,7 +1234,7 @@ async function openKnowledgeConversation(conversationId) {
   conversation.messages.forEach((message) => appendKnowledgeMessage(message.content, message.role));
   const lastAnswer = conversation.messages.filter(message => message.role === "assistant").at(-1);
   if (lastAnswer && /marketing studio|carousel|linkedin.{0,20}post|powerpoint/i.test(lastAnswer.content)) {
-    appendStudioOffer({format:"linkedin_post", brief:"Gebruik de laatste afgesproken marketingbriefing uit dit gesprek.", title:"", brand:"etil"}, [], conversation.id);
+    appendStudioOffer({format:"linkedin_post", brief:t("studio.resume_brief"), title:"", brand:"etil"}, [], conversation.id, true);
   }
   knowledgeHistory.value = conversation.id;
   showKnowledgeConversation();
