@@ -205,8 +205,9 @@ def create_project(
                 "id": project_id,
                 "name": request.title or request.brief[:60],
                 "designSystemId": design_system,
-                "pendingPrompt": prompt,
+                "pendingPrompt": request.brief,
                 "customInstructions": (
+                    prompt + "\n\n" +
                     "This project was started from SIP. context.md holds the only approved facts: "
                     "never invent customers, figures, results or capabilities. Follow the selected "
                     "design system strictly (colours, Ubuntu, logo rules, tone of voice). Write in the "
