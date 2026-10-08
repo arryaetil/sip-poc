@@ -40,3 +40,6 @@ desktop.ini
 .DS_Store
 .vscode/
 .idea/
+
+# Studio adapter dependencies
+node_modules/
