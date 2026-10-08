@@ -345,7 +345,8 @@ function forward(req, res, body) {
         response.on('data', (chunk) => chunks.push(chunk));
         response.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8');
-          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}${STUDIO_EXPORT_SCRIPT}${STUDIO_PREVIEW_SCRIPT}</head>`) : text);
+          const previewScript = STUDIO_PREVIEW_SCRIPT.replace('SIP_PARENT_ORIGIN', JSON.stringify(SIP_ORIGIN));
+          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}${STUDIO_EXPORT_SCRIPT}${previewScript}</head>`) : text);
           delete out['etag'];
           delete out['last-modified'];
           out['cache-control'] = 'no-store';
