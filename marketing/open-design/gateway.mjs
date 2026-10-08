@@ -19,6 +19,7 @@ import { currentLibrary, syncLibrary, LIBRARY_NOTE } from './sip-library.mjs';
 import { exportRoute, handleExport } from './export-renderer.mjs';
 import { STUDIO_EXPORT_SCRIPT } from './studio-export-script.mjs';
 import { STUDIO_PREVIEW_SCRIPT, ARTWORK_PREVIEW_SCRIPT } from './studio-preview-script.mjs';
+import { STUDIO_LANGUAGE_SCRIPT } from './studio-language.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const UPSTREAM_PORT = Number(process.env.OD_INTERNAL_PORT || 7456);
@@ -100,7 +101,7 @@ async function enter(req, res, url) {
   if (!claims) return deny(res);
   if (claims.typ === 'session') return deny(res); // a session cookie is not an entry link
   if (!(await claimOnce(claims.jti, claims.exp))) return deny(res);
-  const session = b64(JSON.stringify({ typ: 'session', sub: claims.sub, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS }));
+  const session = b64(JSON.stringify({ typ: 'session', sub: claims.sub, lang:['nl','en','de'].includes(claims.lang)?claims.lang:'nl', exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS }));
   const next = typeof claims.next === 'string' && /^\/(?!\/)[^\\\r\n]*$/.test(claims.next) && !claims.next.startsWith('/__sip/') ? claims.next : '/';
   securityHeaders(res);
   res.writeHead(302, {
@@ -215,7 +216,8 @@ async function previewAsset(req,res,url) {
 // (entrypoint.sh installs them in OD_DATA_DIR/design-systems).
 const DESIGN_SYSTEMS = nodePath.join(process.env.OD_DATA_DIR || '/app/.od', 'design-systems');
 const MEDIA_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp',
-  '.ttf': 'font/ttf', '.md': 'text/markdown', '.css': 'text/css' };
+  '.ttf': 'font/ttf', '.md': 'text/markdown', '.css': 'text/css', '.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+const copiedPresentationReferences=new Set();
 
 // Open Design names the packages user:etil and user:ibc-group; the folders are etil and ibc-group.
 const brandOf = (designSystemId) => String(designSystemId || '').replace(/^user:/, '');
@@ -242,14 +244,39 @@ async function copyBrand(projectId, brand, withNotes) {
   const files = await brandFiles(root);
   if (!files.length) throw new Error(`design system ${brand} has no brand files in ${root}`);
   if (withNotes) files.push('DESIGN.md', 'tokens.css');
+  if(await fs.access(nodePath.join(root,'assets/presentation-reference/README.md')).then(()=>true,()=>false))files.push('assets/presentation-reference/README.md');
+  // Copy only the specifically approved presentation master, not the whole
+  // private library. Visual examples are part of the normal brand assets.
+  const master='assets/private-library/Powerpoint Master/'+(brand==='etil'?'Etil':'ibc group')+' - Powerpoint Master v1.0.pptx';
+  if(await fs.access(nodePath.join(root,master)).then(()=>true,()=>false))files.push(master);
   for (const path of files) {
     let content;
     try { content = await fs.readFile(nodePath.join(root, path)); } catch { continue; }
     const form = new FormData();
-    form.append('name', `brand/${brand}/${path.replace(/^assets\//, '')}`);
+    const destination=path===master?'presentation-reference/official-master.pptx':path.replace(/^assets\//,'');
+    form.append('name', `brand/${brand}/${destination}`);
     form.append('file', new Blob([content], { type: MEDIA_TYPES[nodePath.extname(path).toLowerCase()] || 'application/octet-stream' }), nodePath.basename(path));
     const saved = await upstream(`/api/projects/${encodeURIComponent(projectId)}/files`, { method: 'POST', body: form });
     if (!saved.ok) throw new Error(`upload ${path}: ${saved.status}`);
+  }
+  copiedPresentationReferences.add(projectId+':'+brand);
+}
+
+async function syncPresentationReferences(projectId) {
+  if(!/^[a-zA-Z0-9_-]{1,128}$/.test(projectId||''))throw new Error('invalid project');
+  const response=await upstream('/api/projects/'+projectId);
+  const project=response.ok?await response.json().catch(()=>({})):{};
+  const selected=brandOf(project.project?.designSystemId||project.designSystemId);
+  if(selected&&!BRANDS.includes(selected))return;
+  for(const brand of selected?[selected]:BRANDS){
+    const key=projectId+':'+brand;if(copiedPresentationReferences.has(key))continue;
+    const root=nodePath.join(DESIGN_SYSTEMS,brand);
+    const names=await fs.readdir(nodePath.join(root,'assets/presentation-reference')).catch(()=>[]);
+    const files=names.filter(name=>/^[a-zA-Z0-9_.-]+\.(png|md)$/.test(name)).map(name=>({source:'assets/presentation-reference/'+name,target:'presentation-reference/'+name}));
+    const master='assets/private-library/Powerpoint Master/'+(brand==='etil'?'Etil':'ibc group')+' - Powerpoint Master v1.0.pptx';
+    if(await fs.access(nodePath.join(root,master)).then(()=>true,()=>false))files.push({source:master,target:'presentation-reference/official-master.pptx'});
+    for(const file of files){const content=await fs.readFile(nodePath.join(root,file.source));const form=new FormData();form.append('name','brand/'+brand+'/'+file.target);form.append('file',new Blob([content],{type:MEDIA_TYPES[nodePath.extname(file.source)]||'application/octet-stream'}),nodePath.basename(file.target));const saved=await upstream('/api/projects/'+projectId+'/files',{method:'POST',body:form});if(!saved.ok)throw new Error('presentation reference upload failed');}
+    copiedPresentationReferences.add(key);if(copiedPresentationReferences.size>2048)copiedPresentationReferences.delete(copiedPresentationReferences.values().next().value);
   }
 }
 
@@ -308,6 +335,7 @@ function proxy(req, res) {
       try {
         const run = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         await syncLibrary(run.projectId, SIP_LIBRARY_ORIGIN, SECRET, upstream);
+        await syncPresentationReferences(run.projectId);
         run.message = `${LIBRARY_NOTE}\n\n${run.message || ''}`;
         forward(req, res, withServerModel(Buffer.from(JSON.stringify(run))));
       } catch (error) {
@@ -333,10 +361,11 @@ const STUDIO_CSS = '[data-testid="entry-nav-community"], [data-testid="entry-nav
   + ' .entry-nav-rail__footer, .home-hero__workdir-row, .home-hero__execution-switcher,'
   + ' [data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],'
   + ' [data-testid="plugins-home-section"], .home-hero [aria-label="Creation type"], [class*="ExperienceSurvey-module__"] { display: none !important; }'
-  + ' .present-trigger {width:auto!important;gap:6px;padding:6px 10px!important;} .present-trigger::after {content:"Groot bekijken";font-size:12px;}'
+  + ' .present-trigger {width:auto!important;gap:6px;padding:6px 10px!important;} .present-trigger::after {content:var(--sip-big,"Groot bekijken");font-size:12px;}'
+  + ' .entry.entry--rail-open {grid-template-columns:240px minmax(0,1fr)!important;} .entry-nav-rail.is-open {width:240px!important;min-width:240px!important;}'
   + ' .home-hero__title { font-size:0!important; } .home-hero__title>* { display:none!important; }'
-  + ' .home-hero__title::after { content:"Wat wil je maken?";font:600 36px Ubuntu,sans-serif; }'
-  + ' .home-hero__subtitle { font-size:0!important; } .home-hero__subtitle::after { content:"Beschrijf je post, carousel of presentatie. Kies de huisstijl; SIP-kennis wordt automatisch meegenomen.";font:14px Ubuntu,sans-serif; }';
+  + ' .home-hero__title::after { content:var(--sip-title,"Wat wil je maken?");font:600 36px Ubuntu,sans-serif; }'
+  + ' .home-hero__subtitle { font-size:0!important; } .home-hero__subtitle::after { content:var(--sip-subtitle,"Beschrijf je post, carousel of presentatie. Kies de huisstijl; kennis uit het platform wordt automatisch meegenomen.");font:14px Ubuntu,sans-serif; }';
 // The style block, plus a few lines that put it back should the app rebuild <head>
 // while it starts (React owns the whole document).
 export const STUDIO_STYLE = `<style id="sip-studio-simplify">${STUDIO_CSS}</style>`
@@ -387,7 +416,9 @@ function forward(req, res, body) {
           const previewScript = STUDIO_PREVIEW_SCRIPT.replace('SIP_PARENT_ORIGIN', JSON.stringify(SIP_ORIGIN));
           const base = new URL(pathname, `https://${req.headers.host}`).href.replaceAll('&','&amp;').replaceAll('"','&quot;');
           const exportScript=STUDIO_EXPORT_SCRIPT.replace("'SIP_DOWNLOAD_PARENT_ORIGIN'",JSON.stringify(SIP_ORIGIN));
-          const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + exportScript + previewScript;
+          const language=verify(cookieValue(req.headers.cookie,COOKIE))?.lang||'nl';
+          const languageScript=STUDIO_LANGUAGE_SCRIPT.replace("'SIP_STUDIO_LANGUAGE'",JSON.stringify(language)).replace("'SIP_LANGUAGE_PARENT_ORIGIN'",JSON.stringify(SIP_ORIGIN));
+          const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + languageScript + exportScript + previewScript;
           const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${insert}</head>`) : text);
           delete out['etag'];
           delete out['last-modified'];

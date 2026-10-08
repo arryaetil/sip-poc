@@ -132,3 +132,6 @@ Ubuntu Light, Regular, Medium and Bold ship in `fonts/` (Ubuntu Font Licence, `f
 - Service colour appears as a small marker (dot, tag, left border, icon) that labels the domain, not as a large fill.
 - Buttons and links: Night fill with white text, or True Blue for links in digital contexts.
 - Footer line on documents: "connecting insights to impact. | © Etil".
+## Presentations: official master as the design reference
+
+Before making a presentation, inspect the PNG examples and README in `brand/etil/presentation-reference/` (or `assets/presentation-reference/` in this design system). Use the official Powerpoint Master v1.0 as visual guidance for 16:9 layouts, Ubuntu type, colours, logos and spacing. The copied `official-master.pptx` is the source template, not content to repeat. Never copy sample dates, contact details, placeholder tables, dummy chart data or the words PPT Master into the user's presentation. A cover uses one coherent approved image.

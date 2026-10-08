@@ -1511,7 +1511,7 @@ def studio_link(request: Request, project_id: str = "") -> dict[str, str]:
     try:
         if project_id and not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", project_id):
             raise HTTPException(status_code=400, detail="Invalid project")
-        return {"url": studio.signed_link(owner_id, f"/projects/{project_id}" if project_id else "/")}
+        return {"url": studio.signed_link(owner_id, f"/projects/{project_id}" if project_id else "/", request.headers.get("X-SIP-Language", "nl"))}
     except studio.StudioUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -1537,7 +1537,7 @@ def create_studio_project(body: StudioProjectRequest, request: Request) -> dict[
     try:
         brief = studio.prepare_brief(get_assistant(), body.marketing_request, history,
             conversation.language if history else "nl", owner_id)
-        url = studio.create_project(owner_id, brief, history, body.sources)
+        url = studio.create_project(owner_id, brief, history, body.sources, request.headers.get("X-SIP-Language", "nl"))
         claims = json.loads(base64.urlsafe_b64decode(url.split("t=", 1)[1].split(".")[0] + "=="))
         return {"url": url, "project_id": claims["next"].rsplit("/", 1)[1]}
     except studio.StudioUnavailable as exc:

@@ -92,8 +92,10 @@ await new Promise((resolve) => free.close(resolve));
 const child = spawn(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta.url))], {
   env: { ...process.env, PORT: String(port), OD_INTERNAL_PORT: String(upstream.address().port), OD_API_TOKEN: token,
     STUDIO_HANDOFF_SECRET: secret, SIP_ORIGIN: 'https://sip.example.test', SIP_INTERNAL_URL: `http://127.0.0.1:${sip.address().port}`, OD_DATA_DIR: dataDir },
-  stdio: 'ignore',
+  stdio: ['ignore', 'ignore', 'pipe'],
 });
+let gatewayErrors='';
+child.stderr.on('data',chunk=>{gatewayErrors+=chunk.toString();});
 const base = `http://localhost:${port}`;
 for (let i = 0; i < 100; i++) {
   try { if ((await fetch(`${base}/api/health`)).status) break; } catch {}
@@ -107,7 +109,8 @@ const uploadsOf = (id) => uploads.filter((entry) => entry.startsWith(`${id}:`)).
 
 try {
   // No house style chosen: both brands with their notes, and the model asks first.
-  assert.equal((await create({ id: 'free', name: 'Post' })).status, 201);
+  const firstCreated=await create({ id: 'free', name: 'Post' });
+  assert.equal(firstCreated.status, 201, gatewayErrors+' '+(firstCreated.ok?'':await firstCreated.text()));
   assert.match(projects.at(-1).customInstructions, /ask the user one short question.*Etil or the ibc group house style/);
   assert.deepEqual(uploadsOf('free'), [
     'brand/etil/DESIGN.md', 'brand/etil/fonts/Ubuntu-Regular.ttf', 'brand/etil/images/people.jpg', 'brand/etil/tokens.css',
