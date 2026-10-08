@@ -94,5 +94,6 @@ def test_project_points_at_the_brand_folder_the_gateway_fills(configured, monkey
     assert [path for _, path, _ in requested[1:]] == [f"{requested[0][1]}/{json.loads(requested[0][2])['id']}/files"]
     project = json.loads(requested[0][2])
     assert project["designSystemId"] == "user:etil"
-    assert "brand/etil/fonts/Ubuntu-" in project["pendingPrompt"]
+    assert "brand/etil/fonts/Ubuntu-" in project["customInstructions"]
+    assert project["pendingPrompt"] == "People Service"
     assert "user:etil" not in project["pendingPrompt"]
