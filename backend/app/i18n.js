@@ -1566,9 +1566,10 @@ function getLanguage() {
     const stored = localStorage.getItem("sip_language");
     if (stored && I18N[stored]) return stored;
   } catch (error) {
-    // localStorage unavailable; fall back to default below
+    // localStorage unavailable; fall back to the browser language below
   }
-  return "en";
+  const browser = (navigator.language || "en").slice(0, 2).toLowerCase();
+  return I18N[browser] ? browser : "en";
 }
 
 function setLanguage(language) {

@@ -124,6 +124,15 @@ EXACT: dict[str, tuple[str, str]] = {
         "Dify ist ausgelastet: Das Limit des kostenlosen Tarifs ist erreicht. Versuche es in einer Minute erneut.",
     ),
     "Some information is missing or not valid.": ("Er ontbreekt informatie of iets is niet geldig.", "Es fehlen Angaben oder etwas ist ungültig."),
+    "Too many sign-in attempts. Try again in 15 minutes.": ("Te veel inlogpogingen. Probeer het over 15 minuten opnieuw.", "Zu viele Anmeldeversuche. Versuche es in 15 Minuten erneut."),
+    "The assistant could not answer. Please try again.": ("De assistent kon geen antwoord geven. Probeer het opnieuw.", "Der Assistent konnte nicht antworten. Bitte versuche es erneut."),
+    "The Business Context could not be prepared. Please try again.": ("De Business Context kon niet worden voorbereid. Probeer het opnieuw.", "Der Business Context konnte nicht vorbereitet werden. Bitte versuche es erneut."),
+    "The marketing studio could not be prepared. Please try again.": ("De Marketing studio kon niet worden voorbereid. Probeer het opnieuw.", "Das Marketing studio konnte nicht vorbereitet werden. Bitte versuche es erneut."),
+    "This file could not be read. Save it again as PDF or DOCX and try once more.": ("Dit bestand kon niet worden gelezen. Sla het opnieuw op als PDF of DOCX en probeer het nog eens.", "Diese Datei konnte nicht gelesen werden. Speichere sie erneut als PDF oder DOCX und versuche es noch einmal."),
+    "The document is too large once unpacked.": ("Het document is uitgepakt te groot.", "Das Dokument ist entpackt zu groß."),
+    "Only the creator of a lead list or an admin can change its scorecard.": ("Alleen de maker van een leadlijst of een beheerder kan de scorekaart wijzigen.", "Nur wer die Lead-Liste erstellt hat oder ein Admin kann die Scorecard ändern."),
+    "Your previous lead search is still running. Wait until it has finished.": ("Je vorige zoekopdracht loopt nog. Wacht tot die klaar is.", "Deine vorige Suche läuft noch. Warte, bis sie fertig ist."),
+    "You have reached today's limit of lead searches. Try again tomorrow.": ("Je hebt het maximum aantal zoekopdrachten voor vandaag bereikt. Probeer het morgen opnieuw.", "Du hast die Höchstzahl an Suchen für heute erreicht. Versuche es morgen erneut."),
 }
 
 # Messages with a variable part: English pattern -> (Dutch, German), with \1 for the part.

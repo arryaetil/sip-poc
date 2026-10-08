@@ -362,6 +362,13 @@ function revealMessage(message, text, container) {
     message.textContent = text;
     return;
   }
+  // Screen readers get the whole answer once; the typing copy is hidden from them,
+  // otherwise every few words would be announced again.
+  message.setAttribute("aria-hidden", "true");
+  const spoken = document.createElement("span");
+  spoken.className = "visually-hidden";
+  spoken.textContent = text;
+  message.after(spoken);
   const tokens = text.match(/\S+\s*/g) || [text];
   const batchSize = Math.max(1, Math.ceil(tokens.length / 120));
   let index = 0;

@@ -1155,3 +1155,9 @@ a.primary-button { display: inline-flex; align-items: center; text-decoration: n
 .header-actions select:hover, .portfolio-filters select:hover { border-color: var(--border); }
 .primary-button, .secondary-button, .danger-button { white-space: nowrap; }
 .chat-form textarea { overflow-y: hidden; }
+
+/* Keyboard focus: a solid ring with enough contrast on white and on the dark buttons. */
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

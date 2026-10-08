@@ -11,6 +11,7 @@ import hmac
 import json
 import logging
 import os
+import threading
 import time
 import traceback
 
@@ -21,6 +22,7 @@ from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from openai import OpenAI
@@ -38,7 +40,6 @@ from app.models import (
     CreateStoryRequest,
     CreateUserRequest,
     KnowledgeChatResponse,
-    PrepareContextRequest,
     ProductOwnerChatResponse,
     ProductOwnerSettings,
     ProductOwnerTimeline,
@@ -134,6 +135,7 @@ PUBLIC_PATHS = {
     "/leads.js",
     "/context-history.js",
     "/i18n.js",
+    "/login.js",
 }
 
 
@@ -143,11 +145,6 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     answer_generally: bool = False
     language: Literal["en", "nl", "de"] = "en"
-
-
-class ChatResponse(BaseModel):
-    message: str
-    response_id: str
 
 
 class LoginRequest(BaseModel):
@@ -302,10 +299,44 @@ async def translated_validation_error(request: Request, exc: RequestValidationEr
     )
 
 
+def _local_dev() -> bool:
+    """Only an explicit setting runs SIP without sign-in (local development and tests)."""
+    return os.getenv("SIP_LOCAL_DEV", "").strip() == "1"
+
+
+def _frame_sources() -> str:
+    origins = [os.getenv(name, "").strip().rstrip("/") for name in ("OPEN_DESIGN_PUBLIC_URL",)]
+    return " ".join(origin for origin in origins if origin.startswith("https://"))
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    frames = _frame_sources()
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        f"font-src 'self'; connect-src 'self'; media-src 'self'; frame-src 'self' {frames}; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    )
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if os.getenv("SIP_COOKIE_SECURE", "true").lower() == "true":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     secret = _session_secret()
-    if secret is None or request.url.path in PUBLIC_PATHS or request.url.path.startswith("/fonts/"):
+    public = request.url.path in PUBLIC_PATHS or request.url.path.startswith("/fonts/")
+    if secret is None and not public and not _local_dev():
+        # Fail closed: a missing SIP_SESSION_SECRET must never mean "everyone is admin".
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": _translated(request, "Authentication is not configured")}, status_code=503)
+        return Response("SIP is not configured for sign-in.", status_code=503, media_type="text/plain")
+    if secret is None or public:
         return await call_next(request)
 
     identity = _session_identity(request, secret)
@@ -342,16 +373,43 @@ def login_page(request: Request) -> Response:
     return HTMLResponse((APP_DIR / "login.html").read_text(encoding="utf-8"))
 
 
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_MAX_FAILURES = 5
+_login_failures: dict[str, list[float]] = {}
+_login_lock = threading.Lock()
+
+
+def _recent_failures(key: str, now: float) -> list[float]:
+    attempts = [moment for moment in _login_failures.get(key, []) if now - moment < LOGIN_WINDOW_SECONDS]
+    _login_failures[key] = attempts
+    return attempts
+
+
 @app.post("/api/auth/login")
-def login(request: LoginRequest) -> Response:
+def login(request: LoginRequest, http_request: Request) -> Response:
     secret = _session_secret()
     if secret is None:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
     email = request.email.strip().casefold()
+    # Slow down password guessing per account and per address (in memory: one instance).
+    client = http_request.client.host if http_request.client else "unknown"
+    keys = (f"email:{email}", f"ip:{client}")
+    now = time.time()
+    with _login_lock:
+        if any(len(_recent_failures(key, now)) >= LOGIN_MAX_FAILURES for key in keys):
+            raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again in 15 minutes.")
     user = _find_user(email)
-    is_valid = user is not None and user["verify"](request.password)
+    # Hash a password even for an unknown email, so timing does not reveal which accounts exist.
+    is_valid = user["verify"](request.password) if user is not None else verify_password(request.password, "0" * 64, "00" * 16) and False
     if not is_valid:
+        with _login_lock:
+            for key in keys:
+                _recent_failures(key, now).append(now)
+        time.sleep(0.5)
         raise HTTPException(status_code=401, detail="Incorrect email or password")
+    with _login_lock:
+        for key in keys:
+            _login_failures.pop(key, None)
 
     response = JSONResponse({"authenticated": True, "role": user["role"]})
     response.set_cookie(
@@ -511,6 +569,11 @@ def leads_script() -> FileResponse:
     return FileResponse(APP_DIR / "leads.js", headers=REVALIDATE)
 
 
+@app.get("/login.js", response_class=FileResponse)
+def login_script() -> FileResponse:
+    return FileResponse(APP_DIR / "login.js", headers=REVALIDATE)
+
+
 @app.get("/i18n.js", response_class=FileResponse)
 def frontend_i18n() -> FileResponse:
     return FileResponse(APP_DIR / "i18n.js", headers=REVALIDATE)
@@ -564,9 +627,17 @@ async def create_upload(
     try:
         filename = safe_filename(file.filename or "document", media_type)
         data = await file.read(MAX_FILE_BYTES + 1)
-        extracted = extract_text(data, media_type)
+        # Parsing a large PDF takes seconds: off the event loop, so other users are not blocked.
+        extracted = await run_in_threadpool(extract_text, data, media_type)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await run_in_threadpool(
+        _store_upload, owner_id, kind, filename, media_type, data, extracted, conversation_id, context_id
+    )
+
+
+def _store_upload(owner_id, kind, filename, media_type, data, extracted, conversation_id, context_id) -> UploadRecord:
+    store = get_context_store()
 
     upload_id = str(uuid4())
     owner_folder = hashlib.sha256(owner_id.encode()).hexdigest()[:24]
@@ -599,6 +670,10 @@ async def create_upload(
         path.unlink(missing_ok=True)
         text_path.unlink(missing_ok=True)
         store.delete_upload(upload_id, owner_id, is_admin=True)
+        try:
+            get_assistant().remove_upload(upload_id)  # a half-indexed copy must not stay behind
+        except Exception:
+            logger.warning("Removing failed upload %s from the knowledge index failed", upload_id)
         raise
     return record
 
@@ -643,7 +718,7 @@ def discuss_context_upload(upload_id: str, request: Request) -> ConversationTurn
         )
     except Exception as exc:
         logger.error("Document discussion failed:\n%s", traceback.format_exc())
-        raise HTTPException(status_code=502, detail=f"Document discussion failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="The assistant could not answer. Please try again.") from exc
     updated = store.add_conversation_turn(
         conversation_id=conversation.id,
         user_message=f"Uploaded source: {record.filename}",
@@ -692,28 +767,6 @@ def delete_upload(upload_id: str, request: Request) -> Response:
     return Response(status_code=204)
 
 
-@app.post("/api/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
-    response_args = {
-        "model": model_deployment,
-        "instructions": _system_prompt_for(request.language),
-        "input": request.message,
-    }
-    if request.previous_response_id:
-        response_args["previous_response_id"] = request.previous_response_id
-
-    try:
-        response = get_openai_client().responses.create(**response_args)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.error("Model request failed:\n%s", traceback.format_exc())
-        raise HTTPException(status_code=502, detail=f"Model request failed: {exc}") from exc
-
-    return ChatResponse(message=response.output_text, response_id=response.id)
-
-
 @app.post("/api/knowledge/chat", response_model=KnowledgeChatResponse)
 def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChatResponse:
     """Answer one source-grounded question about the reviewed website corpus."""
@@ -738,7 +791,7 @@ def knowledge_chat(request: ChatRequest, http_request: Request) -> KnowledgeChat
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Knowledge assistant request failed:\n%s", traceback.format_exc())
-        raise HTTPException(status_code=502, detail=f"Knowledge assistant request failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="The assistant could not answer. Please try again.") from exc
     updated = store.add_conversation_turn(
         conversation_id=conversation.id,
         user_message=request.message,
@@ -1473,33 +1526,7 @@ def create_studio_project(body: StudioProjectRequest, request: Request) -> dict[
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Creating a studio project failed:\n%s", traceback.format_exc())
-        raise HTTPException(status_code=502, detail=f"The marketing studio could not be prepared: {exc}") from exc
-
-
-@app.post("/api/contexts/prepare", response_model=BusinessContext)
-def prepare_context(request: PrepareContextRequest) -> BusinessContext:
-    return _prepare_business_context(request.previous_response_id)
-
-
-def _prepare_business_context(previous_response_id: str) -> BusinessContext:
-    model_deployment = os.getenv("MODEL_DEPLOYMENT", "gpt-5-mini").strip()
-
-    try:
-        response = get_openai_client().responses.parse(
-            model=model_deployment,
-            instructions=FINALIZER_PROMPT,
-            input="Prepare the Business Context from the conversation for Product Owner review.",
-            previous_response_id=previous_response_id,
-            text_format=BusinessContext,
-        )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Context preparation failed: {exc}") from exc
-
-    if response.output_parsed is None:
-        raise HTTPException(status_code=502, detail="The model did not return a Business Context")
-    return response.output_parsed
+        raise HTTPException(status_code=502, detail="The marketing studio could not be prepared. Please try again.") from exc
 
 
 def _prepare_business_context_from_conversation(
@@ -1511,7 +1538,7 @@ def _prepare_business_context_from_conversation(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Context preparation failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="The Business Context could not be prepared. Please try again.") from exc
 
 
 @app.get("/api/conversations", response_model=list[ConversationSummary])
@@ -1611,7 +1638,7 @@ def add_conversation_message(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Model request failed:\n%s", traceback.format_exc())
-        raise HTTPException(status_code=502, detail=f"Model request failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="The assistant could not answer. Please try again.") from exc
 
     updated = store.add_conversation_turn(
         conversation_id=conversation_id,
