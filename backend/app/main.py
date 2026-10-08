@@ -1673,12 +1673,12 @@ def add_conversation_message(
         intent = None
         if conversation.kind == "context" and conversation.context_intent == "pending" and not conversation.updates_context_id and not conversation.portfolio_context_id:
             intent = resolve_intent(get_assistant(), conversation, request.message, owner_id,
-                store.list(owner_id, is_admin, approved_only=True), load_knowledge_documents(), _may_edit_approved(http_request))
+                store.list(owner_id, is_admin), load_knowledge_documents(), _may_edit_approved(http_request))
             if intent.action != "clarify":
                 if intent.action == "update":
                     target = store.get(intent.target_id, owner_id, is_admin)
-                    if target is None or target.status != "approved" or not _may_edit_approved(http_request):
-                        raise HTTPException(status_code=404, detail="Approved Business Context not found")
+                    if target is None or not _may_edit_approved(http_request):
+                        raise HTTPException(status_code=404, detail="Business Context not found")
                 conversation = store.set_context_intent(conversation_id, owner_id, intent.action,
                     target=intent.target_id if intent.action == "update" else None,
                     source=intent.target_id if intent.action == "website" else None, is_admin=is_admin)
