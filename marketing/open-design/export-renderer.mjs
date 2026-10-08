@@ -71,7 +71,16 @@ export async function renderExport(projectId, format, body, upstream, executable
         // Carousel pages normally sit outside an overflow-hidden viewport.
         // Show one page at a time without editing the project's source file.
         await slides.evaluateAll((nodes,index)=>nodes.forEach((n,j)=>{n.style.setProperty('display',j===index?'block':'none','important');n.style.setProperty('transform','none','important');n.style.setProperty('opacity','1','important');n.style.setProperty('visibility','visible','important');}),index);
-        await target.evaluate(node=>{for(let p=node.parentElement;p&&p!==document.body;p=p.parentElement){p.style.setProperty('transform','none','important');p.style.setProperty('overflow','visible','important');}});
+        await target.evaluate(node=>{
+          const width=node.offsetWidth,height=node.offsetHeight;
+          // Generated decks often use centered, absolutely positioned wrappers.
+          // Removing only their scale leaves the page outside the screenshot.
+          for(let p=node;p&&p!==document.body;p=p.parentElement){
+            for(const [key,value] of Object.entries({transform:'none',position:'relative',left:'0',top:'0',right:'auto',bottom:'auto',margin:'0',padding:p===node?getComputedStyle(p).padding:'0',overflow:p===node?'hidden':'visible'}))p.style.setProperty(key,value,'important');
+          }
+          node.style.setProperty('width',width+'px','important');node.style.setProperty('height',height+'px','important');
+          document.body.style.margin='0';
+        });
       }
       const box=await target.boundingBox();
       if(!box || box.width<1 || box.height<1 || box.width>8000 || box.height>16000 || box.width*box.height>16000000)throw error(422,'Deze pagina heeft geen bruikbare exportafmetingen.');

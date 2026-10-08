@@ -4,6 +4,12 @@ export const STUDIO_EXPORT_SCRIPT = `<script id="sip-studio-export">(function(){
 try{window.showSaveFilePicker=undefined;}catch{}
 const original=window.fetch.bind(window);
 async function download(result,fallback){const blob=await result.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=/filename="([^"]+)"/.exec(result.headers.get('content-disposition')||'')?.[1]||fallback;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+function addPowerPoint(){
+const actions=document.querySelector('.app-chrome-file-actions');const match=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]+)\\/.*\\/files\\/(.+\\.html?)$/);if(!actions||!match||actions.querySelector('[data-sip-pptx]'))return;
+const button=document.createElement('button');button.dataset.sipPptx='';button.textContent='PowerPoint';button.title='Download PowerPoint met een afbeelding per pagina';button.style.cssText='padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:white;color:#111;cursor:pointer;font:12px Ubuntu,sans-serif';
+button.onclick=async()=>{const current=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]+)\\/.*\\/files\\/(.+\\.html?)$/);if(!current)return;button.disabled=true;let status=actions.querySelector('[data-sip-pptx-status]');if(!status){status=document.createElement('span');status.dataset.sipPptxStatus='';status.setAttribute('role','status');status.style.fontSize='12px';actions.appendChild(status);}status.textContent='PowerPoint wordt gemaakt…';try{const response=await original('/api/projects/'+current[1]+'/export/pptx',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:decodeURIComponent(current[2])})});if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error?.message||'Exporteren is niet gelukt.');}await download(response,'ontwerp.pptx');status.textContent='Gedownload: afbeeldingen per pagina.';}catch(error){status.textContent=error.message;}finally{button.disabled=false;}};actions.appendChild(button);
+}
+document.addEventListener('DOMContentLoaded',addPowerPoint);setInterval(addPowerPoint,1000);
 // The desktop image dialog captures the iframe itself. In a hosted Studio,
 // use the authenticated renderer so the downloaded artwork is complete.
 document.addEventListener('click',async event=>{

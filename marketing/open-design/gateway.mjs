@@ -174,6 +174,30 @@ function upstream(path, init = {}) {
   return fetch(`http://127.0.0.1:${UPSTREAM_PORT}${path}`, { ...init, headers: { ...(init.headers || {}), authorization: `Bearer ${TOKEN}` } });
 }
 
+// Opaque preview sandboxes cannot reliably send the session cookie for assets.
+// Bundle only this authenticated project's images/fonts; keep access checks intact.
+async function bundlePreviewAssets(text, pathname) {
+  const match=pathname.match(/^\/api\/projects\/([a-zA-Z0-9_-]+)\/raw\/(.+)$/);
+  if(!match)return text;
+  const prefix='/api/projects/'+match[1]+'/raw/';
+  const base=new URL(pathname,'http://preview.invalid');
+  const refs=new Set();
+  for(const pattern of [/(?:src|poster)=["']([^"']+)["']/g,/url\(\s*["']?([^"')\s]+)["']?\s*\)/g]){
+    for(const item of text.matchAll(pattern)){
+      try{const url=new URL(item[1],base);if(url.origin===base.origin&&url.pathname.startsWith(prefix)&&/\.(png|jpe?g|webp|gif|svg|ttf|woff2?)(?:$)/i.test(url.pathname))refs.add(item[1]);}catch{}
+    }
+  }
+  if(refs.size>100)return text;
+  for(const ref of refs){
+    const url=new URL(ref,base);const response=await upstream(url.pathname,{redirect:'error'});
+    if(!response.ok)continue;
+    const bytes=Buffer.from(await response.arrayBuffer());if(bytes.length>8_000_000)continue;
+    const mime=MEDIA_TYPES[nodePath.extname(url.pathname).toLowerCase()]||response.headers.get('content-type')||'application/octet-stream';
+    text=text.replaceAll(ref,'data:'+mime+';base64,'+bytes.toString('base64'));
+  }
+  return text;
+}
+
 // Read from disk, not through Open Design's API: its design-system file listing
 // answers 404 for these packages, while the files are right here on the volume
 // (entrypoint.sh installs them in OD_DATA_DIR/design-systems).
@@ -345,8 +369,9 @@ function forward(req, res, body) {
       if ((page || artwork) && html && !response.headers['content-encoding']) {
         const chunks = [];
         response.on('data', (chunk) => chunks.push(chunk));
-        response.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8');
+        response.on('end', async () => {
+          let text = Buffer.concat(chunks).toString('utf8');
+          if(artwork)text=await bundlePreviewAssets(text,pathname).catch(()=>text);
           const previewScript = STUDIO_PREVIEW_SCRIPT.replace('SIP_PARENT_ORIGIN', JSON.stringify(SIP_ORIGIN));
           const base = new URL(pathname, `https://${req.headers.host}`).href.replaceAll('&','&amp;').replaceAll('"','&quot;');
           const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + STUDIO_EXPORT_SCRIPT + previewScript;

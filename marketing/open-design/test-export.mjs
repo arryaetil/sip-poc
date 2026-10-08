@@ -46,6 +46,11 @@ const zip=await JSZip.loadAsync(carousel.buffer);
 assert.equal(carousel.pages,2);
 assert.deepEqual(Object.keys(zip.files),['pagina-01.png','pagina-02.png']);
 assert.notDeepEqual(await zip.file('pagina-01.png').async('nodebuffer'),await zip.file('pagina-02.png').async('nodebuffer'));
+// Real generated carousel structure: centered absolute deck with a resize script.
+const centered='<html><head><style>body{margin:0}.preview{display:grid;place-items:center;padding:20px}.viewport{width:100%;height:900px;position:relative;overflow:hidden}.deck{position:absolute;left:50%;top:50%;width:400px;height:500px;transform:translate(-50%,-50%) scale(.5)}.slide{position:absolute;inset:0}</style></head><body><div class="preview"><div class="viewport"><div class="deck"><section data-slide class="slide" style="background:red">Page 1</section><section data-slide class="slide" style="background:blue">Page 2</section></div></div></div><nav>Never export navigation</nav></body></html>';
+const centeredResult=await renderExport('fixture','images',{fileName:'post.html'},async()=>new Response(centered),executable);
+const centeredZip=await JSZip.loadAsync(centeredResult.buffer);
+assert.deepEqual(await centeredZip.file('pagina-01.png').async('nodebuffer'),first.buffer,'Centered wrappers must produce the complete same page as an unwrapped slide');
 // A previous failed render must release the browser/semaphore.
 assert.equal((await renderExport('fixture','image',{fileName:'post.html'},upstream,executable)).pages,1);
 console.log('Real Chromium exports: PNG, two-page PDF/PPTX, historical version, failed asset, isolation and recovery passed');
