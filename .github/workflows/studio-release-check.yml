@@ -1,0 +1,18 @@
+name: Studio release baseline
+on:
+  pull_request:
+    paths: ['marketing/open-design/**', '.github/workflows/studio-release-check.yml']
+  push:
+    branches: [main]
+    paths: ['marketing/open-design/**', '.github/workflows/studio-release-check.yml']
+permissions:
+  contents: read
+jobs:
+  pinned-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node marketing/open-design/check-release.mjs
