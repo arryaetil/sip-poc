@@ -11,8 +11,10 @@ COPY entrypoint.sh /seed/entrypoint.sh
 COPY gateway.mjs /seed/gateway.mjs
 COPY sip-library.mjs /seed/sip-library.mjs
 COPY export-renderer.mjs /seed/export-renderer.mjs
+COPY powerpoint-template.mjs /seed/powerpoint-template.mjs
 COPY studio-export-script.mjs /seed/studio-export-script.mjs
 COPY studio-preview-script.mjs /seed/studio-preview-script.mjs
+COPY studio-language.mjs /seed/studio-language.mjs
 COPY package.json package-lock.json /seed/
 RUN apk add --no-cache chromium font-noto && cd /seed && npm ci --omit=dev --ignore-scripts
 COPY configure-studio.mjs /seed/configure-studio.mjs

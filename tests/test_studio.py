@@ -47,7 +47,7 @@ def configured(monkeypatch):
 
 
 def test_signed_link_matches_what_the_gateway_verifies(configured):
-    link = studio.signed_link("alice", "/projects/sip-1")
+    link = studio.signed_link("alice", "/projects/sip-1", "de")
     assert link.startswith("https://studio.example/__sip/enter?t=")
     body, signature = link.split("t=", 1)[1].split(".")
     # gateway.mjs: base64url HMAC-SHA256 of the body, no padding
@@ -55,8 +55,15 @@ def test_signed_link_matches_what_the_gateway_verifies(configured):
     assert signature == expected
     claims = json.loads(base64.urlsafe_b64decode(body + "=="))
     assert claims["next"] == "/projects/sip-1"
+    assert claims["lang"] == "de"
     assert claims["sub"] != "alice"  # a pseudonym, not the SIP user id
     assert 0 < claims["exp"] - time.time() <= studio.LINK_SECONDS
+
+
+def test_signed_link_rejects_unsupported_language_by_using_dutch(configured):
+    link = studio.signed_link("alice", language="<script>")
+    body = link.split("t=", 1)[1].split(".")[0]
+    assert json.loads(base64.urlsafe_b64decode(body + "=="))["lang"] == "nl"
 
 
 def test_unconfigured_studio_is_unavailable(monkeypatch):

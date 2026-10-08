@@ -104,3 +104,6 @@ AI label, exactly as in the examples (copy this HTML and CSS; do not replace it 
 - Flat cards with a hairline border and a small radius (4–8px); no heavy shadows.
 - A spectrum colour as a small marker (dot, tag, left border) to code a topic; never large fills of several spectrum colours at once.
 - Footer line on documents: "Connecting performance. | © ibc group".
+## Presentations: official master as the design reference
+
+Before making a presentation, inspect the PNG examples and README in `brand/ibc-group/presentation-reference/` (or `assets/presentation-reference/` in this design system). Use the official Powerpoint Master v1.0 as visual guidance for 16:9 layouts, Ubuntu type, colours, logos and spacing. The copied `official-master.pptx` is the source template, not content to repeat. Never copy sample dates, contact details, placeholder tables, dummy chart data or the words PPT Master into the user's presentation. A cover uses one coherent approved image.

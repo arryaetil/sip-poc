@@ -1079,9 +1079,13 @@ const studioStatus = document.querySelector("#studio-status");
 let studioLastLink = "";
 let studioProjectId = "";
 let pendingStudioOffer = null;
+function syncStudioLanguage() {
+  if(studioLastLink && studioFrame.contentWindow)studioFrame.contentWindow.postMessage({type:"sip-studio-language",language:getLanguage()},new URL(studioLastLink).origin);
+}
 window.addEventListener("message", event => {
   if (!studioLastLink || event.source !== studioFrame.contentWindow || event.origin !== new URL(studioLastLink).origin) return;
   if (event.data?.type === "sip-studio-project" && /^[a-zA-Z0-9_-]{1,128}$/.test(event.data.projectId || "")) studioProjectId = event.data.projectId;
+  if (event.data?.type === "sip-studio-ready") syncStudioLanguage();
   // The trusted Studio prepares the file; SIP owns the browser download so it
   // also works when the Studio is embedded instead of opened in another tab.
   if (event.data?.type === "sip-studio-download" && event.data.blob instanceof Blob &&
@@ -1130,6 +1134,7 @@ async function openMarketingStudio(link = null) {
 
 studioFrame.addEventListener("load", () => {
   if (studioFrame.src) studioStatus.hidden = true;
+  syncStudioLanguage();
 });
 
 document.querySelector("#studio-new-tab").addEventListener("click", async () => {
@@ -1574,6 +1579,7 @@ newKnowledgeChat.addEventListener("click", () => {
 
 languageSwitcher.addEventListener("change", () => {
   setLanguage(languageSwitcher.value);
+  syncStudioLanguage();
   if (currentRole) roleBadge.textContent = t(`role.${currentRole}`);
   if (!views.conversations.hidden) loadConversations();
   if (!views.portfolio.hidden) {

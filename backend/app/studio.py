@@ -120,7 +120,7 @@ def _config() -> tuple[str, str, str, str]:
     return internal, public, token, secret
 
 
-def signed_link(owner_id: str, next_path: str = "/") -> str:
+def signed_link(owner_id: str, next_path: str = "/", language: str = "nl") -> str:
     """A link the gateway accepts once, for LINK_SECONDS, for this user."""
     _, public, _, secret = _config()
     body = base64.urlsafe_b64encode(
@@ -128,6 +128,7 @@ def signed_link(owner_id: str, next_path: str = "/") -> str:
             "sub": hashlib.sha256(owner_id.encode()).hexdigest()[:24],
             "exp": int(time.time()) + LINK_SECONDS,
             "next": next_path,
+            "lang": language if language in {"nl", "en", "de"} else "nl",
             # The gateway accepts each link once (it records the jti).
             "jti": uuid4().hex,
         }).encode()
@@ -169,6 +170,7 @@ def create_project(
     request: MarketingRequest,
     history: list[ConversationMessage],
     sources: list[KnowledgeChatSource],
+    language: str = "nl",
 ) -> str:
     """Create a ready-to-run Open Design project; returns the signed link to open it."""
     internal, _, token, _ = _config()
@@ -232,5 +234,5 @@ def create_project(
         if uploaded.status_code >= 400:
             raise RuntimeError(f"Open Design refused the context file: {uploaded.status_code} {uploaded.text[:200]}")
         # The gateway has already copied the brand files into brand/<brand>/ while creating the project.
-    return signed_link(owner_id, f"/projects/{project_id}")
+    return signed_link(owner_id, f"/projects/{project_id}", language)
 

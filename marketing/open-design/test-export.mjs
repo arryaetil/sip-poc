@@ -3,10 +3,11 @@ import {renderExport, validateExport, exportRoute} from './export-renderer.mjs';
 import {PDFDocument} from 'pdf-lib';
 import {STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT} from './studio-preview-script.mjs';
 import {STUDIO_EXPORT_SCRIPT} from './studio-export-script.mjs';
+import {STUDIO_LANGUAGE_SCRIPT} from './studio-language.mjs';
 import {Script} from 'node:vm';
 import JSZip from 'jszip';
 import {readFile} from 'node:fs/promises';
-for(const script of [STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT,STUDIO_EXPORT_SCRIPT])new Script(script.replace(/^<script[^>]*>|<\/script>$/g,''));
+for(const script of [STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT,STUDIO_EXPORT_SCRIPT,STUDIO_LANGUAGE_SCRIPT])new Script(script.replace(/^<script[^>]*>|<\/script>$/g,''));
 const executable = process.env.STUDIO_CHROMIUM_PATH;
 assert.ok(executable, 'Set STUDIO_CHROMIUM_PATH for the real browser test');
 for (const body of [null, [], {fileName:'../secret.html'}, {fileName:'/private.html'}, {fileName:'post.html',width:99999}, {fileName:'post.html',editable:true}]) {
@@ -53,6 +54,9 @@ assert.equal(singleArchive.ext,'zip');assert.equal(singleArchive.pages,1);
 const singleZip=await JSZip.loadAsync(singleArchive.buffer);
 assert.deepEqual(Object.keys(singleZip.files),['pagina-01.png']);
 assert.deepEqual(await singleZip.file('pagina-01.png').async('nodebuffer'),singleImage.buffer);
+const wrapped='<main style="padding:32px;background:#eee"><article class="post" style="width:400px;height:500px;background:red">Single post</article></main>';
+const wrappedImage=await renderExport('fixture','image',{fileName:'post.html'},async()=>new Response(wrapped),executable);
+assert.deepEqual(wrappedImage.buffer,singleImage.buffer,'Single posts export the artwork itself, never the surrounding canvas');
 // Real generated carousel structure: centered absolute deck with a resize script.
 const centered='<html><head><style>body{margin:0}.preview{display:grid;place-items:center;padding:20px}.viewport{width:100%;height:900px;position:relative;overflow:hidden}.deck{position:absolute;left:50%;top:50%;width:400px;height:500px;transform:translate(-50%,-50%) scale(.5)}.slide{position:absolute;inset:0}</style></head><body><div class="preview"><div class="viewport"><div class="deck"><section data-slide class="slide" style="background:red">Page 1</section><section data-slide class="slide" style="background:blue">Page 2</section></div></div></div><nav>Never export navigation</nav></body></html>';
 const centeredResult=await renderExport('fixture','images',{fileName:'post.html'},async()=>new Response(centered),executable);
