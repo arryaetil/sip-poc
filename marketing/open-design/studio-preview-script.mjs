@@ -1,6 +1,6 @@
 // Fit fixed-size marketing previews; project files and exports stay unchanged.
 export const STUDIO_PREVIEW_SCRIPT = `<script id="sip-studio-preview">(function(){
-function update(){const frames=Array.from(document.querySelectorAll('iframe'));
+function update(){const project=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]{1,128})$/);if(project&&window.parent!==window)window.parent.postMessage({type:'sip-studio-project',projectId:project[1]},SIP_PARENT_ORIGIN);const frames=Array.from(document.querySelectorAll('iframe'));
 const reference=frames.find(f=>(f.getAttribute('src')||'').includes('/raw/'));
 for(const frame of frames){try{const src=frame.getAttribute('src')||'';if(!src.includes('/raw/')&&src!=='about:blank')continue;
 const doc=frame.contentDocument;if(!doc?.body)continue;
