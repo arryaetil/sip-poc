@@ -175,8 +175,9 @@ function upstream(path, init = {}) {
 }
 
 // Opaque preview sandboxes cannot reliably send the session cookie for assets.
-// Bundle only this authenticated project's images/fonts; keep access checks intact.
-async function bundlePreviewAssets(text, pathname) {
+// Give each already-authorised asset a short, exact-file capability instead of
+// duplicating megabytes of base64 in the editor and every thumbnail.
+function bundlePreviewAssets(text, pathname, req) {
   const match=pathname.match(/^\/api\/projects\/([a-zA-Z0-9_-]+)\/raw\/(.+)$/);
   if(!match)return text;
   const prefix='/api/projects/'+match[1]+'/raw/';
@@ -188,14 +189,24 @@ async function bundlePreviewAssets(text, pathname) {
     }
   }
   if(refs.size>100)return text;
+  const session=verify(cookieValue(req.headers.cookie,COOKIE));
+  const exp=Math.min(session?.exp||Infinity,Math.floor(Date.now()/1000)+3600);
   for(const ref of refs){
-    const url=new URL(ref,base);const response=await upstream(url.pathname,{redirect:'error'});
-    if(!response.ok)continue;
-    const bytes=Buffer.from(await response.arrayBuffer());if(bytes.length>8_000_000)continue;
-    const mime=MEDIA_TYPES[nodePath.extname(url.pathname).toLowerCase()]||response.headers.get('content-type')||'application/octet-stream';
-    text=text.replaceAll(ref,'data:'+mime+';base64,'+bytes.toString('base64'));
+    const url=new URL(ref,base);
+    const body=b64(JSON.stringify({typ:'preview-asset',path:url.pathname,exp}));
+    text=text.replaceAll(ref,url.pathname+'?sip_asset='+body+'.'+sign(body));
   }
   return text;
+}
+
+async function previewAsset(req,res,url) {
+  const claims=verify(url.searchParams.get('sip_asset'));
+  if(req.method!=='GET'||claims?.typ!=='preview-asset'||claims.path!==url.pathname||
+    !/^\/api\/projects\/[a-zA-Z0-9_-]+\/raw\/.+\.(png|jpe?g|webp|gif|svg|ttf|woff2?)$/i.test(url.pathname))return deny(res);
+  const response=await upstream(url.pathname,{redirect:'error'});
+  res.writeHead(response.status,{'content-type':response.headers.get('content-type')||'application/octet-stream',
+    'access-control-allow-origin':'*','cache-control':'private, max-age=300','x-content-type-options':'nosniff'});
+  res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 // Read from disk, not through Open Design's API: its design-system file listing
@@ -371,7 +382,7 @@ function forward(req, res, body) {
         response.on('data', (chunk) => chunks.push(chunk));
         response.on('end', async () => {
           let text = Buffer.concat(chunks).toString('utf8');
-          if(artwork)text=await bundlePreviewAssets(text,pathname).catch(()=>text);
+          if(artwork)text=bundlePreviewAssets(text,pathname,req);
           const previewScript = STUDIO_PREVIEW_SCRIPT.replace('SIP_PARENT_ORIGIN', JSON.stringify(SIP_ORIGIN));
           const base = new URL(pathname, `https://${req.headers.host}`).href.replaceAll('&','&amp;').replaceAll('"','&quot;');
           const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + STUDIO_EXPORT_SCRIPT + previewScript;
@@ -404,6 +415,7 @@ http
     const url = new URL(req.url || '/', 'http://gateway');
     if (url.pathname === '/__sip/enter') return enter(req, res, url);
     if (url.pathname === '/api/health') return proxy(req, res); // Railway health check
+    if (url.searchParams.has('sip_asset')) return previewAsset(req,res,url).catch(()=>deny(res));
     if (!authorised(req)) return deny(res);
     if (!sameOriginWrite(req)) {
       securityHeaders(res);
