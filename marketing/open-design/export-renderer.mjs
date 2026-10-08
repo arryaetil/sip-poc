@@ -10,6 +10,7 @@ export function validateExport(body) {
   if (body.editable === true) throw error(422, 'Deze Studio exporteert PowerPoint als afbeeldingen per pagina. Bewerkbare PowerPoint wordt hier nog niet ondersteund.');
   if (body.imageFormat && !['png', 'jpeg', 'jpg', 'webp'].includes(body.imageFormat)) throw error(400, 'Kies PNG, JPG of WebP.');
   for (const key of ['width', 'height']) if (body[key] != null && (!Number.isInteger(body[key]) || body[key] < 100 || body[key] > 4096)) throw error(400, 'Afmetingen moeten tussen 100 en 4096 pixels liggen.');
+  if (body.index != null && (!Number.isInteger(body.index) || body.index < 0 || body.index > 39)) throw error(400, 'Kies een geldige pagina.');
 }
 export async function renderExport(projectId, format, body, upstream, executablePath = process.env.STUDIO_CHROMIUM_PATH || '/usr/bin/chromium-browser') {
   validateExport(body);
@@ -59,15 +60,17 @@ export async function renderExport(projectId, format, body, upstream, executable
     }
     if (format==='pptx' && !slides) throw error(422,'Dit ontwerp bevat geen herkenbare presentatiepagina’s. Exporteer als PDF of afbeelding.');
     const count=slides?await slides.count():1;
+    if(body.index!=null && body.index>=count)throw error(400,'Deze pagina bestaat niet in het ontwerp.');
     if(count>40)throw error(413,'Exporteer maximaal 40 pagina’s tegelijk.');
     const captures=[];
     for(let i=0;i<(format==='image'?1:count);i++) {
-      let target=slides?slides.nth(i):page.locator('[data-export-root], .poster, .post, .artboard, main').first();
+      const index=format==='image'?(body.index||0):i;
+      let target=slides?slides.nth(index):page.locator('[data-export-root], .poster, .post, .artboard, main').first();
       if(await target.count()===0)target=page.locator('body');
       if(slides) {
         // Carousel pages normally sit outside an overflow-hidden viewport.
         // Show one page at a time without editing the project's source file.
-        await slides.evaluateAll((nodes,index)=>nodes.forEach((n,j)=>{n.style.setProperty('display',j===index?'block':'none','important');n.style.setProperty('transform','none','important');n.style.setProperty('opacity','1','important');n.style.setProperty('visibility','visible','important');}),i);
+        await slides.evaluateAll((nodes,index)=>nodes.forEach((n,j)=>{n.style.setProperty('display',j===index?'block':'none','important');n.style.setProperty('transform','none','important');n.style.setProperty('opacity','1','important');n.style.setProperty('visibility','visible','important');}),index);
         await target.evaluate(node=>{for(let p=node.parentElement;p&&p!==document.body;p=p.parentElement){p.style.setProperty('transform','none','important');p.style.setProperty('overflow','visible','important');}});
       }
       const box=await target.boundingBox();
@@ -102,5 +105,5 @@ export async function handleExport(req,res,match,upstream) {
     const rendered=await renderExport(match[1],match[2],body,upstream);
     const title=String(body.title||body.fileName).replace(/\.html?$/i,'').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,100)||'ontwerp';
     res.writeHead(200,{'content-type':rendered.type,'content-disposition':`attachment; filename="${title}.${rendered.ext}"`,'content-length':rendered.buffer.length,'cache-control':'no-store','x-sip-export-pages':String(rendered.pages)});res.end(rendered.buffer);
-  } catch(e){console.error('studio export failed:',e.status||500,e.status?e.message:'renderer failure');res.writeHead(e.status||502,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:{code:'SIP_EXPORT_FAILED',message:e.status?e.message:'Exporteren is niet gelukt. Probeer opnieuw.'}}));}
+  } catch(e){console.error('studio export failed:',e.status||500,String(e.message||'renderer failure').slice(0,500));res.writeHead(e.status||502,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:{code:'SIP_EXPORT_FAILED',message:e.status?e.message:'Exporteren is niet gelukt. Probeer opnieuw.'}}));}
 }

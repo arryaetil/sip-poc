@@ -18,7 +18,7 @@ import nodePath from 'node:path';
 import { currentLibrary, syncLibrary, LIBRARY_NOTE } from './sip-library.mjs';
 import { exportRoute, handleExport } from './export-renderer.mjs';
 import { STUDIO_EXPORT_SCRIPT } from './studio-export-script.mjs';
-import { STUDIO_PREVIEW_SCRIPT } from './studio-preview-script.mjs';
+import { STUDIO_PREVIEW_SCRIPT, ARTWORK_PREVIEW_SCRIPT } from './studio-preview-script.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const UPSTREAM_PORT = Number(process.env.OD_INTERNAL_PORT || 7456);
@@ -159,8 +159,7 @@ const BRANDS = ['etil', 'ibc-group'];
 const ASSET_TYPES = /\.(png|jpe?g|svg|webp|ttf)$/i;
 const NO_INVENTION = 'Never invent customers, figures, results or capabilities. Never download or hotlink photos from the internet: '
   + 'use the brand images, CSS in the brand colours, or a generated image labelled as AI-generated. '
-  + 'Before you design, open the matching finished example in brand/<brand>/examples/ and look at it; before you finish, compare '
-  + 'your design with it and fix every difference. In particular: place the official logo PNG for the background (the white one on dark) whole, with its colour spectrum '
+  + 'Before you design, open the matching brand example in brand/<brand>/examples/. Use its visual brand principles while preserving the requested format, exact approved hook, page count and outline. Keep captions ready to publish, with technical source audit notes in a separate sources.md. In particular: place the official logo PNG for the background (the white one on dark) whole, with its colour spectrum '
   + 'bar (never a white bar, never a logo drawn in HTML), and use the AI label HTML and CSS from the design system (an outlined '
   + 'pill "AI-GENERATED VISUAL" with "provided by ibc group marketing" under it), never a plain line of text.';
 const ASK_BRAND = 'This project was started in the studio without a house style. Before you design anything, ask the user one short '
@@ -320,8 +319,10 @@ function forward(req, res, body) {
     if (!HOP_BY_HOP.has(key) && key !== 'cookie' && key !== 'authorization' && key !== 'host') headers[key] = value;
   }
   // A page is changed before it is sent on, so ask for it uncompressed.
-  const page = wantsPage(req) && !new URL(req.url, 'http://gateway').pathname.startsWith('/api/');
-  if (page) {
+  const pathname = new URL(req.url, 'http://gateway').pathname;
+  const page = wantsPage(req) && !pathname.startsWith('/api/');
+  const artwork = req.method === 'GET' && /^\/api\/projects\/[a-zA-Z0-9_-]+\/raw\/.*\.html?$/i.test(pathname);
+  if (page || artwork) {
     delete headers['accept-encoding'];
     // Without these the daemon answers 304 and the browser shows its stored copy,
     // which has no style block.
@@ -340,13 +341,15 @@ function forward(req, res, body) {
       }
       out['content-security-policy'] = `frame-ancestors 'self' ${SIP_ORIGIN}`;
       const html = String(response.headers['content-type'] || '').includes('text/html');
-      if (page && html && !response.headers['content-encoding']) {
+      if ((page || artwork) && html && !response.headers['content-encoding']) {
         const chunks = [];
         response.on('data', (chunk) => chunks.push(chunk));
         response.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8');
           const previewScript = STUDIO_PREVIEW_SCRIPT.replace('SIP_PARENT_ORIGIN', JSON.stringify(SIP_ORIGIN));
-          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}${STUDIO_EXPORT_SCRIPT}${previewScript}</head>`) : text);
+          const base = new URL(pathname, `https://${req.headers.host}`).href.replaceAll('&','&amp;').replaceAll('"','&quot;');
+          const insert = artwork ? ((!/<base\b/i.test(text) ? `<base href="${base}">` : '') + ARTWORK_PREVIEW_SCRIPT) : STUDIO_STYLE + STUDIO_EXPORT_SCRIPT + previewScript;
+          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${insert}</head>`) : text);
           delete out['etag'];
           delete out['last-modified'];
           out['cache-control'] = 'no-store';

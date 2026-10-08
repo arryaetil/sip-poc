@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {renderExport, validateExport, exportRoute} from './export-renderer.mjs';
 import {PDFDocument} from 'pdf-lib';
-import {STUDIO_PREVIEW_SCRIPT} from './studio-preview-script.mjs';
+import {STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT} from './studio-preview-script.mjs';
 import {STUDIO_EXPORT_SCRIPT} from './studio-export-script.mjs';
 import {Script} from 'node:vm';
-for(const script of [STUDIO_PREVIEW_SCRIPT,STUDIO_EXPORT_SCRIPT])new Script(script.replace(/^<script[^>]*>|<\/script>$/g,''));
+for(const script of [STUDIO_PREVIEW_SCRIPT,ARTWORK_PREVIEW_SCRIPT,STUDIO_EXPORT_SCRIPT])new Script(script.replace(/^<script[^>]*>|<\/script>$/g,''));
 const executable = process.env.STUDIO_CHROMIUM_PATH;
 assert.ok(executable, 'Set STUDIO_CHROMIUM_PATH for the real browser test');
 for (const body of [null, [], {fileName:'../secret.html'}, {fileName:'/private.html'}, {fileName:'post.html',width:99999}, {fileName:'post.html',editable:true}]) {
@@ -36,6 +36,9 @@ for(const imageFormat of ['jpeg','webp']){
 assert.deepEqual(reads,['/api/projects/fixture/export/nested/post.html?inline=1&versionId=version-1']);
 await assert.rejects(renderExport('fixture','image',{fileName:'post.html'},async()=>new Response('<img src="https://blocked.invalid/missing.png">'),executable),e=>e.status===422);
 await assert.rejects(renderExport('fixture','image',{fileName:'post.html'},async()=>new Response('',{status:404}),executable),e=>e.status===404);
+const first=await renderExport('fixture','image',{fileName:'post.html',index:0},upstream,executable);
+const second=await renderExport('fixture','image',{fileName:'post.html',index:1},upstream,executable);
+assert.notDeepEqual(first.buffer,second.buffer,'Selecting another carousel page must change the exported image');
 // A previous failed render must release the browser/semaphore.
 assert.equal((await renderExport('fixture','image',{fileName:'post.html'},upstream,executable)).pages,1);
 console.log('Real Chromium exports: PNG, two-page PDF/PPTX, historical version, failed asset, isolation and recovery passed');
@@ -43,11 +46,11 @@ const {chromium}=await import('playwright-core');
 const browser=await chromium.launch({executablePath:executable,headless:true});
 try{
  const page=await browser.newPage({viewport:{width:1200,height:800}});
- await page.route('http://preview.invalid/**',route=>route.fulfill({contentType:'text/html',body:'<html><body style="margin:0"><main class="post" style="width:1080px;height:1350px;background:red">The whole design<footer>Logo</footer></main></body></html>'}));
+ await page.route('http://preview.invalid/**',route=>route.fulfill({contentType:'text/html',body:'<html><head>'+ARTWORK_PREVIEW_SCRIPT+'</head><body style="margin:0"><main class="post" style="width:1080px;height:1350px;background:red">The whole design<footer>Logo</footer></main></body></html>'}));
  await page.setContent('<iframe style="width:600px;height:600px" src="http://preview.invalid/api/projects/fixture/raw/post.html"></iframe>'+STUDIO_PREVIEW_SCRIPT);
  // Both documents must share an origin for the preview compatibility script.
  await page.goto('http://preview.invalid/app');
- await page.setContent('<iframe style="width:600px;height:600px" src="/api/projects/fixture/raw/post.html"></iframe>'+STUDIO_PREVIEW_SCRIPT);
+ await page.setContent('<iframe sandbox="allow-scripts" style="width:600px;height:600px" src="/api/projects/fixture/raw/post.html"></iframe>'+STUDIO_PREVIEW_SCRIPT);
  const frame=page.frameLocator('iframe');
  await frame.locator('#sip-preview-fit').waitFor();
  const box=await frame.locator('main').boundingBox();

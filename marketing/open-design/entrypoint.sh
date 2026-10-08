@@ -61,4 +61,4 @@ node /seed/configure-studio.mjs
 su -s /bin/sh open-design -c "cd /app && HOME='$DATA_DIR/home' OD_DATA_DIR='$DATA_DIR' OD_PORT='$INTERNAL_PORT' OD_BIND_HOST=127.0.0.1 exec node apps/daemon/dist/cli.js --no-open" &
 
 export OD_INTERNAL_PORT="$INTERNAL_PORT"
-exec su -s /bin/sh open-design -c "exec node /seed/gateway.mjs"
+exec su -s /bin/sh open-design -c "HOME='$DATA_DIR/home' exec node /seed/gateway.mjs"
