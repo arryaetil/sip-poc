@@ -10,6 +10,11 @@ COPY design-systems /seed/design-systems
 COPY entrypoint.sh /seed/entrypoint.sh
 COPY gateway.mjs /seed/gateway.mjs
 COPY sip-library.mjs /seed/sip-library.mjs
+COPY export-renderer.mjs /seed/export-renderer.mjs
+COPY studio-export-script.mjs /seed/studio-export-script.mjs
+COPY studio-preview-script.mjs /seed/studio-preview-script.mjs
+COPY package.json package-lock.json /seed/
+RUN apk add --no-cache chromium font-noto && cd /seed && npm ci --omit=dev --ignore-scripts
 COPY configure-studio.mjs /seed/configure-studio.mjs
 RUN chmod +x /seed/entrypoint.sh
 

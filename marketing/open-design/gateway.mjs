@@ -16,6 +16,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import nodePath from 'node:path';
 import { currentLibrary, syncLibrary, LIBRARY_NOTE } from './sip-library.mjs';
+import { exportRoute, handleExport } from './export-renderer.mjs';
+import { STUDIO_EXPORT_SCRIPT } from './studio-export-script.mjs';
+import { STUDIO_PREVIEW_SCRIPT } from './studio-preview-script.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const UPSTREAM_PORT = Number(process.env.OD_INTERNAL_PORT || 7456);
@@ -255,6 +258,8 @@ async function createProject(req, res, body) {
 
 function proxy(req, res) {
   const pathname = new URL(req.url || '/', 'http://gateway').pathname;
+  const exportMatch = req.method === 'POST' && exportRoute(pathname);
+  if (exportMatch) return handleExport(req, res, exportMatch, upstream);
   if (req.method === 'POST' && pathname === '/api/projects') {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
@@ -292,7 +297,10 @@ const STUDIO_CSS = '[data-testid="entry-nav-community"], [data-testid="entry-nav
   + ' [data-testid="entry-nav-plugins"], [data-testid="entry-settings-button"],'
   + ' .entry-nav-rail__footer, .home-hero__workdir-row, .home-hero__execution-switcher,'
   + ' [data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],'
-  + ' [data-testid="plugins-home-section"] { display: none !important; }';
+  + ' [data-testid="plugins-home-section"], .home-hero [aria-label="Creation type"] { display: none !important; }'
+  + ' .home-hero__title { font-size:0!important; } .home-hero__title>* { display:none!important; }'
+  + ' .home-hero__title::after { content:"Wat wil je maken?";font:600 36px Ubuntu,sans-serif; }'
+  + ' .home-hero__subtitle { font-size:0!important; } .home-hero__subtitle::after { content:"Beschrijf je post, carousel of presentatie. Kies de huisstijl; SIP-kennis wordt automatisch meegenomen.";font:14px Ubuntu,sans-serif; }';
 // The style block, plus a few lines that put it back should the app rebuild <head>
 // while it starts (React owns the whole document).
 export const STUDIO_STYLE = `<style id="sip-studio-simplify">${STUDIO_CSS}</style>`
@@ -312,7 +320,7 @@ function forward(req, res, body) {
     if (!HOP_BY_HOP.has(key) && key !== 'cookie' && key !== 'authorization' && key !== 'host') headers[key] = value;
   }
   // A page is changed before it is sent on, so ask for it uncompressed.
-  const page = wantsPage(req);
+  const page = wantsPage(req) && !new URL(req.url, 'http://gateway').pathname.startsWith('/api/');
   if (page) {
     delete headers['accept-encoding'];
     // Without these the daemon answers 304 and the browser shows its stored copy,
@@ -337,7 +345,7 @@ function forward(req, res, body) {
         response.on('data', (chunk) => chunks.push(chunk));
         response.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8');
-          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}</head>`) : text);
+          const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}${STUDIO_EXPORT_SCRIPT}${STUDIO_PREVIEW_SCRIPT}</head>`) : text);
           delete out['etag'];
           delete out['last-modified'];
           out['cache-control'] = 'no-store';
