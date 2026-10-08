@@ -51,6 +51,12 @@ const centered='<html><head><style>body{margin:0}.preview{display:grid;place-ite
 const centeredResult=await renderExport('fixture','images',{fileName:'post.html'},async()=>new Response(centered),executable);
 const centeredZip=await JSZip.loadAsync(centeredResult.buffer);
 assert.deepEqual(await centeredZip.file('pagina-01.png').async('nodebuffer'),first.buffer,'Centered wrappers must produce the complete same page as an unwrapped slide');
+const tall= centered.replaceAll('400px','1080px').replaceAll('500px','1350px').replace('</body>','<script>function fit(){document.querySelector(".deck").style.transform="translate(-50%,-50%) scale(.5)"}window.addEventListener("resize",fit);fit();</script></body>');
+const plainTall=fixture.replaceAll('400px','1080px').replaceAll('500px','1350px');
+const expectedTall=await renderExport('fixture','image',{fileName:'post.html'},async()=>new Response(plainTall),executable);
+const resized=await renderExport('fixture','images',{fileName:'post.html'},async()=>new Response(tall),executable);
+const resizedZip=await JSZip.loadAsync(resized.buffer);
+assert.deepEqual(await resizedZip.file('pagina-01.png').async('nodebuffer'),expectedTall.buffer,'A real resize handler must not recenter or rescale tall exported pages');
 // A previous failed render must release the browser/semaphore.
 assert.equal((await renderExport('fixture','image',{fileName:'post.html'},upstream,executable)).pages,1);
 console.log('Real Chromium exports: PNG, two-page PDF/PPTX, historical version, failed asset, isolation and recovery passed');
