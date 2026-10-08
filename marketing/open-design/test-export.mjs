@@ -104,4 +104,10 @@ try{
  const embeddedDownload=page.waitForEvent('download');await page.frameLocator('iframe').getByRole('button',{name:'Save'}).click();const embedded=await embeddedDownload;
  assert.equal(embedded.suggestedFilename(),'embedded.zip');assert.deepEqual(await readFile(await embedded.path()),carousel.buffer);
  console.log('Embedded Studio download through the actual SIP message handler passed');
+ await page.unroute('http://download.invalid/**');
+ await page.route('http://download.invalid/**',route=>route.request().method()==='POST'?route.fulfill({status:200,contentType:'image/png',headers:{'content-disposition':'attachment; filename="single.png"'},body:first.buffer}):route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT.replace("\'SIP_DOWNLOAD_PARENT_ORIGIN\'",JSON.stringify('http://embedded.invalid'))+'</head><body><div class="image-export-modal"><button>Save</button></div></body></html>'}));
+ await page.reload();
+ const pngDownload=page.waitForEvent('download');await page.frameLocator('iframe').getByRole('button',{name:'Save'}).click();const png=await pngDownload;
+ assert.equal(png.suggestedFilename(),'single.png');assert.deepEqual(await readFile(await png.path()),first.buffer);
+ console.log('Single PNG through embedded Studio download passed');
 }finally{await browser.close();}
