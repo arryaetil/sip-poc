@@ -68,11 +68,11 @@
     </div>
 
     <section class="login-panel" aria-labelledby="login-title">
-      <h1 id="login-title">Log in</h1>
+      <h1 id="login-title" data-text="title">Log in</h1>
       <form id="login-form">
-        <label>Email address<input id="email" type="email" autocomplete="username" required autofocus></label>
-        <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
-        <button id="submit" type="submit">Sign in</button>
+        <label><span data-text="email">Email address</span><input id="email" type="email" autocomplete="username" required autofocus></label>
+        <label><span data-text="password">Password</span><input id="password" type="password" autocomplete="current-password" required></label>
+        <button id="submit" type="submit" data-text="submit">Sign in</button>
         <p id="error" role="alert"></p>
       </form>
     </section>
@@ -84,6 +84,21 @@
   </div>
 
   <script>
+    // The language chosen in SIP (stored by i18n.js), else the browser's.
+    const TEXT = {
+      en: { page: "Sign in · SIP", title: "Log in", email: "Email address", password: "Password", submit: "Sign in", failed: "Incorrect email or password.", unreachable: "SIP cannot be reached. Try again in a moment." },
+      nl: { page: "Inloggen · SIP", title: "Inloggen", email: "E-mailadres", password: "Wachtwoord", submit: "Inloggen", failed: "Onjuist e-mailadres of wachtwoord.", unreachable: "SIP is niet bereikbaar. Probeer het zo opnieuw." },
+      de: { page: "Anmelden · SIP", title: "Anmelden", email: "E-Mail-Adresse", password: "Passwort", submit: "Anmelden", failed: "E-Mail-Adresse oder Passwort ist falsch.", unreachable: "SIP ist nicht erreichbar. Versuche es gleich noch einmal." },
+    };
+    let language = "en";
+    try { language = localStorage.getItem("sip_language") || ""; } catch {}
+    if (!TEXT[language]) language = (navigator.language || "en").slice(0, 2);
+    if (!TEXT[language]) language = "en";
+    const text = TEXT[language];
+    document.documentElement.lang = language;
+    document.title = text.page;
+    document.querySelectorAll("[data-text]").forEach((element) => { element.textContent = text[element.dataset.text]; });
+
     document.querySelector("#login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const button = document.querySelector("#submit");
@@ -93,16 +108,19 @@
       try {
         const response = await fetch("/api/auth/login", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-SIP-Language": language },
           body: JSON.stringify({
             email: document.querySelector("#email").value,
             password: document.querySelector("#password").value
           })
         });
-        if (!response.ok) throw new Error("Incorrect email or password.");
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(typeof data.detail === "string" ? data.detail : text.failed);
+        }
         window.location.replace("/");
       } catch (loginError) {
-        error.textContent = loginError.message;
+        error.textContent = loginError instanceof TypeError ? text.unreachable : loginError.message;
         button.disabled = false;
       }
     });

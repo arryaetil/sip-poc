@@ -211,11 +211,16 @@ async function api(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
-    headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      // The server answers error messages in this language.
+      "X-SIP-Language": getLanguage(),
+      ...(options.headers || {}),
+    },
   });
   if (response.status === 204) return null;
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || "The request failed");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : t("error.request_failed"));
   return data;
 }
 
@@ -346,6 +351,8 @@ function showView(name) {
 function resizeTextArea(textarea) {
   textarea.style.height = "auto";
   textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  // A scrollbar only once the text is taller than the box may grow.
+  textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
 }
 
 function revealMessage(message, text, container) {

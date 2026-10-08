@@ -1112,3 +1112,46 @@ a.primary-button { display: inline-flex; align-items: center; text-decoration: n
 .history-status-change { margin: 0; padding: 6px 10px; border-radius: 6px; background: var(--seasal); font-size: 14px; }
 .history-restore { width: 100%; }
 #review-view .header-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+/* One shape language, as in the header: pills for buttons and small controls,
+   soft rounded corners for fields, menus and panels. Kept last so it wins over
+   the older square corners above. */
+:root {
+  --radius-pill: 999px;
+  --radius-field: 12px;
+  --radius-item: 10px;
+}
+.primary-button, .secondary-button, .danger-button, a.primary-button { border-radius: var(--radius-pill); padding-left: 18px; padding-right: 18px; }
+.lead-add-criterion { border-radius: var(--radius-pill); }
+.field input, .field textarea, .field select, .search-field input,
+.create-user-form input, .create-user-form select,
+.portfolio-filters select, .header-actions select,
+.lead-criterion select, .lead-criterion input {
+  border-radius: var(--radius-field);
+  border-color: var(--border);
+  transition: border-color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .field input:hover, .field textarea:hover, .field select:hover, .search-field input:hover,
+  .portfolio-filters select:hover, .create-user-form input:hover, .create-user-form select:hover { border-color: var(--border-strong); }
+}
+.nav-item { border-radius: var(--radius-item); }
+.readiness { border-radius: var(--radius-field); }
+.user .message-content { border-radius: 16px 16px 4px 16px; }
+.delete-icon, .source-panel-close { border-radius: var(--radius-pill); }
+.text-button { border-radius: 6px; }
+
+/* Dropdowns (chat history, portfolio filters) look like the language picker in the header. */
+.header-actions select, .portfolio-filters select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--seasal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235e6268' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center;
+  padding: 10px 34px 10px 16px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.header-actions select:hover, .portfolio-filters select:hover { border-color: var(--border); }
+.primary-button, .secondary-button, .danger-button { white-space: nowrap; }
+.chat-form textarea { overflow-y: hidden; }

@@ -20,6 +20,8 @@ from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -72,6 +74,7 @@ from app.knowledge import (
 )
 from app.retrieval import retrieve
 from app.store import ContextStore, EmailAlreadyExists, verify_password
+from app.messages import language_of, translate
 from app.uploads import MAX_FILE_BYTES, extract_text, safe_filename
 
 
@@ -280,6 +283,25 @@ def _role_allows(role: str, method: str, path: str) -> bool:
     return False
 
 
+def _translated(request: Request, message):
+    """A server message in the language the browser says SIP is shown in."""
+    return translate(message, language_of(request.headers.get("x-sip-language")))
+
+
+@app.exception_handler(StarletteHTTPException)
+async def translated_http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    return JSONResponse({"detail": _translated(request, exc.detail)}, status_code=exc.status_code, headers=exc.headers)
+
+
+@app.exception_handler(RequestValidationError)
+async def translated_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # Keep the field details for developers, and give the page one readable sentence.
+    return JSONResponse(
+        {"detail": _translated(request, "Some information is missing or not valid."), "errors": exc.errors()},
+        status_code=422,
+    )
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     secret = _session_secret()
@@ -289,12 +311,12 @@ async def require_login(request: Request, call_next):
     identity = _session_identity(request, secret)
     if identity is None:
         if request.url.path.startswith("/api/"):
-            return JSONResponse({"detail": "Authentication required"}, status_code=401)
+            return JSONResponse({"detail": _translated(request, "Authentication required")}, status_code=401)
         return RedirectResponse("/login", status_code=303)
 
     email, role = identity
     if request.url.path.startswith("/api/") and not _role_allows(role, request.method, request.url.path):
-        return JSONResponse({"detail": "Your role does not have access to this action."}, status_code=403)
+        return JSONResponse({"detail": _translated(request, "Your role does not have access to this action.")}, status_code=403)
 
     request.state.user_email = email
     request.state.user_role = role
