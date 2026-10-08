@@ -1161,3 +1161,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+
+/* The composer panel already marks focus; avoid a second rectangular ring inside it. */
+.launcher-form textarea:focus-visible, .chat-form textarea:focus-visible { outline: none; }
+@media (forced-colors: active) {
+  .launcher-form:focus-within, .chat-form:focus-within { outline: 2px solid Highlight; outline-offset: 2px; }
+}
