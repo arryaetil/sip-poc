@@ -195,7 +195,7 @@ function renderContextChanges(changes, container) {
       const mark = document.createElement("span");
       mark.className = "context-change-mark";
       mark.setAttribute("aria-label", t(kind === "added" ? "history.added" : "history.removed"));
-      mark.textContent = kind === "added" ? "+" : "−";
+      mark.textContent = kind === "added" ? "+" : "âˆ’";
       line.append(mark, document.createTextNode(text));
       block.append(line);
     });
@@ -482,7 +482,7 @@ conversationStartForm.addEventListener("submit", async (event) => {
   conversationStartSend.disabled = true;
   conversationStartMessage.value = "";
   currentConversation = null;
-  builderTitle.textContent = message.length > 64 ? `${message.slice(0, 61)}…` : message;
+  builderTitle.textContent = message.length > 64 ? `${message.slice(0, 61)}â€¦` : message;
   messages.replaceChildren();
   addMessage(message, "user");
   readiness.hidden = true;
@@ -745,7 +745,7 @@ function portfolioItems() {
     ...portfolioContexts.map((context) => ({
       ...context,
       kind: "context",
-      origin: "SIP",
+      origin: "context",
     })),
     ...portfolioSources.map((source) => ({
       ...source,
@@ -767,7 +767,7 @@ function populatePortfolioFilters(items) {
   origins.forEach((origin) => {
     const option = document.createElement("option");
     option.value = origin;
-    option.textContent = origin;
+    option.textContent = origin === "context" ? t("portfolio.origin_context") : origin;
     portfolioFilterOrigin.append(option);
   });
   if (origins.includes(selected)) portfolioFilterOrigin.value = selected;
@@ -825,7 +825,7 @@ function renderPortfolio() {
     status.textContent = t(`status.${item.status}`);
     const origin = document.createElement("span");
     origin.className = "portfolio-date";
-    origin.textContent = item.origin;
+    origin.textContent = item.origin === "context" ? t("portfolio.origin_context") : item.origin;
     open.append(description, status, origin);
     row.append(open);
     if (item.kind === "context" && currentRole !== "sales") {
@@ -1735,7 +1735,7 @@ function shortDate(value) {
 function poTargetLabel(target) {
   if (target.kind === "backlog") return t("po.target_backlog");
   const name = target.timeframe === "current" ? t("po.target_current", { name: target.name }) : target.name;
-  return target.start && target.finish ? `${name} (${shortDate(target.start)} – ${shortDate(target.finish)})` : name;
+  return target.start && target.finish ? `${name} (${shortDate(target.start)} â€“ ${shortDate(target.finish)})` : name;
 }
 
 function newConfirmationId() {
@@ -1807,7 +1807,7 @@ function storyDraftCard(record) {
     link.href = record.devops_url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = `#${record.devops_id} — ${content.title}`;
+    link.textContent = `#${record.devops_id} â€” ${content.title}`;
     created.append(t("po.created_in_devops"), " ", link);
     card.append(created);
   }
@@ -1835,7 +1835,7 @@ function storyDraftCard(record) {
   const points = document.createElement("select");
   points.name = "story_points";
   ["", 1, 2, 3, 5, 8, 13, 21].forEach((value) => {
-    const option = new Option(value === "" ? "—" : String(value), String(value));
+    const option = new Option(value === "" ? "â€”" : String(value), String(value));
     if (String(content.story_points ?? "") === String(value)) option.selected = true;
     points.add(option);
   });
@@ -1868,7 +1868,7 @@ function storyDraftCard(record) {
 
   const priority = document.createElement("select");
   priority.name = "priority";
-  ["", 1, 2, 3, 4].forEach((value) => priority.add(new Option(value === "" ? "—" : String(value), String(value))));
+  ["", 1, 2, 3, 4].forEach((value) => priority.add(new Option(value === "" ? "â€”" : String(value), String(value))));
   priority.value = String(content.priority ?? "");
   const remaining = document.createElement("input");
   remaining.name = "remaining_work";
@@ -2162,7 +2162,7 @@ function workItemResultCard(result) {
       detail.assigned_to || t("po.unassigned"),
       detail.iteration_path,
       (detail.tags || []).length ? `${t("po.field.tags")}: ${detail.tags.join(", ")}` : "",
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean).join(" Â· ");
     card.append(head, meta);
     [["description", "po.change_field.description"], ["entry_criteria", "po.change_field.entry_criteria"],
       ["acceptance_criteria", "po.change_field.acceptance_criteria"]].forEach(([name, key]) => {
@@ -2170,7 +2170,7 @@ function workItemResultCard(result) {
       label.textContent = t(key);
       const text = document.createElement("p");
       text.className = "work-items-text";
-      text.textContent = detail[name] || "—";
+      text.textContent = detail[name] || "â€”";
       card.append(label, text);
     });
   } else if (!result.items.length) {
@@ -2196,7 +2196,7 @@ function workItemResultCard(result) {
           WORK_ITEM_TYPES.includes(item.work_item_type) ? t(`po.type.${typeKey(item.work_item_type)}`) : item.work_item_type,
           item.story_points != null ? t("po.points", { n: item.story_points }) : "",
           item.assigned_to || t("po.unassigned"),
-        ].filter(Boolean).join(" · ");
+        ].filter(Boolean).join(" Â· ");
         entry.append(workItemLink(item), ` ${item.title} `, meta);
         list.append(entry);
       });
@@ -2255,9 +2255,9 @@ function workItemChangeCard(record) {
     field.scope = "row";
     field.textContent = t(`po.change_field.${change.field}`);
     const before = document.createElement("td");
-    before.textContent = change.before || "—";
+    before.textContent = change.before || "â€”";
     const after = document.createElement("td");
-    after.textContent = change.after || "—";
+    after.textContent = change.after || "â€”";
     line.append(field, before, after);
     table.append(line);
   });
