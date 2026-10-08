@@ -65,6 +65,10 @@ const upstream = http.createServer((req, res) => {
       return res.end('{}');
     }
     if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(url.pathname)) runs.push(JSON.parse(body.toString()));
+    if (url.pathname === '/api/projects/p1/raw/post.html') {
+      res.writeHead(200, {'content-type':'text/html; charset=utf-8'});
+      return res.end('<html><head><title>Post</title></head><body><main class="post">Artwork</main></body></html>');
+    }
     if (url.pathname === '/page') {
       // Like Open Design: pages are compressed when the browser allows it.
       if (String(req.headers['accept-encoding'] || '').includes('gzip')) { res.writeHead(500); return res.end('compressed'); }
@@ -172,6 +176,10 @@ try {
   assert.equal(page.headers.get('cache-control'), 'no-store');
   assert.equal(page.headers.get('etag'), null);
   assert.match(pageText, /<script id="sip-studio-keep">/);
+  const preview = await (await fetch(`${base}/api/projects/p1/raw/post.html`, {headers:{cookie}})).text();
+  assert.match(preview, /sip-artwork-preview/);
+  assert.ok(preview.includes(`<base href="${base.replace('http:','https:')}/api/projects/p1/raw/post.html">`));
+  assert.doesNotMatch(preview, /sip-studio-simplify|sip-studio-export/);
   assert.doesNotMatch(await (await fetch(`${base}/other`, { headers: { cookie } })).text(), /sip-studio-simplify/);
   console.log('studio gateway: brand files from disk, house style for studio projects, pass-through, session cookie and simplified page checks passed');
 } finally {

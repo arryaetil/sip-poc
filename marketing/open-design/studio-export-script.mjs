@@ -1,5 +1,7 @@
 // Compatibility for the upstream desktop PDF command in a hosted Studio.
 export const STUDIO_EXPORT_SCRIPT = `<script id="sip-studio-export">(function(){
+// Use normal browser downloads, including embedded browsers without a native save dialog.
+try{window.showSaveFilePicker=undefined;}catch{}
 const original=window.fetch.bind(window);
 window.fetch=async function(input,options){
   const url=new URL(typeof input==='string'?input:input.url,location.href);
