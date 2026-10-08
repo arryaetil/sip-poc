@@ -447,8 +447,8 @@ function renderConversation(conversation, animateLatest = false) {
   const actionLabel = isUpdate ? t("builder.review_changes") : t("builder.save_to_portfolio");
   if (isSaved) {
     readinessText.textContent = isUpdate ? t("builder.changes_saved_note") : t("builder.saved_note");
-    saveToPortfolio.textContent = isUpdate ? t("builder.changes_saved") : t("builder.saved_to_portfolio");
-    saveToPortfolio.disabled = true;
+    saveToPortfolio.textContent = t("builder.open_saved_context");
+    saveToPortfolio.disabled = false;
   } else if (conversation.is_ready_to_save) {
     readinessText.textContent = conversation.readiness_reason || t("builder.ready_note_default");
     saveToPortfolio.textContent = actionLabel;
@@ -531,7 +531,7 @@ function formatDate(value) {
 }
 
 function conversationState(conversation) {
-  if (conversation.portfolio_context_id) return { label: t("state.in_portfolio"), className: "approved" };
+  if (conversation.portfolio_context_id) return { label: t("state.context_saved"), className: "ready" };
   if (conversation.is_ready_to_save) return { label: t("state.ready"), className: "ready" };
   if (conversation.message_count) return { label: t("state.building"), className: "draft" };
   return { label: t("state.not_started"), className: "draft" };
@@ -679,7 +679,8 @@ async function reviewConversationChanges() {
 }
 
 async function saveConversationContext() {
-  if (!currentConversation?.is_ready_to_save || currentConversation.portfolio_context_id) return;
+  if (currentConversation?.portfolio_context_id) return openContext(currentConversation.portfolio_context_id, "builder");
+  if (!currentConversation?.is_ready_to_save) return;
   if (currentConversation.updates_context_id) return reviewConversationChanges();
   saveToPortfolio.disabled = true;
   saveToPortfolio.textContent = t("builder.preparing");
@@ -725,7 +726,7 @@ async function saveContext(status) {
     fillContextForm(saved, saved.status);
     setStatus(reviewStatus, saved.status === "approved" ? t("review.approved_status") : t("review.saved_status"), "success");
     await loadPortfolio();
-    showView("portfolio");
+    showView(saved.status === "approved" ? "portfolio" : "review");
   } catch (error) {
     setStatus(reviewStatus, error.message);
   } finally {
@@ -1452,17 +1453,18 @@ async function loadTeam() {
   }
 }
 
-async function openContext(contextId) {
+async function openContext(contextId, origin = "portfolio") {
   try {
     const context = await api(`/api/contexts/${contextId}`);
     currentContextId = context.id;
     pendingUpdate = null;
-    reviewOrigin = "portfolio";
-    backFromReview.textContent = t("review.back_portfolio");
+    reviewOrigin = origin;
+    backFromReview.textContent = t(origin === "builder" ? "review.back" : "review.back_portfolio");
     fillContextForm(context, context.status);
     showView("review");
   } catch (error) {
-    portfolioList.textContent = error.message;
+    if (origin === "builder") setStatus(chatStatus, error.message);
+    else portfolioList.textContent = error.message;
   }
 }
 
@@ -2553,10 +2555,16 @@ function applySpecialistAvailability() {
   specialistCards.forEach((card) => {
     const actions = [...card.querySelectorAll(".specialist-action")];
     actions.forEach((action) => {
-      action.hidden = !action.dataset.roles.split(" ").includes(currentRole) || action.dataset.available === "false";
+      action.hidden = !action.dataset.roles.split(" ").includes(currentRole) || ["false", "loading"].includes(action.dataset.available);
     });
     const usable = actions.filter((action) => !action.hidden);
     const notice = card.querySelector(".specialist-unavailable");
+    if (notice && card.dataset.specialist === "developer") {
+      const status = notice.querySelector(".specialist-status");
+      const key = actions.some(action => action.dataset.available === "loading") ? "home.status.checking" : "home.status.unavailable";
+      status.dataset.i18n = key;
+      status.textContent = t(key);
+    }
     if (notice && actions.length) notice.hidden = usable.length > 0;
     card.classList.toggle("is-unavailable", usable.length === 0);
     // With exactly one action the whole card is its hit area; with two, each button is its own.
