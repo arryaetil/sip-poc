@@ -121,4 +121,22 @@ try{
  const pngDownload=page.waitForEvent('download');await page.frameLocator('iframe').getByRole('button',{name:'Save'}).click();const png=await pngDownload;
  assert.equal(png.suggestedFilename(),'single.png');assert.deepEqual(await readFile(await png.path()),first.buffer);
  console.log('Single PNG through embedded Studio download passed');
+ await page.route('http://menu.invalid/**',route=>{
+  if(route.request().method()==='POST'){
+   assert.equal(new URL(route.request().url()).pathname,'/api/projects/fixture/export/images');
+   assert.deepEqual(route.request().postDataJSON(),{fileName:'post.html',imageFormat:'png'});
+   return route.fulfill({status:200,contentType:'application/zip',headers:{'content-disposition':'attachment; filename="artwork-pages.zip"'},body:carousel.buffer});
+  }
+  return route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT+'</head><body><div id="app-chrome-file-actions"></div><button role="menuitem">Download als ZIP</button><button role="menuitem">Export as PPTX</button></body></html>'});
+ });
+ await page.goto('http://menu.invalid/projects/fixture/conversations/one/files/post.html');
+ const menuDownloading=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Download als ZIP'}).click();const menuDownload=await menuDownloading;
+ assert.equal(menuDownload.suggestedFilename(),'artwork-pages.zip');
+ assert.deepEqual(await readFile(await menuDownload.path()),carousel.buffer);
+ await page.getByRole('menuitem',{name:'Export as PPTX'}).click();
+ assert.equal(await page.locator('[data-sip-pptx-dialog]').isVisible(),true);
+ assert.equal(await page.locator('[data-sip-pptx-mode]').inputValue(),'template');
+ await page.locator('[data-sip-pptx-cancel]').click();
+ assert.equal(await page.locator('[data-sip-pptx-dialog]').count(),0);
+ console.log('ZIP menu downloads artwork pages, and the PPTX menu opens the official editable-template choice');
 }finally{await browser.close();}

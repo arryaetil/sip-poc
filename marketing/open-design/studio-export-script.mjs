@@ -21,6 +21,26 @@ save.onclick=async()=>{if(mode.value==='template'&&!brand.value){status.textCont
 };actions.appendChild(button);
 }
 document.addEventListener('DOMContentLoaded',addPowerPoint);setInterval(addPowerPoint,1000);
+// The upstream ZIP contains project source files. In the marketing export menu,
+// ZIP means the artwork pages. Keep both PowerPoint entry points consistent.
+let zipBusy=false;
+document.addEventListener('click',async event=>{
+const item=event.target.closest?.('[role="menuitem"]');if(!item)return;
+const label=item.textContent.trim();
+const current=location.pathname.match(/^\\/projects\\/([a-zA-Z0-9_-]+)\\/.*\\/files\\/(.+\\.html?)$/);if(!current)return;
+if(['Export as PPTX','PowerPoint downloaden','PowerPoint herunterladen'].includes(label)){
+event.preventDefault();event.stopImmediatePropagation();document.querySelector('[data-sip-pptx]')?.click();return;
+}
+if(!['Download as .zip','Download als ZIP','Als ZIP herunterladen'].includes(label))return;
+event.preventDefault();event.stopImmediatePropagation();if(zipBusy)return;zipBusy=true;
+let status=document.querySelector('[data-sip-zip-status]');if(!status){status=document.createElement('p');status.dataset.sipZipStatus='';status.setAttribute('role','status');document.querySelector('#app-chrome-file-actions')?.appendChild(status);}
+const translate=text=>window.sipStudioT?.(text)||text;status.textContent=translate('Preparing ZIP…');
+try{
+const response=await original('/api/projects/'+current[1]+'/export/images',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:decodeURIComponent(current[2]),imageFormat:'png'})});
+if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error?.message||translate('Export failed. Please try again.'));}
+await download(response,'ontwerp.zip');status.textContent=translate('ZIP with all artwork pages is ready. Your browser is starting the download.');
+}catch(error){status.textContent=error.message;}finally{zipBusy=false;}
+},true);
 // The desktop image dialog captures the iframe itself. In a hosted Studio,
 // use the authenticated renderer so the downloaded artwork is complete.
 document.addEventListener('click',async event=>{
