@@ -1077,6 +1077,26 @@ document.addEventListener("keydown", (event) => {
 const studioFrame = document.querySelector("#studio-frame");
 const studioStatus = document.querySelector("#studio-status");
 let studioLastLink = "";
+let studioProjectId = "";
+let pendingStudioOffer = null;
+
+async function openPreparedStudio() {
+  if (!pendingStudioOffer || pendingStudioOffer.conversationId !== knowledgeConversationId) return openMarketingStudio();
+  studioStatus.textContent = t("studio.preparing");
+  studioStatus.hidden = false;
+  showView("marketing");
+  try {
+    const prepared = await api("/api/studio/projects", {method:"POST", body:JSON.stringify({
+      marketing_request:pendingStudioOffer.marketingRequest, sources:pendingStudioOffer.sources,
+      conversation_id:pendingStudioOffer.conversationId,
+    })});
+    studioProjectId = prepared.project_id;
+    pendingStudioOffer = null;
+    await openMarketingStudio(prepared.url);
+  } catch (error) {
+    studioStatus.textContent = error.message;
+  }
+}
 
 async function openMarketingStudio(link = null) {
   showView("marketing");
@@ -1100,16 +1120,19 @@ document.querySelector("#studio-new-tab").addEventListener("click", async () => 
   // other browsers that refuse cookies in embedded frames can work from here.
   const tab = window.open("about:blank", "_blank");
   try {
-    const { url } = await api("/api/studio/link");
+    const { url } = await api(`/api/studio/link${studioProjectId ? `?project_id=${encodeURIComponent(studioProjectId)}` : ""}`);
+    if (!tab) throw new Error("Sta pop-ups toe om de Studio in een nieuw tabblad te openen.");
     tab.location.href = url;
   } catch (error) {
-    tab.close();
+    tab?.close();
     studioStatus.textContent = error.message || t("marketing.unavailable");
     studioStatus.hidden = false;
   }
 });
 
 function appendStudioOffer(marketingRequest, sources, conversationId) {
+  pendingStudioOffer = {marketingRequest, sources, conversationId};
+  knowledgeMessages.querySelectorAll(".studio-offer-row").forEach(row => row.remove());
   const row = document.createElement("div");
   row.className = "message-row assistant studio-offer-row";
   const card = document.createElement("div");
@@ -1145,10 +1168,12 @@ function appendStudioOffer(marketingRequest, sources, conversationId) {
     no.disabled = true;
     status.textContent = t("studio.preparing");
     try {
-      const { url } = await api("/api/studio/projects", {
+      const { url, project_id } = await api("/api/studio/projects", {
         method: "POST",
         body: JSON.stringify({ marketing_request: marketingRequest, conversation_id: conversationId, sources }),
       });
+      studioProjectId = project_id;
+      pendingStudioOffer = null;
       await openMarketingStudio(url);
       status.textContent = "";
     } catch (error) {
@@ -1158,6 +1183,7 @@ function appendStudioOffer(marketingRequest, sources, conversationId) {
     }
   });
   no.addEventListener("click", () => {
+    pendingStudioOffer = null;
     card.classList.add("dismissed");
     actions.remove();
     status.textContent = t("studio.dismissed");
@@ -1171,6 +1197,7 @@ function appendStudioOffer(marketingRequest, sources, conversationId) {
 }
 
 function resetKnowledgeChat() {
+  pendingStudioOffer = null;
   closeSourcePanel();
   knowledgeConversationId = null;
   knowledgeMessages.replaceChildren();
@@ -1195,6 +1222,7 @@ function showKnowledgeConversation() {
 }
 
 async function openKnowledgeConversation(conversationId) {
+  pendingStudioOffer = null;
   const conversation = await api(`/api/conversations/${conversationId}`);
   knowledgeConversationId = conversation.id;
   knowledgeMessages.replaceChildren();
@@ -1538,7 +1566,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     if (item.dataset.view === "portfolio") await loadPortfolio();
     if (item.dataset.view === "team") await loadTeam();
     showView(item.dataset.view);
-    if (item.dataset.view === "marketing" && !studioFrame.src) await openMarketingStudio();
+    if (item.dataset.view === "marketing" && (pendingStudioOffer || !studioFrame.src)) await openPreparedStudio();
     if (item.dataset.view === "knowledge") {
       await loadKnowledgeHistory();
       showKnowledgeHome();

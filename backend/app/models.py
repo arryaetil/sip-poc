@@ -48,7 +48,7 @@ class KnowledgeNearMiss(KnowledgeChatSource):
 class MarketingRequest(BaseModel):
     """A request for marketing material, recognised by the knowledge assistant."""
 
-    format: Literal["linkedin_post", "one_pager", "presentation"]
+    format: Literal["linkedin_post", "instagram_carousel", "one_pager", "presentation"]
     brief: str
     title: str = ""
     brand: Literal["etil", "ibc-group"] = "etil"

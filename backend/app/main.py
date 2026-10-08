@@ -11,6 +11,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import threading
 import time
 import traceback
@@ -1504,11 +1505,13 @@ def developer_availability(request: Request) -> dict[str, bool]:
 
 
 @app.get("/api/studio/link")
-def studio_link(request: Request) -> dict[str, str]:
+def studio_link(request: Request, project_id: str = "") -> dict[str, str]:
     """A short-lived signed link that opens the marketing studio for this user."""
     owner_id, _ = _actor(request)
     try:
-        return {"url": studio.signed_link(owner_id)}
+        if project_id and not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", project_id):
+            raise HTTPException(status_code=400, detail="Invalid project")
+        return {"url": studio.signed_link(owner_id, f"/projects/{project_id}" if project_id else "/")}
     except studio.StudioUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -1528,11 +1531,15 @@ def create_studio_project(body: StudioProjectRequest, request: Request) -> dict[
     history = []
     if body.conversation_id:
         conversation = get_context_store().get_conversation(body.conversation_id, owner_id, is_admin)
-        if conversation is None:
+        if conversation is None or conversation.kind != "knowledge":
             raise HTTPException(status_code=404, detail="Conversation not found")
         history = conversation.messages
     try:
-        return {"url": studio.create_project(owner_id, body.marketing_request, history, body.sources)}
+        brief = studio.prepare_brief(get_assistant(), body.marketing_request, history,
+            conversation.language if history else "nl", owner_id)
+        url = studio.create_project(owner_id, brief, history, body.sources)
+        claims = json.loads(base64.urlsafe_b64decode(url.split("t=", 1)[1].split(".")[0] + "=="))
+        return {"url": url, "project_id": claims["next"].rsplit("/", 1)[1]}
     except studio.StudioUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
