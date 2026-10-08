@@ -593,3 +593,17 @@ def test_linkedin_rejects_namesakes_and_requires_exact_company_website():
     search.serper = NoEvidence()
     assert search._linkedin("Essent", "Nederland", "https://essent.nl") is None
     assert search._linkedin("Essent", "Nederland") is None
+
+
+def test_keyword_score_handles_intervening_words_without_negation_or_substring_false_positives():
+    from app.leads import _criterion_level, ScoreCriterion
+    criterion = ScoreCriterion(column="Klantenservice", kind="keyword", high="expliciete zakelijke klantenservice", medium="algemene klantenservice")
+    assert _criterion_level(criterion, "Expliciete algemene klantenservice en zakelijke klantenservice aantoonbaar") == "high"
+    assert _criterion_level(criterion, "Geen expliciete zakelijke klantenservice, maar algemene klantenservice") == "medium"
+    assert _criterion_level(criterion, "Niet expliciete zakelijke klantenservice") == "low"
+    assert _criterion_level(criterion, None) == "unknown"
+    short = ScoreCriterion(column="Energie", kind="keyword", high="gas", medium="elektriciteit")
+    assert _criterion_level(short, "Veel gasten") == "low"
+    assert _criterion_level(short, "Gas en elektriciteit") == "high"
+    absence = ScoreCriterion(column="Chat", kind="keyword", high="geen chatbot", medium="chatbot")
+    assert _criterion_level(absence, "Geen chatbot gedetecteerd") == "high"

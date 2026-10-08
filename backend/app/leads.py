@@ -230,6 +230,26 @@ def _words(text: str) -> list[str]:
     return [word.strip().casefold() for word in text.split(",") if word.strip()]
 
 
+def _positive_keyword_match(keywords: str, value: str) -> bool:
+    """Literal word evidence, allowing intervening words but no negated clauses.
+
+    Comma-separated alternatives remain alternatives. Whole words avoid matching
+    'gas' in 'gasten'; every word in a multiword criterion must be present.
+    """
+    clauses = re.split(r"[,.;\n]|\b(?:maar|but|aber)\b", value.casefold())
+    negative = re.compile(r"\b(?:geen|niet|no|not|without|kein|keine|keinen|nicht|ohne)\b")
+    for alternative in _words(keywords):
+        wanted = set(re.findall(r"\w+", alternative))
+        if not wanted:
+            continue
+        for clause in clauses:
+            if negative.search(clause) and not negative.search(alternative):
+                continue
+            if wanted.issubset(set(re.findall(r"\w+", clause))):
+                return True
+    return False
+
+
 def _criterion_level(criterion: ScoreCriterion, value: str | None) -> str:
     if not value:
         return "unknown"
@@ -243,10 +263,9 @@ def _criterion_level(criterion: ScoreCriterion, value: str | None) -> str:
         if medium is not None and number >= medium:
             return "medium"
         return "low"
-    folded = value.casefold()
-    if any(word in folded for word in _words(criterion.high)):
+    if _positive_keyword_match(criterion.high, value):
         return "high"
-    if any(word in folded for word in _words(criterion.medium)):
+    if _positive_keyword_match(criterion.medium, value):
         return "medium"
     return "low"
 
