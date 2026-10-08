@@ -16,6 +16,14 @@ The `--path-as-root` flag is essential to avoid deploying SIP to this service.
 The original spike notes below describe the upstream setup; their browser
 password/API-key instructions are superseded by the SIP integration above.
 
+### Automatic SIP knowledge (8 October 2026)
+
+SIP's own gateway fetches `/api/studio/library` before creating a supported studio project and before every `/api/runs` or `/api/chat` request. The endpoint accepts a timestamped HMAC using the existing `STUDIO_HANDOFF_SECRET`. It exports only approved shared Business Contexts (without the people field or ownership metadata) and the existing reviewed website corpus. Drafts, conversations and uploaded evidence are excluded.
+
+The gateway updates three fixed Markdown files via Open Design's existing JSON files API: `sip/README.md`, `sip/business-contexts.md`, `sip/website-knowledge.md`. The latest snapshot replaces the previous one, including removed/withdrawn contexts. Existing projects refresh at their next generation. The gateway adds a short instruction to read these sources before designing. If fetching or uploading fails, generation does not start against stale knowledge. Nothing in Open Design's own source is patched; the image remains pinned. `sip-library.mjs` belongs to the SIP integration and must ship with `gateway.mjs`.
+
+`SIP_INTERNAL_URL` may optionally point at SIP's private service URL. Without it the adapter uses the existing `SIP_ORIGIN`; no new key is needed. Deploy SIP first, then this service. Verify a direct studio project, an existing project after a context change, and a withdrawn context. Compatibility was checked against the pinned `open-design-v0.24.0` project-file route: JSON `{name, content, encoding}` writes the requested relative file path. Re-run `node marketing/open-design/test-gateway.mjs` before changing the pinned upstream image, then smoke-test the real file API.
+
 A spike, not the marketing studio: it lets marketing colleagues try an
 AI design tool in the Etil and ibc group house style, so the decision between
 adopting [Open Design](https://github.com/nexu-io/open-design) (Apache-2.0) and

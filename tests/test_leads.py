@@ -499,7 +499,10 @@ def test_scorecard_change_rescores_without_searching(app_env):
     http = signed_in("sales@test.nl", "sales-pass")
     assert http.get(f"/api/leads/lists/{list_id}").json()["rows"][0]["score"]["level"] == "medium"
     lenient = [{"column": "Vestigingen", "kind": "number", "high": "5", "medium": "2"}]
-    body = http.put(f"/api/leads/lists/{list_id}/scorecard", json={"scorecard": lenient}).json()
+    # Someone else's list: sales may not change its scorecard, the admin may.
+    assert http.put(f"/api/leads/lists/{list_id}/scorecard", json={"scorecard": lenient}).status_code == 403
+    admin = signed_in("admin@test.nl", "admin-pass")
+    body = admin.put(f"/api/leads/lists/{list_id}/scorecard", json={"scorecard": lenient}).json()
     assert body["rows"][0]["score"]["level"] == "high"
     assert body["counts"] == {"high": 1, "medium": 0, "low": 0}
     export = http.get(f"/api/leads/lists/{list_id}/export?language=nl")
@@ -538,3 +541,39 @@ def test_dify_lead_tasks_go_to_the_lead_finder_app(monkeypatch):
     assert body["inputs"]["task"] == "queries"
     assert "dealers" in body["inputs"]["payload"]
     assert body["user"] != "owner"  # pseudonym, never SIP's user id
+
+
+def test_one_search_at_a_time_and_a_daily_limit(app_env, monkeypatch):
+    store, _, _ = app_env
+    context_id = approved_context(store)
+    http = signed_in("sales@test.nl", "sales-pass")
+    payload = {"context_id": context_id, "brief": brief().model_dump()}
+    assert http.post("/api/leads/lists", json=payload).status_code == 201
+    assert http.post("/api/leads/lists", json=payload).status_code == 429  # the first one still runs
+    with store._connect() as connection:
+        connection.execute("UPDATE lead_lists SET status = 'done'")
+    monkeypatch.setattr(lead_routes, "DAILY_LEAD_SEARCHES", 1)
+    assert http.post("/api/leads/lists", json=payload).status_code == 429
+
+
+def test_a_busy_ai_service_is_retried_and_then_counted_as_skipped(store, monkeypatch):
+    from app import lead_search
+    monkeypatch.setattr(lead_search, "RETRY_SECONDS", 0)
+    list_id = store.create_lead_list("owner", None, "ctx", "SAM", clean_brief(brief(count=2)), "nl")
+
+    class Busy(FakeLeadAssistant):
+        def lead_extract(self, *args):
+            raise AssistantUnavailable("Dify is busy")
+
+    LeadSearch(store, Busy(), FakeSerper(), FakeFetcher()).run(list_id, "owner", "nl", "context")
+    record = store.get_lead_list(list_id)
+    assert record.rows == [] and record.skipped == 6
+
+
+def test_a_city_that_is_not_on_its_page_is_dropped():
+    pages = {"https://x.example/": "Wij zitten in Sittard"}
+    extraction = LeadExtraction(
+        fits=True, name="X", city=LeadFact(value="Maastricht", source="https://x.example/"),
+        country=LeadFact(), phone=LeadFact(), email=LeadFact(), extra=[], why_fits="",
+    )
+    assert build_row(LeadCandidate(name="X", website="https://x.example"), pages, extraction, []).city.value is None

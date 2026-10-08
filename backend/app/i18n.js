@@ -451,6 +451,7 @@ const I18N = {
     "lead.export": "Export to Excel",
     "lead.progress": "{found} of {requested} found · reading company websites…",
     "lead.fewer_found": "{found} of the {requested} requested organisations were found that fit. A wider search (more regions or industries) finds more.",
+    "lead.skipped": "{count} organisations were skipped because the AI service was busy; a new search later may find them.",
     "lead.error.search_unavailable": "The search stopped: web search refused the key. The leads found so far are kept.",
     "lead.error.search_failed": "The search stopped because of an error. The leads found so far are kept; try again later.",
     "lead.error.interrupted": "The search was interrupted by a restart of SIP. The leads found so far are kept.",
@@ -971,6 +972,7 @@ const I18N = {
     "lead.export": "Exporteer naar Excel",
     "lead.progress": "{found} van {requested} gevonden · bedrijfswebsites worden gelezen…",
     "lead.fewer_found": "Er zijn {found} van de {requested} gevraagde organisaties gevonden die passen. Met een ruimere zoekopdracht (meer regio's of sectoren) vind je er meer.",
+    "lead.skipped": "{count} organisaties zijn overgeslagen omdat de AI-dienst het druk had; een nieuwe zoekopdracht later kan ze alsnog vinden.",
     "lead.error.search_unavailable": "Het zoeken is gestopt: webzoeken weigerde de sleutel. De gevonden leads blijven bewaard.",
     "lead.error.search_failed": "Het zoeken is gestopt door een fout. De gevonden leads blijven bewaard; probeer het later opnieuw.",
     "lead.error.interrupted": "Het zoeken is onderbroken doordat SIP opnieuw is opgestart. De gevonden leads blijven bewaard.",
@@ -1491,6 +1493,7 @@ const I18N = {
     "lead.export": "Nach Excel exportieren",
     "lead.progress": "{found} von {requested} gefunden · Unternehmenswebsites werden gelesen…",
     "lead.fewer_found": "{found} der {requested} gewünschten Organisationen wurden gefunden, die passen. Eine breitere Suche (mehr Regionen oder Branchen) findet mehr.",
+    "lead.skipped": "{count} Organisationen wurden übersprungen, weil der KI-Dienst ausgelastet war; eine spätere Suche kann sie noch finden.",
     "lead.error.search_unavailable": "Die Suche wurde gestoppt: Die Websuche hat den Schlüssel abgelehnt. Die gefundenen Leads bleiben erhalten.",
     "lead.error.search_failed": "Die Suche wurde wegen eines Fehlers gestoppt. Die gefundenen Leads bleiben erhalten; versuche es später erneut.",
     "lead.error.interrupted": "Die Suche wurde durch einen Neustart von SIP unterbrochen. Die gefundenen Leads bleiben erhalten.",
@@ -1566,9 +1569,10 @@ function getLanguage() {
     const stored = localStorage.getItem("sip_language");
     if (stored && I18N[stored]) return stored;
   } catch (error) {
-    // localStorage unavailable; fall back to default below
+    // localStorage unavailable; fall back to the browser language below
   }
-  return "en";
+  const browser = (navigator.language || "en").slice(0, 2).toLowerCase();
+  return I18N[browser] ? browser : "en";
 }
 
 function setLanguage(language) {

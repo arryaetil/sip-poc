@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 import re
+import zipfile
 
 from docx import Document
 from pypdf import PdfReader
@@ -11,6 +12,8 @@ from pypdf import PdfReader
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_PDF_PAGES = 200
+# A DOCX is a zip file; a small file can unpack to gigabytes (a "zip bomb").
+MAX_DOCX_UNPACKED_BYTES = 60 * 1024 * 1024
 ALLOWED_MEDIA_TYPES = {
     "application/pdf": ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
@@ -37,6 +40,19 @@ def safe_filename(filename: str, media_type: str) -> str:
 def extract_text(data: bytes, media_type: str) -> ExtractedUpload:
     if len(data) > MAX_FILE_BYTES:
         raise ValueError("The file exceeds the 10 MB upload limit.")
+    try:
+        return _extract(data, media_type)
+    except ValueError:
+        raise
+    except Exception as exc:  # a damaged or unusual file: tell the user, do not crash
+        raise ValueError("This file could not be read. Save it again as PDF or DOCX and try once more.") from exc
+
+
+def _extract(data: bytes, media_type: str) -> ExtractedUpload:
+    if media_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        with zipfile.ZipFile(BytesIO(data)) as archive:
+            if sum(item.file_size for item in archive.infolist()) > MAX_DOCX_UNPACKED_BYTES:
+                raise ValueError("The document is too large once unpacked.")
     if media_type == "application/pdf":
         reader = PdfReader(BytesIO(data))
         if len(reader.pages) > MAX_PDF_PAGES:

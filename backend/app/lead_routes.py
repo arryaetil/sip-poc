@@ -42,6 +42,8 @@ from app.models import ConversationMessage, ConversationSummary, StoredBusinessC
 logger = logging.getLogger("sip.leads")
 router = APIRouter(prefix="/api/leads")
 HOUSEKEEPING_SECONDS = 6 * 60 * 60
+# Spending guard: one search at a time per user, and a daily number of searches.
+DAILY_LEAD_SEARCHES = 10
 
 
 def _main():
@@ -72,6 +74,7 @@ class LeadChatRequest(BaseModel):
     conversation_id: str | None = None
     context_id: str | None = None
     language: Literal["en", "nl", "de"] = "nl"
+    scoring: Literal["levels", "sam_points"] = "levels"
 
 
 class LeadChatResponse(BaseModel):
@@ -116,7 +119,8 @@ class LeadListSummary(BaseModel):
     requested: int
     found: int
     mine: bool
-    created_by: str | None  # email of the creator; None when unknown (local development)
+    created_by: str | None
+    skipped: int = 0  # email of the creator; None when unknown (local development)
     created_at: str
     expires_at: str
 
@@ -186,6 +190,7 @@ def _summary(record: dict, owner_id: str, found: int, creators: dict[str, str] |
         "requested": brief.count or 0,
         "found": found,
         "mine": record["owner_id"] == owner_id,
+        "skipped": record.get("skipped") or 0,
         "created_by": record.get("created_by") or (creators or {}).get(record["owner_id"]),
         "created_at": record["created_at"],
         "expires_at": record["expires_at"],
@@ -193,7 +198,7 @@ def _summary(record: dict, owner_id: str, found: int, creators: dict[str, str] |
 
 
 def _detail(record, owner_id: str) -> LeadListDetail:
-    rows = [LeadRowOut(**row.model_dump(), score=score_row(row, record.brief.scorecard)) for row in record.rows]
+    rows = [LeadRowOut(**row.model_dump(), score=score_row(row, record.brief.scorecard, record.brief.scoring)) for row in record.rows]
     counts = {level: sum(1 for row in rows if row.score.level == level) for level in ("high", "medium", "low")}
     summary = _summary(vars(record), owner_id, len(rows), None if record.created_by else _creators())
     return LeadListDetail(**summary, brief=record.brief, rows=rows, counts=counts)
@@ -263,7 +268,7 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     try:
         turn = _main().get_assistant().lead_intake_turn(
             conversation.messages,
-            body.message,
+            body.message + ("\nSelected scoring: " + (current.scoring if current else body.scoring)),
             body.language,
             owner_id,
             context.text,
@@ -277,7 +282,7 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     except Exception as exc:
         logger.error("Lead finder request failed:\n%s", traceback.format_exc())
         raise HTTPException(status_code=502, detail="The Lead finder could not be reached. Please try again.") from exc
-    brief = clean_brief(turn.brief)
+    brief = clean_brief(turn.brief.model_copy(update={"scoring": current.scoring if current else body.scoring}))
     updated = store.add_conversation_turn(
         conversation_id=conversation.id,
         user_message=body.message,
@@ -351,6 +356,11 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
     context = _approved_context(body.context_id, owner_id, is_admin)
     if body.conversation_id:
         _owned_lead_conversation(body.conversation_id, owner_id)
+    running, recent = store.lead_lists_by(owner_id)
+    if running:
+        raise HTTPException(status_code=429, detail="Your previous lead search is still running. Wait until it has finished.")
+    if recent >= DAILY_LEAD_SEARCHES:
+        raise HTTPException(status_code=429, detail="You have reached today's limit of lead searches. Try again tomorrow.")
     brief = clean_brief(body.brief)
     if brief.count is None:
         raise HTTPException(status_code=422, detail="Say how many leads you want first")
@@ -389,11 +399,13 @@ def lead_list(list_id: str, request: Request) -> LeadListDetail:
 def update_scorecard(list_id: str, body: ScorecardRequest, request: Request) -> LeadListDetail:
     """Change the scorecard; scores are recalculated from the stored facts, no new search."""
     main = _main()
-    owner_id, _ = main._actor(request)
+    owner_id, is_admin = main._actor(request)
     store = main.get_context_store()
     record = store.get_lead_list(list_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Lead list not found")
+    if record.owner_id != owner_id and not is_admin:
+        raise HTTPException(status_code=403, detail="Only the creator of a lead list or an admin can change its scorecard.")
     brief = clean_brief(record.brief.model_copy(update={"scorecard": body.scorecard}))
     store.update_lead_brief(list_id, brief)
     return _detail(store.get_lead_list(list_id), owner_id)

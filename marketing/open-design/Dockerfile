@@ -9,6 +9,7 @@ USER root
 COPY design-systems /seed/design-systems
 COPY entrypoint.sh /seed/entrypoint.sh
 COPY gateway.mjs /seed/gateway.mjs
+COPY sip-library.mjs /seed/sip-library.mjs
 COPY configure-studio.mjs /seed/configure-studio.mjs
 RUN chmod +x /seed/entrypoint.sh
 
