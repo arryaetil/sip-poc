@@ -34,6 +34,7 @@ from app.leads import (
     LeadBrief,
     LeadCandidate,
     LeadQuery,
+    LeadFact,
     build_row,
     domain_of,
     linkedin_people_page,
@@ -89,6 +90,14 @@ class Serper:
             raise SearchUnavailable("SERPER_API_KEY is not set")
         self.key = key
         self.http = http or httpx.Client(timeout=20)
+
+    def places(self, name: str, city: str, country: str = "nl") -> list[dict]:
+        response = self.http.post("https://google.serper.dev/places", headers={"X-API-KEY": self.key}, json={"q": f"{name} {city}", "gl": country, "hl": "nl"})
+        if response.status_code in (401, 403):
+            raise SearchUnavailable("Serper refused the API key")
+        response.raise_for_status()
+        # Retain aggregates only, never review text or reviewer data.
+        return [{key: item.get(key) for key in ("website", "rating", "ratingCount", "cid")} for item in response.json().get("places", [])]
 
     def search(self, query: str, country: str = "nl", num: int = 10) -> list[SearchResult]:
         country = country.casefold() if re.fullmatch(r"[a-zA-Z]{2}", country or "") else "nl"
@@ -179,7 +188,7 @@ class PageFetcher:
                 for chunk in response.iter_bytes():
                     body += chunk
                     if len(body) > MAX_BYTES:
-                        break
+                        return None  # incomplete HTML cannot prove absence of a chat widget
                 return Fetched(
                     url=str(response.request.url),
                     status=response.status_code,
@@ -219,12 +228,12 @@ class PageFetcher:
             return None
         return response.url, page_text(response.text), response.text
 
-    def site_pages(self, website: str) -> dict[str, str]:
+    def site_pages(self, website: str, *, with_html: bool = False):
         """The home page plus the contact, location and about pages it links to."""
         start = website if "://" in website else f"https://{website}"
         home = self.fetch(start)
         if home is None:
-            return {}
+            return ({}, "") if with_html else {}
         url, text, markup = home
         pages = {url: text}
         site = domain_of(url)
@@ -250,7 +259,7 @@ class PageFetcher:
             page = self.fetch(best[kind][1])
             if page and page[0] not in pages:
                 pages[page[0]] = page[1]
-        return pages
+        return (pages, markup) if with_html else pages
 
 
 # --------------------------------------------------------------------------- the run
@@ -272,6 +281,55 @@ def brief_for_model(brief: LeadBrief, context_text: str) -> str:
 
 
 COUNTRY_NAMES = {"neder": "nl", "nether": "nl", "holland": "nl", "belg": "be", "duits": "de", "deutsch": "de", "germ": "de"}
+
+
+CHAT_MARKERS = {
+    "Intercom": ("widget.intercom.io", "intercomcdn.com"), "LiveChat": ("cdn.livechatinc.com",),
+    "Tawk": ("embed.tawk.to",), "Zendesk": ("static.zdassets.com", "zopim.com"),
+    "HubSpot chat": ("conversations-embed",), "Drift": ("js.driftt.com",),
+    "Crisp": ("client.crisp.chat",), "Tidio": ("code.tidio.co",),
+    "Trengo": ("widget.trengo.eu", "widget.trengo.com"), "Userlike": ("userlike-cdn", "userlike.com/widget"),
+    "Watermelon": ("watermelon.ai", "watermelon.co/widget"), "Smartsupp": ("smartsuppchat.com",),
+    "Freshchat": ("wchat.freshchat.com",), "Olark": ("static.olark.com",),
+    "WhatsApp": ("wa.me/", "api.whatsapp.com/send"),
+}
+
+
+def detect_chat(markup: str, source: str) -> LeadFact:
+    if not markup:
+        return LeadFact()
+    folded = markup.casefold()
+    names = [name for name, markers in CHAT_MARKERS.items() if any(marker in folded for marker in markers)]
+    return LeadFact(value=", ".join(names) if names else "Niet gedetecteerd", source=source)
+
+
+def classify_vacancy(text: str) -> set[str]:
+    folded = text.casefold()
+    categories = {"receptie": ("receptionist", "receptiemedewerker", "medewerker receptie", "reception", "empfang"), "klantenservice": ("klantenservice", "customer service", "klantcontact", "kundenservice"), "serviceadviseur": ("serviceadviseur", "service adviseur", "service advisor", "serviceberater")}
+    return {name for name, terms in categories.items() if any(re.search(r"\b" + re.escape(term) + r"\b", folded) for term in terms)}
+
+
+def places_signals(places: list[dict], website: str) -> dict[str, LeadFact]:
+    matched = {}
+    for item in places:
+        cid = str(item.get("cid") or "")
+        if domain_of(str(item.get("website") or "")) != domain_of(website) or not cid.isdigit():
+            continue
+        try:
+            count, rating = int(item.get("ratingCount")), float(item.get("rating"))
+        except (ValueError, TypeError):
+            continue
+        if count > 0 and 1 <= rating <= 5:
+            matched.setdefault(cid, (count, rating))
+    if not matched:
+        return {}
+    total = sum(count for count, _ in matched.values())
+    rating = sum(count * rating for count, rating in matched.values()) / total
+    source = "https://www.google.com/maps?cid=" + next(iter(matched))
+    signals = {"reviews": LeadFact(value=str(total), source=source), "rating": LeadFact(value=str(rating), source=source)}
+    for cid, (count, rating) in matched.items():
+        signals["place_" + cid] = LeadFact(value=f"{count} reviews; rating {rating}", source="https://www.google.com/maps?cid=" + cid)
+    return signals
 
 
 def country_code(country: str | None) -> str:
@@ -363,7 +421,10 @@ class LeadSearch:
             return
         site = domain_of(candidate.website)
         try:
-            pages = self.fetcher.site_pages(candidate.website)
+            if brief.scoring == "sam_points":
+                pages, markup = self.fetcher.site_pages(candidate.website, with_html=True)
+            else:
+                pages = self.fetcher.site_pages(candidate.website)
             if not pages:
                 return
             company = json.dumps(candidate.model_dump(), ensure_ascii=False)
@@ -373,6 +434,8 @@ class LeadSearch:
             if not extraction.fits:
                 return
             row = build_row(candidate, pages, extraction, brief.extra_columns)
+            if brief.scoring == "sam_points":
+                self._sam_signals(row, markup)
             row.linkedin = self._linkedin(row.name, row.country.value, row.website)
         except SearchUnavailable:
             raise
@@ -395,6 +458,65 @@ class LeadSearch:
                     time.sleep(RETRY_SECONDS)
         self.store.add_lead_skip(list_id)
         return None
+
+    def _sam_signals(self, row, markup):
+        row.signals["chat"] = detect_chat(markup, row.website)
+        try:
+            row.signals.update(places_signals(self.serper.places(row.name, row.city.value or "", country_code(row.country.value)), row.website))
+        except SearchUnavailable:
+            raise
+        except (httpx.HTTPError, ValueError, TypeError):
+            pass  # unavailable is unknown, never zero reviews
+        vacancy_urls = []
+        for href, label in HREFS.findall(markup):
+            target = urljoin(row.website, href)
+            if domain_of(target) == domain_of(row.website) and any(hint in (target + " " + label).casefold() for hint in ("vacature", "werken-bij", "careers", "jobs", "karriere")):
+                vacancy_urls.append(target)
+        if not vacancy_urls:
+            try:
+                for item in self.serper.search(f"site:{domain_of(row.website)} vacatures receptie klantenservice serviceadviseur", country_code(row.country.value), num=3):
+                    if domain_of(item.link) == domain_of(row.website):
+                        vacancy_urls.append(item.link)
+            except SearchUnavailable:
+                raise
+            except (httpx.HTTPError, RuntimeError):
+                pass
+        categories = set()
+        evidence = []
+        fetched_jobs = set()
+        # Only explicit vacancy titles linked from the company's own careers page.
+        # General careers copy is insufficient evidence of a current vacancy.
+        for target in list(dict.fromkeys(vacancy_urls))[:2]:
+            page = self.fetcher.fetch(target)
+            if not page or domain_of(page[0]) != domain_of(row.website):
+                continue
+            titles = re.findall(r"<h1\b[^>]*>(.*?)</h1>", page[2], re.IGNORECASE | re.DOTALL)
+            links = HREFS.findall(page[2])
+            # A result may be the job page itself; require an explicit vacancy action.
+            if titles and any(term in page[1].casefold() for term in ("solliciteer", "solliciteren", "apply now", "bewerben")):
+                links = [(page[0], titles[0]), *links]
+            for href, label in links:
+                job_url = urljoin(page[0], href)
+                if domain_of(job_url) != domain_of(row.website):
+                    continue
+                found = classify_vacancy(page_text(label))
+                if not found:
+                    continue
+                if job_url in fetched_jobs or len(fetched_jobs) >= 6:
+                    continue
+                fetched_jobs.add(job_url)
+                job = page if job_url == page[0] else self.fetcher.fetch(job_url)
+                if job and domain_of(job[0]) == domain_of(row.website) and not any(term in job[1].casefold() for term in ("vacature is vervuld", "vacature gesloten", "position filled", "niet meer beschikbaar")):
+                    job_titles = re.findall(r"<h1\b[^>]*>(.*?)</h1>", job[2], re.IGNORECASE | re.DOTALL)
+                    confirmed = found.intersection(classify_vacancy(" ".join(page_text(title) for title in job_titles)))
+                    if not any(term in job[1].casefold() for term in ("solliciteer", "solliciteren", "apply now", "bewerben")):
+                        confirmed = set()
+                    if confirmed:
+                        categories.update(confirmed)
+                        evidence.append(job[0])
+        if categories:
+            row.signals["vacancies"] = LeadFact(value=", ".join(sorted(categories)), source=evidence[0])
+        row.sources = list(dict.fromkeys([*row.sources, *evidence, *(fact.source for fact in row.signals.values() if fact.source)]))
 
     def _linkedin(self, name: str, country: str | None, website: str = "") -> str | None:
         """From a Google result only; SIP never opens LinkedIn itself.

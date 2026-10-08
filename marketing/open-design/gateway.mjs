@@ -15,12 +15,14 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import nodePath from 'node:path';
+import { currentLibrary, syncLibrary, LIBRARY_NOTE } from './sip-library.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const UPSTREAM_PORT = Number(process.env.OD_INTERNAL_PORT || 7456);
 const TOKEN = process.env.OD_API_TOKEN || '';
 const SECRET = process.env.STUDIO_HANDOFF_SECRET || '';
 const SIP_ORIGIN = (process.env.SIP_ORIGIN || '').replace(/\/$/, '');
+const SIP_LIBRARY_ORIGIN = (process.env.SIP_INTERNAL_URL || SIP_ORIGIN).replace(/\/$/, '');
 const COOKIE = 'sip_studio';
 // Entry links are accepted once: their one-time id (jti) is recorded here, on the
 // data volume, so a restart does not make an old link valid again.
@@ -227,6 +229,7 @@ async function createProject(req, res, body) {
   let text = '{"error":"Open Design is not reachable"}';
   let type = 'application/json';
   try {
+    const library = await currentLibrary(SIP_LIBRARY_ORIGIN, SECRET);
     const created = await upstream('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(project) });
     status = created.status;
     text = await created.text();
@@ -235,10 +238,15 @@ async function createProject(req, res, body) {
       let id = project.id;
       try { const parsed = JSON.parse(text); id = parsed.project?.id || parsed.id || id; } catch {}
       // Copied before answering, so the files are there when the first run starts.
-      if (id) for (const brand of chosen ? [chosen] : BRANDS) await copyBrand(id, brand, !chosen);
+      if (id) {
+        for (const brand of chosen ? [chosen] : BRANDS) await copyBrand(id, brand, !chosen);
+        await syncLibrary(id, SIP_LIBRARY_ORIGIN, SECRET, upstream, library);
+      }
     }
   } catch (error) {
     console.error('gateway: preparing the project failed', error.message);
+    status = 502;
+    text = JSON.stringify({ error: 'De actuele SIP-kennis kon niet worden geladen. Probeer opnieuw.' });
   }
   securityHeaders(res);
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
@@ -256,7 +264,19 @@ function proxy(req, res) {
   if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(pathname)) {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => forward(req, res, withServerModel(Buffer.concat(chunks))));
+    req.on('end', async () => {
+      try {
+        const run = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        await syncLibrary(run.projectId, SIP_LIBRARY_ORIGIN, SECRET, upstream);
+        run.message = `${LIBRARY_NOTE}\n\n${run.message || ''}`;
+        forward(req, res, withServerModel(Buffer.from(JSON.stringify(run))));
+      } catch (error) {
+        console.error('gateway: SIP library sync failed', error.message);
+        securityHeaders(res);
+        res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'De actuele SIP-kennis kon niet worden geladen. Probeer opnieuw; deze opdracht is nog niet gestart.' }));
+      }
+    });
     return;
   }
   forward(req, res, null);

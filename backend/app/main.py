@@ -336,6 +336,8 @@ async def require_login(request: Request, call_next):
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": _translated(request, "Authentication is not configured")}, status_code=503)
         return Response("SIP is not configured for sign-in.", status_code=503, media_type="text/plain")
+    if request.method == "GET" and request.url.path == studio.LIBRARY_PATH and studio.library_authorised(request.headers):
+        return await call_next(request)
     if secret is None or public:
         return await call_next(request)
 
@@ -1508,6 +1510,14 @@ def studio_link(request: Request) -> dict[str, str]:
         return {"url": studio.signed_link(owner_id)}
     except studio.StudioUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get(studio.LIBRARY_PATH)
+def studio_library(request: Request, response: Response) -> dict:
+    if not studio.library_authorised(request.headers):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    response.headers["Cache-Control"] = "no-store"
+    return studio.library_documents(get_context_store(), load_knowledge_documents())
 
 
 @app.post("/api/studio/projects")

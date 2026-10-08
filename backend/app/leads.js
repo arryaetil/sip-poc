@@ -6,6 +6,14 @@
   const POLL_MS = 2500;
   const LEVELS = ["high", "medium", "low"];
   const POINTS = { high: 2, medium: 1, low: 0 };
+  const SAM_SIGNALS = { rating: "Rating", reviews: "Reviews", vacancies: "Vacatures", chat: "Chattool" };
+  const SAM_COPY = "Schaal (30): vestigingen × 2, max 20; reviews / 250, max 10. Pijn (30): rating onder 3,8: 12; onder 4,3: 6; onder 4,6: 3. Klachten (18) uitgesloten: geen reviewteksten in afwachting van privacybeoordeling. Koopsignaal (25): receptie 12, klantenservice 10, serviceadviseur 7; tel categorieën op + 3 bij minstens één vacature, max 25. Fit (15): geen chat gedetecteerd 6, service weekend gesloten 4, minstens 4 merken 5. A vanaf 65, B vanaf 45, C daaronder. Maximaal 82/100. Onbekend levert 0 punten op. Geen chat gedetecteerd bewijst geen afwezigheid. Google-cijfers dekken alleen gevonden vestigingen met hetzelfde websitedomein.";
+  const sam = () => list?.brief.scoring === "sam_points";
+  const rowPill = (row) => {
+    const pill = scorePill(row.score.level);
+    if (row.score.tier) pill.lastChild.textContent = `${row.score.tier} · ${row.score.points}/100`;
+    return pill;
+  };
 
   const $ = (selector) => document.querySelector(selector);
   const home = $("#lead-home");
@@ -187,7 +195,7 @@
     unavailable.textContent = notice;
     unavailable.hidden = !notice;
     const usable = !notice;
-    [contextSelect, startMessage, startSend].forEach((control) => { control.disabled = !usable; });
+    [contextSelect, startMessage, startSend, $("#lead-scoring")].forEach((control) => { control.disabled = !usable; });
     startForm.classList.toggle("is-disabled", !usable);
   }
 
@@ -316,6 +324,7 @@
           conversation_id: session.conversationId,
           context_id: session.conversationId ? null : session.contextId,
           language: getLanguage(),
+          scoring: session.brief?.scoring || $("#lead-scoring").value,
         }),
       });
       session.conversationId = data.conversation_id;
@@ -388,7 +397,7 @@
         briefRow("size", t("lead.brief.size"), el("span", brief.size ? "" : "lead-muted", brief.size || t("lead.brief_open"))),
         briefRow("exclude", t("lead.brief.exclude"), chips(brief.exclude || [])),
         briefRow("columns", t("lead.brief.columns"), [fixed, chips(brief.extra_columns.map((column) => column.name), "lead-chip-accent")]),
-        briefRow("scorecard", t("lead.brief.scorecard"), scorecardList(brief.scorecard)),
+        briefRow("scorecard", t("lead.brief.scorecard"), brief.scoring === "sam_points" ? el("p", "lead-small", SAM_COPY) : scorecardList(brief.scorecard)),
         briefRow("count", t("lead.brief.count"), el("span", brief.count ? "lead-count" : "lead-muted",
           brief.count ? t("lead.count_value", { count: brief.count }) : t("lead.count_open"))),
       );
@@ -499,7 +508,7 @@
 
   function sortedRows() {
     return [...list.rows].sort((a, b) =>
-      (POINTS[b.score.level] ?? -1) - (POINTS[a.score.level] ?? -1) || a.name.localeCompare(b.name));
+      (b.score.points ?? POINTS[b.score.level] ?? -1) - (a.score.points ?? POINTS[a.score.level] ?? -1) || a.name.localeCompare(b.name));
   }
 
   function renderList(first = false) {
@@ -549,7 +558,7 @@
       button.type = "button";
       button.setAttribute("aria-pressed", String(filter === value));
       if (value !== "all") button.append(el("span", "lead-score-dot"));
-      button.append(el("span", "", value === "all" ? t("lead.filter_all") : t(`lead.score.${value}`)), el("span", "lead-filter-count", String(count)));
+      button.append(el("span", "", value === "all" ? t("lead.filter_all") : sam() ? ({high: "A", medium: "B", low: "C"}[value]) : t(`lead.score.${value}`)), el("span", "lead-filter-count", String(count)));
       button.addEventListener("click", () => {
         filter = value;
         renderFilters();
@@ -563,7 +572,7 @@
     const labels = [
       t("lead.col.score"), t("lead.col.organisation"), t("lead.col.location"), t("lead.col.phone"),
       t("lead.col.email"), t("lead.col.linkedin"), ...list.brief.extra_columns.map((column) => column.name),
-      t("lead.col.why"), t("lead.col.sources"),
+      ...(sam() ? Object.values(SAM_SIGNALS) : []), t("lead.col.why"), t("lead.col.sources"),
     ];
     tableHead.replaceChildren(...labels.map((label, index) => {
       const cell = el("th", index === 1 ? "lead-col-organisation" : index === 0 ? "lead-col-score" : "", label);
@@ -588,7 +597,7 @@
     tr.tabIndex = 0;
     tr.setAttribute("aria-label", t("lead.row_aria", { name: row.name }));
     const scoreCell = el("td", "lead-col-score");
-    scoreCell.append(scorePill(row.score.level));
+    scoreCell.append(rowPill(row));
     const organisation = el("td", "lead-col-organisation");
     organisation.append(el("span", "lead-name", row.name), externalLink(row.website, domain(row.website), "lead-domain"));
     const location = el("td");
@@ -623,7 +632,7 @@
     sourceButton.setAttribute("aria-label", t("lead.sources_aria", { count: row.sources.length, name: row.name }));
     sourceButton.addEventListener("click", (event) => { event.stopPropagation(); openRowDrawer(row, sourceButton); });
     sources.append(sourceButton);
-    tr.append(scoreCell, organisation, location, phone, email, linkedin, ...extras, why, sources);
+    tr.append(scoreCell, organisation, location, phone, email, linkedin, ...extras, ...(sam() ? Object.keys(SAM_SIGNALS).map((key) => factCell(row.signals?.[key])) : []), why, sources);
     tr.addEventListener("click", () => openRowDrawer(row, tr));
     tr.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -662,7 +671,7 @@
     // The first render of a finished list appears at once; rows that arrive while
     // searching slide in, so the user sees the list grow.
     if (first && list.status !== "running") elements.forEach((element) => element.classList.remove("is-new"));
-    const columnCount = 8 + list.brief.extra_columns.length;
+    const columnCount = 8 + list.brief.extra_columns.length + (sam() ? 4 : 0);
     const skeletons = list.status === "running" && filter === "all" && !query
       ? Array.from({ length: Math.min(3, Math.max(0, list.requested - list.found)) }, () => skeletonRow(columnCount))
       : [];
@@ -747,7 +756,7 @@
   }
 
   function openRowDrawer(row, trigger) {
-    openDrawer(scorePill(row.score.level), row.name, trigger);
+    openDrawer(rowPill(row), row.name, trigger);
     if (row.why_fits) {
       const why = el("section", "lead-drawer-section");
       why.append(el("h3", "", t("lead.col.why")), el("p", "lead-drawer-why", row.why_fits));
@@ -761,9 +770,19 @@
       factLine(t("lead.col.phone"), row.phone),
       factLine(t("lead.col.email"), row.email),
       ...list.brief.extra_columns.map((column) => factLine(column.name, row.extra[column.name])),
+      ...(sam() ? Object.entries(SAM_SIGNALS).map(([key, label]) => factLine(label, row.signals?.[key])) : []),
     );
     facts.append(el("h3", "", t("lead.facts")), list_);
     drawerBody.append(facts);
+    if (sam()) {
+      const section = el("section", "lead-drawer-section");
+      section.append(el("h3", "", "SAM-punten"));
+      Object.entries(row.score.blocks || {}).forEach(([label, points]) => section.append(el("p", "", `${label}: ${points} punten`)));
+      Object.entries(row.score.components || {}).forEach(([label, points]) => section.append(el("p", "lead-small", `${label}: ${points}`)));
+      if (row.score.unknown?.length) section.append(el("p", "lead-muted", `Onbekend: ${row.score.unknown.join(", ")}. Levert 0 punten op.`));
+      section.append(el("p", "lead-small", SAM_COPY));
+      drawerBody.append(section);
+    }
 
     if (row.score.criteria.length) {
       const score = el("section", "lead-drawer-section");
@@ -846,6 +865,10 @@
 
   function openScorecardDrawer(trigger) {
     openDrawer(t("lead.scorecard"), list.title, trigger);
+    if (sam()) {
+      drawerBody.append(el("p", "", SAM_COPY));
+      return;
+    }
     const columns = ["country", "city", ...list.brief.extra_columns.map((column) => column.name)];
     drawerBody.append(el("p", "lead-muted lead-small", t("lead.scorecard_copy")));
     const editors = el("div", "lead-criteria-editor");

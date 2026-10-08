@@ -22,6 +22,11 @@ def test_browser_runs_and_chat_use_server_provider():
     class Daemon(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
+            if self.path == "/api/studio/library":
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"revision": "test", "files": [{"name": name, "content": "SAM test facts"} for name in ("sip/README.md", "sip/business-contexts.md", "sip/website-knowledge.md")]}).encode())
+                return
             self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
             self.send_header("X-Frame-Options", "DENY")
             self.end_headers()
@@ -46,6 +51,7 @@ def test_browser_runs_and_chat_use_server_provider():
     env = {**os.environ, "PORT": str(port), "OD_INTERNAL_PORT": str(daemon.server_port),
            "OD_API_TOKEN": "test-daemon", "STUDIO_HANDOFF_SECRET": "test-signing",
            "SIP_ORIGIN": "https://sip.example", "STUDIO_OPENAI_API_KEY": "test-server-key",
+           "SIP_INTERNAL_URL": f"http://127.0.0.1:{daemon.server_port}",
            "STUDIO_MODEL": "test-model"}
     gateway = Path(__file__).resolve().parents[1] / "marketing/open-design/gateway.mjs"
     process = subprocess.Popen([node, str(gateway)], env=env, stdout=subprocess.DEVNULL)
@@ -67,14 +73,16 @@ def test_browser_runs_and_chat_use_server_provider():
             for route in ("/api/runs", "/api/chat"):
                 assert client.post(route, json={"message": "hello"}).status_code == 401
                 response = client.post(route, headers={"Authorization": "Bearer test-daemon"},
-                    json={"message": "hello", "agentId": "amr", "model": "browser-model",
+                    json={"projectId": "example", "message": "hello", "agentId": "amr", "model": "browser-model",
                           "byokProvider": {"apiKey": "browser-key"}})
                 assert response.status_code == 202
                 assert "test-server-key" not in response.text
                 route_seen, auth, body = received[-1]
                 assert route_seen == route
                 assert auth == "Bearer test-daemon"
-                assert body["message"] == "hello"
+                assert body["message"].endswith("\n\nhello")
+                assert "sip/README.md" in body["message"]
+                assert {entry[2]["name"] for entry in received if entry[0].endswith("/files")} == {"sip/README.md", "sip/business-contexts.md", "sip/website-knowledge.md"}
                 assert body["agentId"] == "byok-opencode"
                 assert body["model"] == "test-model"
                 assert body["byokProvider"]["apiKey"] == "test-server-key"

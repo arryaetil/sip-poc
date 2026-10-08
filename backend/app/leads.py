@@ -55,6 +55,7 @@ class LeadBrief(BaseModel):
     extra_columns: list[LeadColumn]
     scorecard: list[ScoreCriterion]
     count: int | None
+    scoring: Literal["levels", "sam_points"] = "levels"
 
     @model_validator(mode="before")
     @classmethod
@@ -128,6 +129,7 @@ class LeadRow(BaseModel):
     extra: dict[str, LeadFact] = Field(default_factory=dict)
     why_fits: str = ""
     sources: list[str] = Field(default_factory=list)
+    signals: dict[str, LeadFact] = Field(default_factory=dict)
 
 
 class CriterionScore(BaseModel):
@@ -139,6 +141,20 @@ class CriterionScore(BaseModel):
 class LeadScore(BaseModel):
     level: Literal["high", "medium", "low"] | None
     criteria: list[CriterionScore]
+    points: float | None = None
+    tier: str | None = None
+    blocks: dict[str, float] = Field(default_factory=dict)
+    components: dict[str, float] = Field(default_factory=dict)
+    unknown: list[str] = Field(default_factory=list)
+
+
+SAM_COLUMNS = [
+    LeadColumn(name="Vestigingen", description="Aantal vestigingen van de dealergroep; tel geen afdelingen. Alleen expliciet onderbouwde aantallen."),
+    LeadColumn(name="Aantal merken", description="Aantal verschillende automerken van de groep, onderbouwd op de eigen website."),
+    LeadColumn(name="Open in het weekend", description="Ja als klantenservice/service in het weekend open is, nee alleen bij expliciet gesloten zaterdag EN zondag; anders onbekend."),
+]
+SAM_SIGNALS = {"rating": "Rating", "reviews": "Reviews", "vacancies": "Vacatures", "chat": "Chattool"}
+SAM_EXPLANATION = "Schaal 30: vestigingen × 2 (max 20) + reviews / 250 (max 10). Pijn 30: rating <3,8 = 12; <4,3 = 6; <4,6 = 3; anders 0. Klachten (18) worden niet verzameld: reviewteksten zijn uitgesloten in afwachting van privacybeoordeling. Koopsignaal 25: receptie 12, klantenservice 10, serviceadviseur 7; tel aanwezige categorieën op + 3 bij minstens één vacature, max 25. Fit 15: geen chattool gedetecteerd 6, service weekend gesloten 4, minstens 4 merken 5. A ≥65, B ≥45, C <45. Maximaal haalbaar 82 van 100. Onbekende feiten leveren 0 punten op. Geen chat gedetecteerd is een HTML-signaal, geen bewijs van afwezigheid. Google-cijfers gelden alleen voor gevonden, op domein gematchte vestigingen."
 
 
 # --------------------------------------------------------------------------- brief
@@ -151,13 +167,15 @@ def clean_brief(brief: LeadBrief) -> LeadBrief:
         name = " ".join(column.name.split())[:40]
         if name and name.casefold() not in {c.name.casefold() for c in columns} and name.casefold() not in SCORABLE_COLUMNS:
             columns.append(LeadColumn(name=name, description=column.description.strip()[:300]))
-    columns = columns[:MAX_EXTRA_COLUMNS]
+    columns = SAM_COLUMNS if brief.scoring == "sam_points" else columns[:MAX_EXTRA_COLUMNS]
     allowed = {*SCORABLE_COLUMNS, *(c.name.casefold() for c in columns)}
     criteria = [
         ScoreCriterion(column=_column_key(c.column, columns), kind=c.kind, high=c.high.strip()[:200], medium=c.medium.strip()[:200])
         for c in brief.scorecard
         if c.column.strip().casefold() in allowed
     ][:MAX_CRITERIA]
+    if brief.scoring == "sam_points":
+        criteria = []
     count = None if brief.count is None else max(1, min(MAX_LEADS, brief.count))
     return LeadBrief(
         title=" ".join(brief.title.split())[:120] or "Lead list",
@@ -169,6 +187,7 @@ def clean_brief(brief: LeadBrief) -> LeadBrief:
         extra_columns=columns,
         scorecard=criteria,
         count=count,
+        scoring=brief.scoring,
     )
 
 
@@ -177,7 +196,7 @@ MIN_USER_TURNS = 3
 
 def brief_complete(brief: LeadBrief) -> bool:
     """Everything the search needs. What to exclude may be empty: "nothing" is an answer."""
-    return bool(brief.description and brief.industries and brief.regions and brief.size and brief.scorecard and brief.count)
+    return bool(brief.description and brief.industries and brief.regions and brief.size and (brief.scoring == "sam_points" or brief.scorecard) and brief.count)
 
 
 def _column_key(name: str, columns: list[LeadColumn]) -> str:
@@ -238,12 +257,14 @@ def fact_for(row: LeadRow, column: str) -> LeadFact:
     return row.extra.get(column) or LeadFact()
 
 
-def score_row(row: LeadRow, scorecard: list[ScoreCriterion]) -> LeadScore:
+def score_row(row: LeadRow, scorecard: list[ScoreCriterion], scoring: str = "levels") -> LeadScore:
     """High / medium / low from the scorecard. An unknown fact can never give high.
 
     High means mostly high: with two criteria both must be high, with three two high
     and one medium. An even mix of high and medium is medium.
     """
+    if scoring == "sam_points":
+        return sam_score(row)
     criteria = [
         CriterionScore(column=c.column, value=fact_for(row, c.column).value, level=_criterion_level(c, fact_for(row, c.column).value))
         for c in scorecard
@@ -259,6 +280,41 @@ def score_row(row: LeadRow, scorecard: list[ScoreCriterion]) -> LeadScore:
     else:
         level = "low"
     return LeadScore(level=level, criteria=criteria)
+
+
+def sam_score(row: LeadRow) -> LeadScore:
+    unknown = []
+    def value(key, extra=False):
+        fact = (row.extra if extra else row.signals).get(key, LeadFact())
+        if not fact.value or not fact.source:
+            unknown.append(key)
+            return None
+        return fact.value
+    def number(key, extra=False):
+        raw = value(key, extra)
+        result = _number(raw) if raw else None
+        if raw and result is None:
+            unknown.append(key)
+        return result
+    branches, reviews, rating = number("Vestigingen", True), number("reviews"), number("rating")
+    brands = number("Aantal merken", True)
+    vacancies, chat, weekend = value("vacancies"), value("chat"), value("Open in het weekend", True)
+    categories = set((vacancies or "").split(", "))
+    vacancy_points = min(25, sum(p for name, p in (("receptie", 12), ("klantenservice", 10), ("serviceadviseur", 7)) if name in categories) + (3 if categories.intersection({"receptie", "klantenservice", "serviceadviseur"}) else 0))
+    components = {
+        "Vestigingen": min(20, max(0, branches or 0) * 2),
+        "Reviews": min(10, max(0, reviews or 0) // 250),
+        "Rating": (12 if rating < 3.8 else 6 if rating < 4.3 else 3 if rating < 4.6 else 0) if rating is not None and 1 <= rating <= 5 else 0,
+        "Klachten (uitgesloten)": 0,
+        "Vacatures": vacancy_points,
+        "Chattool": 6 if chat == "Niet gedetecteerd" else 0,
+        "Weekend gesloten": 4 if (weekend or "").strip().casefold() in {"nee", "no", "nein"} else 0,
+        "Aantal merken": 5 if brands is not None and brands >= 4 else 0,
+    }
+    blocks = {"Schaal": components["Vestigingen"] + components["Reviews"], "Pijn": components["Rating"], "Koopsignaal": vacancy_points, "Fit": components["Chattool"] + components["Weekend gesloten"] + components["Aantal merken"]}
+    points = round(sum(blocks.values()), 2)
+    tier = "A" if points >= 65 else "B" if points >= 45 else "C"
+    return LeadScore(level={"A": "high", "B": "medium", "C": "low"}[tier], criteria=[], points=points, tier=tier, blocks={k: round(v, 2) for k, v in blocks.items()}, components={k: round(v, 2) for k, v in components.items()}, unknown=unknown)
 
 
 # --------------------------------------------------------------------------- contact rules
@@ -440,14 +496,14 @@ def export_xlsx(
 
     headers = [
         labels["score"], labels["name"], labels["city"], labels["country"], labels["website"], labels["phone"],
-        labels["email"], labels["linkedin"], *(column.name for column in brief.extra_columns), labels["why"], labels["sources"],
+        labels["email"], labels["linkedin"], *(column.name for column in brief.extra_columns), *(list(SAM_SIGNALS.values()) + ["Punten", "Tier"] if brief.scoring == "sam_points" else []), labels["why"], labels["sources"],
     ]
     for index, header in enumerate(headers, start=1):
         put(sheet.cell(row=1, column=index), header)
         sheet.cell(row=1, column=index).font = Font(bold=True)
     scored = sorted(
-        ((score_row(row, brief.scorecard), row) for row in rows),
-        key=lambda pair: -POINTS.get(pair[0].level or "low", 0),
+        ((score_row(row, brief.scorecard, brief.scoring), row) for row in rows),
+        key=lambda pair: -(pair[0].points if pair[0].points is not None else POINTS.get(pair[0].level or "low", 0)),
     )
     for row_number, (score, row) in enumerate(scored, start=2):
         values = [
@@ -455,6 +511,7 @@ def export_xlsx(
             row.name, row.city.value, row.country.value, row.website, row.phone.value, row.email.value,
             labels["open"] if row.linkedin else None,
             *(row.extra.get(column.name, LeadFact()).value for column in brief.extra_columns),
+            *([row.signals.get(key, LeadFact()).value for key in SAM_SIGNALS] + [score.points, score.tier] if brief.scoring == "sam_points" else []),
             row.why_fits, "\n".join(row.sources),
         ]
         for column_number, value in enumerate(values, start=1):
@@ -463,7 +520,7 @@ def export_xlsx(
             link = sheet.cell(row=row_number, column=8)
             link.hyperlink = row.linkedin
             link.font = Font(color="0563C1", underline="single")
-    widths = [9, 34, 18, 10, 30, 16, 28, 16, *([16] * len(brief.extra_columns)), 60, 50]
+    widths = [9, 34, 18, 10, 30, 16, 28, 16, *([16] * len(brief.extra_columns)), *([22] * 6 if brief.scoring == "sam_points" else []), 60, 50]
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
     sheet.freeze_panes = "B2"
@@ -475,6 +532,7 @@ def export_xlsx(
         (labels["expires"], expires_at[:10]),
         ("", ""),
         (labels["scorecard"], ""),
+        *(( ("SAM", SAM_EXPLANATION),) if brief.scoring == "sam_points" else ()),
         *((criterion.column, f"{labels['high']}: {criterion.high} · {labels['medium']}: {criterion.medium}") for criterion in brief.scorecard),
         ("", ""),
         (labels["note"], ""),

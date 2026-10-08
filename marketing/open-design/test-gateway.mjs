@@ -14,6 +14,20 @@ const token = 'daemon-token';
 const secret = 'handoff-secret';
 const projects = [];
 const uploads = [];
+const fileContents = new Map();
+const runs = [];
+let libraryContent = 'SAM approved v1';
+let libraryAvailable = true;
+const libraryNames = ['sip/README.md', 'sip/business-contexts.md', 'sip/website-knowledge.md'];
+const sip = http.createServer((req, res) => {
+  const timestamp = req.headers['x-sip-library-time'];
+  assert.equal(req.url, '/api/studio/library');
+  assert.equal(req.headers['x-sip-library-signature'], crypto.createHmac('sha256', secret).update(`sip-studio-library\n${timestamp}`).digest('hex'));
+  if (!libraryAvailable) { res.writeHead(503); return res.end(); }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ revision: libraryContent, files: libraryNames.map((name) => ({ name, content: libraryContent })) }));
+});
+await new Promise((resolve) => sip.listen(0, '127.0.0.1', resolve));
 // The brand packages on disk, as entrypoint.sh installs them on the volume.
 const dataDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'od-'));
 for (const brand of ['etil', 'ibc-group']) {
@@ -43,11 +57,14 @@ const upstream = http.createServer((req, res) => {
     }
     const upload = url.pathname.match(/^\/api\/projects\/([^/]+)\/files$/);
     if (req.method === 'POST' && upload) {
-      const name = body.toString().match(/name="name"\r\n\r\n([^\r]+)/)?.[1];
+      const json = String(req.headers['content-type']).includes('application/json') ? JSON.parse(body.toString()) : null;
+      const name = json?.name || body.toString().match(/name="name"\r\n\r\n([^\r]+)/)?.[1];
       uploads.push(`${upload[1]}:${name}`);
+      if (json) fileContents.set(`${upload[1]}:${name}`, json.content);
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end('{}');
     }
+    if (req.method === 'POST' && ['/api/runs', '/api/chat'].includes(url.pathname)) runs.push(JSON.parse(body.toString()));
     if (url.pathname === '/page') {
       // Like Open Design: pages are compressed when the browser allows it.
       if (String(req.headers['accept-encoding'] || '').includes('gzip')) { res.writeHead(500); return res.end('compressed'); }
@@ -68,7 +85,7 @@ const port = free.address().port;
 await new Promise((resolve) => free.close(resolve));
 const child = spawn(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta.url))], {
   env: { ...process.env, PORT: String(port), OD_INTERNAL_PORT: String(upstream.address().port), OD_API_TOKEN: token,
-    STUDIO_HANDOFF_SECRET: secret, SIP_ORIGIN: 'https://sip.example.test', OD_DATA_DIR: dataDir },
+    STUDIO_HANDOFF_SECRET: secret, SIP_ORIGIN: 'https://sip.example.test', SIP_INTERNAL_URL: `http://127.0.0.1:${sip.address().port}`, OD_DATA_DIR: dataDir },
   stdio: 'ignore',
 });
 const base = `http://localhost:${port}`;
@@ -89,27 +106,47 @@ try {
   assert.deepEqual(uploadsOf('free'), [
     'brand/etil/DESIGN.md', 'brand/etil/fonts/Ubuntu-Regular.ttf', 'brand/etil/images/people.jpg', 'brand/etil/tokens.css',
     'brand/ibc-group/DESIGN.md', 'brand/ibc-group/fonts/Ubuntu-Regular.ttf', 'brand/ibc-group/images/people.jpg', 'brand/ibc-group/tokens.css',
+    ...libraryNames,
   ]);
 
   // ibc group chosen in the studio: only its files, pointing at its image catalogue.
   await create({ id: 'ibc', designSystemId: 'ibc-group', customInstructions: 'Own note.' });
   assert.match(projects.at(-1).customInstructions, /^Own note\.\n\nFollow the selected ibc-group design system/);
-  assert.deepEqual(uploadsOf('ibc'), ['brand/ibc-group/fonts/Ubuntu-Regular.ttf', 'brand/ibc-group/images/people.jpg']);
+  assert.deepEqual(uploadsOf('ibc'), ['brand/ibc-group/fonts/Ubuntu-Regular.ttf', 'brand/ibc-group/images/people.jpg', ...libraryNames]);
 
   // Open Design's own name for the package, user:etil, is the same brand.
   await create({ id: 'etil', designSystemId: 'user:etil' });
   assert.match(projects.at(-1).customInstructions, /^Follow the selected etil design system/);
-  assert.deepEqual(uploadsOf('etil'), ['brand/etil/fonts/Ubuntu-Regular.ttf', 'brand/etil/images/people.jpg']);
+  assert.deepEqual(uploadsOf('etil'), ['brand/etil/fonts/Ubuntu-Regular.ttf', 'brand/etil/images/people.jpg', ...libraryNames]);
 
   // SIP's projects get the brand files but keep SIP's own instructions.
   await create({ id: 'sip-1', designSystemId: 'user:ibc-group', customInstructions: 'From SIP.', metadata: { source: 'sip' } });
   assert.equal(projects.at(-1).customInstructions, 'From SIP.');
-  assert.deepEqual(uploadsOf('sip-1'), ['brand/ibc-group/fonts/Ubuntu-Regular.ttf', 'brand/ibc-group/images/people.jpg']);
+  assert.deepEqual(uploadsOf('sip-1'), ['brand/ibc-group/fonts/Ubuntu-Regular.ttf', 'brand/ibc-group/images/people.jpg', ...libraryNames]);
 
   // Another Open Design style passes through untouched.
   await create({ id: 'other', designSystemId: 'apple' });
   assert.equal(projects.at(-1).customInstructions, undefined);
   assert.deepEqual(uploadsOf('other'), []);
+
+  // Existing projects receive updates and deletion/withdrawal before each generation.
+  const run = () => fetch(`${base}/api/runs`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ projectId: 'free', message: 'Maak een post' }) });
+  libraryContent = 'SAM approved v2';
+  assert.equal((await run()).status, 200);
+  assert.equal(fileContents.get('free:sip/business-contexts.md'), libraryContent);
+  assert.match(runs.at(-1).message, /read sip\/README.md/);
+  assert.match(runs.at(-1).message, /Maak een post/);
+  libraryContent = 'No approved contexts';
+  assert.equal((await run()).status, 200);
+  assert.equal(fileContents.get('free:sip/business-contexts.md'), libraryContent);
+  libraryAvailable = false;
+  const before = runs.length;
+  assert.equal((await run()).status, 502);
+  assert.equal(runs.length, before); // never generate against known stale facts
+  const beforeProjects = projects.length;
+  assert.equal((await create({ id: 'no-library' })).status, 502);
+  assert.equal(projects.length, beforeProjects);
+  libraryAvailable = true;
 
   // An entry link is not a session cookie; the session cookie from the link is.
   const body = Buffer.from(JSON.stringify({ sub: 'user', exp: Math.floor(Date.now() / 1000) + 120, next: '/', jti: crypto.randomBytes(16).toString('hex') })).toString('base64url');
@@ -140,5 +177,6 @@ try {
 } finally {
   child.kill();
   upstream.close();
+  sip.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
 }

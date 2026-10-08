@@ -74,6 +74,7 @@ class LeadChatRequest(BaseModel):
     conversation_id: str | None = None
     context_id: str | None = None
     language: Literal["en", "nl", "de"] = "nl"
+    scoring: Literal["levels", "sam_points"] = "levels"
 
 
 class LeadChatResponse(BaseModel):
@@ -197,7 +198,7 @@ def _summary(record: dict, owner_id: str, found: int, creators: dict[str, str] |
 
 
 def _detail(record, owner_id: str) -> LeadListDetail:
-    rows = [LeadRowOut(**row.model_dump(), score=score_row(row, record.brief.scorecard)) for row in record.rows]
+    rows = [LeadRowOut(**row.model_dump(), score=score_row(row, record.brief.scorecard, record.brief.scoring)) for row in record.rows]
     counts = {level: sum(1 for row in rows if row.score.level == level) for level in ("high", "medium", "low")}
     summary = _summary(vars(record), owner_id, len(rows), None if record.created_by else _creators())
     return LeadListDetail(**summary, brief=record.brief, rows=rows, counts=counts)
@@ -267,7 +268,7 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     try:
         turn = _main().get_assistant().lead_intake_turn(
             conversation.messages,
-            body.message,
+            body.message + ("\nSelected scoring: " + (current.scoring if current else body.scoring)),
             body.language,
             owner_id,
             context.text,
@@ -281,7 +282,7 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     except Exception as exc:
         logger.error("Lead finder request failed:\n%s", traceback.format_exc())
         raise HTTPException(status_code=502, detail="The Lead finder could not be reached. Please try again.") from exc
-    brief = clean_brief(turn.brief)
+    brief = clean_brief(turn.brief.model_copy(update={"scoring": current.scoring if current else body.scoring}))
     updated = store.add_conversation_turn(
         conversation_id=conversation.id,
         user_message=body.message,
