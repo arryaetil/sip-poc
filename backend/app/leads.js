@@ -59,6 +59,7 @@
   let drawerReturnFocus = null;
 
   const allowed = () => ALLOWED_ROLES.includes(currentRole);
+  const creator = (item) => (item.mine ? t("lead.by_you") : item.created_by ? t("lead.by", { name: item.created_by }) : "");
 
   function el(tag, className, text) {
     const element = document.createElement(tag);
@@ -226,7 +227,7 @@
       const description = el("span");
       description.append(
         el("span", "conversation-title", item.title),
-        el("span", "conversation-preview", item.context_name),
+        el("span", "conversation-preview", [item.context_name, creator(item)].filter(Boolean).join(" · ")),
       );
       const state = listState(item);
       const status = el("span", `status-chip lead-chip-${state.className}`, state.label);
@@ -505,6 +506,7 @@
     resultTitle.textContent = list.title;
     resultMeta.replaceChildren(
       el("span", "", list.context_name),
+      ...(creator(list) ? [el("span", "", creator(list))] : []),
       el("span", "", formatDate(list.created_at)),
       el("span", "", t("lead.expires_in", { days: daysLeft(list.expires_at) })),
     );

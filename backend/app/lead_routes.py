@@ -8,6 +8,7 @@ RETENTION_DAYS and a housekeeping thread deletes them (see `start_housekeeping`)
 from __future__ import annotations
 
 from datetime import date
+import hashlib
 from types import SimpleNamespace
 import logging
 import re
@@ -115,6 +116,7 @@ class LeadListSummary(BaseModel):
     requested: int
     found: int
     mine: bool
+    created_by: str | None  # email of the creator; None when unknown (local development)
     created_at: str
     expires_at: str
 
@@ -161,7 +163,16 @@ def _missing() -> Literal["search", "assistant"] | None:
         return "assistant"
 
 
-def _summary(record: dict, owner_id: str, found: int) -> dict:
+def _creators() -> dict[str, str]:
+    """Owner id -> email, for lists stored before created_by existed."""
+    main = _main()
+    known = {user.id: user.email for user in main.get_context_store().list_users()}
+    for email in main._env_users():
+        known.setdefault("env:" + hashlib.sha256(email.encode()).hexdigest()[:24], email)
+    return known
+
+
+def _summary(record: dict, owner_id: str, found: int, creators: dict[str, str] | None = None) -> dict:
     """A list row (sqlite) or a full record, as plain fields."""
     brief = record["brief"]
     brief = brief if isinstance(brief, LeadBrief) else LeadBrief.model_validate_json(brief)
@@ -175,6 +186,7 @@ def _summary(record: dict, owner_id: str, found: int) -> dict:
         "requested": brief.count or 0,
         "found": found,
         "mine": record["owner_id"] == owner_id,
+        "created_by": record.get("created_by") or (creators or {}).get(record["owner_id"]),
         "created_at": record["created_at"],
         "expires_at": record["expires_at"],
     }
@@ -183,7 +195,8 @@ def _summary(record: dict, owner_id: str, found: int) -> dict:
 def _detail(record, owner_id: str) -> LeadListDetail:
     rows = [LeadRowOut(**row.model_dump(), score=score_row(row, record.brief.scorecard)) for row in record.rows]
     counts = {level: sum(1 for row in rows if row.score.level == level) for level in ("high", "medium", "low")}
-    return LeadListDetail(**_summary(vars(record), owner_id, len(rows)), brief=record.brief, rows=rows, counts=counts)
+    summary = _summary(vars(record), owner_id, len(rows), None if record.created_by else _creators())
+    return LeadListDetail(**summary, brief=record.brief, rows=rows, counts=counts)
 
 
 def _owned_lead_conversation(conversation_id: str, owner_id: str):
@@ -343,7 +356,10 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
         raise HTTPException(status_code=422, detail="Say how many leads you want first")
     if not brief_complete(brief):
         raise HTTPException(status_code=422, detail="The search brief is not complete yet; finish the conversation first")
-    list_id = store.create_lead_list(owner_id, body.conversation_id, context.id, context.name, brief, body.language)
+    list_id = store.create_lead_list(
+        owner_id, body.conversation_id, context.id, context.name, brief, body.language,
+        created_by=getattr(request.state, "user_email", None),
+    )
     search = LeadSearch(store, main.get_assistant(), Serper(serper_key()))
     start_search(search, list_id, owner_id, body.language, context.text)
     logger.info("lead_list_started list=%s count=%s", list_id, brief.count)
@@ -354,7 +370,9 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
 def lead_lists(request: Request) -> list[LeadListSummary]:
     main = _main()
     owner_id, _ = main._actor(request)
-    return [LeadListSummary(**_summary(dict(row), owner_id, row["found"])) for row in main.get_context_store().list_lead_lists()]
+    rows = main.get_context_store().list_lead_lists()
+    creators = _creators() if any(not row["created_by"] for row in rows) else {}
+    return [LeadListSummary(**_summary(dict(row), owner_id, row["found"], creators)) for row in rows]
 
 
 @router.get("/lists/{list_id}", response_model=LeadListDetail)

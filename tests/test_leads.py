@@ -469,6 +469,17 @@ def test_a_list_needs_a_count_and_never_exceeds_fifty(app_env):
     assert len(started) == 1
     listing = signed_in("admin@test.nl", "admin-pass").get("/api/leads/lists").json()
     assert listing[0]["mine"] is False and listing[0]["status"] == "running"
+    assert listing[0]["created_by"] == "sales@test.nl"
+
+
+def test_lists_from_before_created_by_still_show_their_creator(app_env):
+    store, _, _ = app_env
+    import hashlib
+    owner = "env:" + hashlib.sha256(b"sales@test.nl").hexdigest()[:24]
+    store.create_lead_list(owner, None, "ctx", "SAM", clean_brief(brief()), "nl")  # no created_by stored
+    store.create_lead_list("gone", None, "ctx", "SAM", clean_brief(brief()), "nl")
+    listing = signed_in("admin@test.nl", "admin-pass").get("/api/leads/lists").json()
+    assert sorted(str(item["created_by"]) for item in listing) == ["None", "sales@test.nl"]
 
 
 def test_no_search_without_a_serper_key(app_env, monkeypatch):

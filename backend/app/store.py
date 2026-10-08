@@ -278,6 +278,11 @@ class ContextStore:
                 connection.execute("ALTER TABLE conversations ADD COLUMN lead_brief TEXT")
             except sqlite3.OperationalError:
                 pass
+            try:
+                # Who started a lead list, shown to the sales team that shares the lists.
+                connection.execute("ALTER TABLE lead_lists ADD COLUMN created_by TEXT")
+            except sqlite3.OperationalError:
+                pass
 
     def backfill_owner(self, owner_id: str) -> None:
         """Claim legacy rows for the bootstrap account; NULL must never mean public."""
@@ -1065,16 +1070,23 @@ class ContextStore:
         return LeadBrief.model_validate_json(row["lead_brief"]) if row and row["lead_brief"] else None
 
     def create_lead_list(
-        self, owner_id: str, conversation_id: str | None, context_id: str, context_name: str, brief: LeadBrief, language: str
+        self,
+        owner_id: str,
+        conversation_id: str | None,
+        context_id: str,
+        context_name: str,
+        brief: LeadBrief,
+        language: str,
+        created_by: str | None = None,
     ) -> str:
         list_id = str(uuid4())
         with self._connect() as connection:
             connection.execute(
                 f"""
-                INSERT INTO lead_lists (id, owner_id, conversation_id, context_id, context_name, brief, language, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', '+{int(RETENTION_DAYS)} days'))
+                INSERT INTO lead_lists (id, owner_id, conversation_id, context_id, context_name, brief, language, created_by, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+{int(RETENTION_DAYS)} days'))
                 """,
-                (list_id, owner_id, conversation_id, context_id, context_name, brief.model_dump_json(), language),
+                (list_id, owner_id, conversation_id, context_id, context_name, brief.model_dump_json(), language, created_by),
             )
         return list_id
 
