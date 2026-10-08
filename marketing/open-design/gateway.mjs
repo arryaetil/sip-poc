@@ -194,7 +194,7 @@ function bundlePreviewAssets(text, pathname, req) {
   for(const ref of refs){
     const url=new URL(ref,base);
     const body=b64(JSON.stringify({typ:'preview-asset',path:url.pathname,exp}));
-    text=text.replaceAll(ref,url.pathname+'?sip_asset='+body+'.'+sign(body));
+    text=text.replaceAll(ref,'https://'+(req.headers['x-forwarded-host']||req.headers.host)+url.pathname+'?sip_asset='+body+'.'+sign(body));
   }
   return text;
 }
