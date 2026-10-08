@@ -181,7 +181,9 @@ try {
   const preview = await (await fetch(`${base}/api/projects/p1/raw/post.html`, {headers:{cookie}})).text();
   assert.match(preview, /sip-artwork-preview/);
   assert.doesNotMatch(preview,/data:(image|font)\/.*base64/);
-  const assetPath=preview.match(/src="([^"]+sip_asset=[^"]+)"/)[1];
+  const assetURL=new URL(preview.match(/src="([^"]+sip_asset=[^"]+)"/)[1]);
+  assert.equal(assetURL.origin,base.replace('http:','https:'));
+  const assetPath=assetURL.pathname+assetURL.search;
   const asset=await fetch(base+assetPath);
   assert.equal(asset.status,200);
   assert.equal(await asset.text(),'logo');
