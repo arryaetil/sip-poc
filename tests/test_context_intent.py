@@ -75,3 +75,26 @@ def test_routing_cannot_grant_update_permission():
     result = resolve_intent(Router({'action':'update', 'target_id':'approved'}),
                             conversation, 'werk SAM bij', 'alice', [context], [], False)
     assert result.action == 'clarify'
+
+
+def test_named_private_draft_routes_to_update_without_exposing_other_drafts(env, monkeypatch):
+    from test_context_versions import context
+    store, assistant = env
+    private = store.create(context("Own private QA"), "draft", main._find_user("po@test.nl")["id"])
+    other = store.create(context("Other private QA"), "draft", main._find_user("po2@test.nl")["id"])
+    original = assistant.strategist_turn
+    def turn(history, message, language, owner_id, extra=''):
+        if 'First resolve' in extra:
+            catalogue = json.loads(history[0].content.split('\n', 1)[1])
+            ids = {item['id'] for item in catalogue['contexts']}
+            assert private.id in ids and other.id not in ids
+            return Router({'action':'update', 'target_id':private.id}).strategist_turn()
+        return original(history, message, language, owner_id, extra)
+    monkeypatch.setattr(assistant, 'strategist_turn', turn)
+    http = signed_in('po@test.nl', 'po-pass')
+    conversation = http.post('/api/conversations', json={'language':'nl'}).json()
+    response = http.post(f"/api/conversations/{conversation['id']}/messages", json={'message':'Werk mijn privéconcept Own private QA bij'})
+    assert response.status_code == 200
+    assert response.json()['conversation']['updates_context_id'] == private.id
+    assert len(store.list_context_versions(private.id)) == 1
+    assert http.post(f"/api/conversations/{conversation['id']}/update-proposal").json()['current_status'] == 'draft'
