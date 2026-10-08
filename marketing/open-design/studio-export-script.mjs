@@ -21,6 +21,20 @@ save.onclick=async()=>{if(mode.value==='template'&&!brand.value){status.textCont
 };actions.appendChild(button);
 }
 document.addEventListener('DOMContentLoaded',addPowerPoint);setInterval(addPowerPoint,1000);
+// Upstream can remove its native PPTX item after capability discovery. Keep the
+// adapter's supported template export available in the artwork export menu.
+function ensureExportMenu(){
+if(!document.querySelector('[data-sip-pptx]'))return;
+for(const menu of document.querySelectorAll('[role="menu"]')){
+const items=[...menu.querySelectorAll('[role="menuitem"]')];
+const zip=items.find(item=>['Download as .zip','Download als ZIP','Als ZIP herunterladen'].includes(item.textContent.trim()));
+if(!zip||items.some(item=>['Export as PPTX','PowerPoint downloaden','PowerPoint herunterladen'].includes(item.textContent.trim())))continue;
+const entry=document.createElement('button');entry.type='button';entry.setAttribute('role','menuitem');entry.dataset.sipExportPptxMenu='';entry.className=zip.className;entry.textContent=window.sipStudioT?.('Export as PPTX')||'Export as PPTX';menu.appendChild(entry);
+}
+}
+new MutationObserver(ensureExportMenu).observe(document.documentElement,{childList:true,subtree:true});
+setInterval(ensureExportMenu,1000);
+
 // The upstream ZIP contains project source files. In the marketing export menu,
 // ZIP means the artwork pages. Keep both PowerPoint entry points consistent.
 let zipBusy=false;

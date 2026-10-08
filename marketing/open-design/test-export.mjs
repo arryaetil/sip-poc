@@ -127,7 +127,7 @@ try{
    assert.deepEqual(route.request().postDataJSON(),{fileName:'post.html',imageFormat:'png'});
    return route.fulfill({status:200,contentType:'application/zip',headers:{'content-disposition':'attachment; filename="artwork-pages.zip"'},body:carousel.buffer});
   }
-  return route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT+'</head><body><div id="app-chrome-file-actions"></div><button role="menuitem">Download als ZIP</button><button role="menuitem">Export as PPTX</button></body></html>'});
+  return route.fulfill({contentType:'text/html',body:'<html><head>'+STUDIO_EXPORT_SCRIPT+'</head><body><div id="app-chrome-file-actions"></div><div role="menu"><button role="menuitem">Download als ZIP</button><button role="menuitem">Export as PPTX</button></div></body></html>'});
  });
  await page.goto('http://menu.invalid/projects/fixture/conversations/one/files/post.html');
  const menuDownloading=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Download als ZIP'}).click();const menuDownload=await menuDownloading;
@@ -138,5 +138,10 @@ try{
  assert.equal(await page.locator('[data-sip-pptx-mode]').inputValue(),'template');
  await page.locator('[data-sip-pptx-cancel]').click();
  assert.equal(await page.locator('[data-sip-pptx-dialog]').count(),0);
+ await page.getByRole('menuitem',{name:'Export as PPTX'}).evaluate(element=>element.remove());
+ await page.locator('[data-sip-export-pptx-menu]').waitFor({state:'visible',timeout:6000});
+ await page.getByRole('menuitem',{name:'Export as PPTX'}).click();
+ assert.equal(await page.locator('[data-sip-pptx-dialog]').isVisible(),true);
+ await page.locator('[data-sip-pptx-cancel]').click();
  console.log('ZIP menu downloads artwork pages, and the PPTX menu opens the official editable-template choice');
 }finally{await browser.close();}
