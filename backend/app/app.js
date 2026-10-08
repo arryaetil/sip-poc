@@ -1082,6 +1082,19 @@ let pendingStudioOffer = null;
 window.addEventListener("message", event => {
   if (!studioLastLink || event.source !== studioFrame.contentWindow || event.origin !== new URL(studioLastLink).origin) return;
   if (event.data?.type === "sip-studio-project" && /^[a-zA-Z0-9_-]{1,128}$/.test(event.data.projectId || "")) studioProjectId = event.data.projectId;
+  // The trusted Studio prepares the file; SIP owns the browser download so it
+  // also works when the Studio is embedded instead of opened in another tab.
+  if (event.data?.type === "sip-studio-download" && event.data.blob instanceof Blob &&
+      typeof event.data.fileName === "string" && /^[^/\\\r\n]{1,255}$/.test(event.data.fileName)) {
+    const url = URL.createObjectURL(event.data.blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = event.data.fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
 });
 
 async function openPreparedStudio() {
