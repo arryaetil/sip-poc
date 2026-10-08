@@ -687,8 +687,37 @@
 
   search.addEventListener("input", () => renderRows());
 
-  exportLink.addEventListener("click", (event) => {
-    if (!list || !list.rows.length) event.preventDefault();
+  let exportBusy = false;
+  const exportStatus = el("p", "lead-export-status");
+  exportStatus.setAttribute("role", "status");
+  exportLink.after(exportStatus);
+  exportLink.addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (!list || !list.rows.length || exportBusy) return;
+    exportBusy = true;
+    exportLink.setAttribute("aria-disabled", "true");
+    exportStatus.textContent = t("lead.export_preparing");
+    try {
+      const response = await fetch(exportLink.href, { credentials: "same-origin", headers: { "X-SIP-Language": getLanguage() } });
+      const type = response.headers.get("content-type") || "";
+      if (!response.ok || !type.includes("spreadsheetml.sheet")) throw new Error(t("lead.export_failed"));
+      const bytes = await response.arrayBuffer();
+      const filename = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") || "")?.[1] || "leads.xlsx";
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+      const download = document.createElement("a");
+      download.href = url;
+      download.download = filename;
+      document.body.appendChild(download);
+      download.click();
+      download.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      exportStatus.textContent = t("lead.export_started");
+    } catch (error) {
+      exportStatus.textContent = t("lead.export_failed");
+    } finally {
+      exportBusy = false;
+      exportLink.setAttribute("aria-disabled", String(!list?.rows.length));
+    }
   });
 
   function stopPolling() {
