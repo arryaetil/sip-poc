@@ -22,11 +22,13 @@ import os
 import re
 import socket
 import threading
+import time
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from app.assistants import AssistantUnavailable
 from app.leads import (
     BATCH_SIZE,
     LeadBrief,
@@ -44,6 +46,7 @@ USER_AGENT = "SIP-LeadFinder/0.1 (ETIL Solutions; public company pages only)"
 MAX_ROUNDS = 3
 MAX_QUERIES_PER_ROUND = 6
 WORKERS = 4
+RETRY_SECONDS = 20
 PAGE_LIMIT = 4
 PAGE_TEXT = 8_000
 MAX_BYTES = 1_500_000
@@ -364,7 +367,9 @@ class LeadSearch:
             if not pages:
                 return
             company = json.dumps(candidate.model_dump(), ensure_ascii=False)
-            extraction = self.assistant.lead_extract(payload, company, _pages_text(pages), language, owner_id)
+            extraction = self._extract(list_id, payload, company, _pages_text(pages), language, owner_id)
+            if extraction is None:
+                return
             if not extraction.fits:
                 return
             row = build_row(candidate, pages, extraction, brief.extra_columns)
@@ -377,6 +382,19 @@ class LeadSearch:
         with self._lock:
             if self._found(list_id) < target:
                 self.store.add_lead_row(list_id, row)
+
+    def _extract(self, list_id, payload, company, pages, language, owner_id):
+        """Read one company's pages. When the AI service is busy (Dify's free plan limit),
+        wait and try again once; if it is still busy, count the company as skipped so the
+        list says so instead of quietly coming up short."""
+        for attempt in range(2):
+            try:
+                return self.assistant.lead_extract(payload, company, pages, language, owner_id)
+            except AssistantUnavailable:
+                if attempt == 0:
+                    time.sleep(RETRY_SECONDS)
+        self.store.add_lead_skip(list_id)
+        return None
 
     def _linkedin(self, name: str, country: str | None, website: str = "") -> str | None:
         """From a Google result only; SIP never opens LinkedIn itself.

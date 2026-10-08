@@ -352,6 +352,10 @@ def build_row(candidate: LeadCandidate, pages: dict[str, str], extraction: LeadE
             return LeadFact()
         return LeadFact(value=" ".join(fact.value.split())[:200], source=fact.source)
 
+    def on_page(fact: LeadFact) -> LeadFact:
+        # A place name is copied, not derived: it must appear on the page it came from.
+        return fact if fact.value and fact.value.casefold() in folded_pages[fact.source] else LeadFact()
+
     country = grounded(extraction.country)
     phone = grounded(extraction.phone)
     phone_value = company_phone(phone.value, country.value)
@@ -370,7 +374,7 @@ def build_row(candidate: LeadCandidate, pages: dict[str, str], extraction: LeadE
     row = LeadRow(
         name=" ".join(extraction.name.split())[:160] or candidate.name,
         website=next(iter(pages)),
-        city=grounded(extraction.city),
+        city=on_page(grounded(extraction.city)),
         country=country,
         phone=LeadFact(value=phone_value, source=phone.source) if phone_value else LeadFact(),
         email=LeadFact(value=email_value, source=email.source) if email_value else LeadFact(),

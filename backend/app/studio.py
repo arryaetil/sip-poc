@@ -55,7 +55,13 @@ def signed_link(owner_id: str, next_path: str = "/") -> str:
     """A link the gateway accepts once, for LINK_SECONDS, for this user."""
     _, public, _, secret = _config()
     body = base64.urlsafe_b64encode(
-        json.dumps({"sub": hashlib.sha256(owner_id.encode()).hexdigest()[:24], "exp": int(time.time()) + LINK_SECONDS, "next": next_path}).encode()
+        json.dumps({
+            "sub": hashlib.sha256(owner_id.encode()).hexdigest()[:24],
+            "exp": int(time.time()) + LINK_SECONDS,
+            "next": next_path,
+            # The gateway accepts each link once (it records the jti).
+            "jti": uuid4().hex,
+        }).encode()
     ).rstrip(b"=").decode()
     signature = base64.urlsafe_b64encode(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
     return f"{public}/__sip/enter?t={body}.{signature}"
@@ -66,7 +72,10 @@ def context_document(
     history: list[ConversationMessage],
     sources: list[KnowledgeChatSource],
 ) -> str:
-    """What the designer may draw on: the brief, the conversation and the retrieved passages."""
+    """What the designer may draw on: the brief and the retrieved passages.
+
+    Not the conversation: Open Design is shared by every studio user, so a project
+    must hold nothing more personal than the brief the user asked for."""
     lines = [
         "# Context from SIP",
         "",
@@ -82,11 +91,6 @@ def context_document(
         for source in sources:
             lines.append(f"### {source.title}" + (f" ({source.url})" if source.url.startswith("http") else ""))
             lines += [f"> {passage}".replace("\n", "\n> ") for passage in source.passages] or ["(no passage returned)"]
-            lines.append("")
-    if history:
-        lines += ["## Conversation in SIP", ""]
-        for message in history[-12:]:
-            lines.append(f"**{'User' if message.role == 'user' else 'Knowledge assistant'}:** {message.content}")
             lines.append("")
     return "\n".join(lines).strip() + "\n"
 

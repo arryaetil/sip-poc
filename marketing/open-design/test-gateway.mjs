@@ -112,12 +112,18 @@ try {
   assert.deepEqual(uploadsOf('other'), []);
 
   // An entry link is not a session cookie; the session cookie from the link is.
-  const body = Buffer.from(JSON.stringify({ sub: 'user', exp: Math.floor(Date.now() / 1000) + 120, next: '/' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify({ sub: 'user', exp: Math.floor(Date.now() / 1000) + 120, next: '/', jti: crypto.randomBytes(16).toString('hex') })).toString('base64url');
   const link = `${body}.${crypto.createHmac('sha256', secret).update(body).digest('base64url')}`;
   assert.equal((await fetch(`${base}/`, { headers: { cookie: `sip_studio=${link}` } })).status, 401);
   const entered = await fetch(`${base}/__sip/enter?t=${link}`, { redirect: 'manual' });
   const cookie = entered.headers.get('set-cookie').split(';')[0];
   assert.equal((await fetch(`${base}/`, { headers: { cookie } })).status, 200);
+  // The same link a second time is refused.
+  assert.equal((await fetch(`${base}/__sip/enter?t=${link}`, { redirect: 'manual' })).status, 401);
+  // A change sent from another site with the cookie is refused; from the studio itself it passes.
+  const host = new URL(base).host;
+  assert.equal((await fetch(`${base}/other`, { method: 'POST', headers: { cookie, origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await fetch(`${base}/other`, { method: 'POST', headers: { cookie, origin: `https://${host}` } })).status, 200);
   assert.equal((await fetch(`${base}/__sip/enter?t=${cookie.split('=')[1]}`, { redirect: 'manual' })).status, 401);
 
   // Pages get the style that hides what marketing does not need; other responses do not.

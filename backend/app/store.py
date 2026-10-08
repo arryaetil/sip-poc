@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
+from contextlib import contextmanager
 from uuid import uuid4
 
 from app.leads import RETENTION_DAYS, LeadBrief, LeadRow
@@ -50,13 +51,23 @@ class ContextStore:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialise()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path)
+    @contextmanager
+    def _connect(self):
+        """One connection per use, committed (or rolled back) and always closed.
+
+        WAL lets readers and the background lead search write at the same time;
+        the timeout waits for a lock instead of failing at once."""
+        connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialise(self) -> None:
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS business_contexts (
@@ -312,6 +323,11 @@ class ContextStore:
             try:
                 # Who started a lead list, shown to the sales team that shares the lists.
                 connection.execute("ALTER TABLE lead_lists ADD COLUMN created_by TEXT")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                # Organisations skipped because the AI service was busy, shown on the list.
+                connection.execute("ALTER TABLE lead_lists ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
 
@@ -1201,6 +1217,23 @@ class ContextStore:
             connection.execute("INSERT INTO lead_rows (list_id, content) VALUES (?, ?)", (list_id, row.model_dump_json()))
             connection.execute("UPDATE lead_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (list_id,))
         return True
+
+    def add_lead_skip(self, list_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("UPDATE lead_lists SET skipped = skipped + 1 WHERE id = ?", (list_id,))
+
+    def lead_lists_by(self, owner_id: str, since_hours: int = 24) -> tuple[int, int]:
+        """(running now, started in the last `since_hours`) for one user: the search limits."""
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT SUM(status = 'running') AS running,
+                       SUM(created_at > datetime('now', '-{int(since_hours)} hours')) AS recent
+                FROM lead_lists WHERE owner_id = ?
+                """,
+                (owner_id,),
+            ).fetchone()
+        return int(row["running"] or 0), int(row["recent"] or 0)
 
     def lead_row_count(self, list_id: str) -> int:
         with self._connect() as connection:

@@ -536,6 +536,7 @@
     if (list.status === "failed") notice = t(list.error === "search_unavailable" ? "lead.error.search_unavailable" : "lead.error.search_failed");
     else if (list.status === "interrupted") notice = t("lead.error.interrupted");
     else if (list.status === "done" && list.found < list.requested) notice = t("lead.fewer_found", { found: list.found, requested: list.requested });
+    if (list.skipped) notice = [notice, t("lead.skipped", { count: list.skipped })].filter(Boolean).join(" ");
     resultNotice.textContent = notice;
     resultNotice.hidden = !notice;
   }

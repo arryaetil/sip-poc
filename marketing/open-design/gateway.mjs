@@ -22,6 +22,9 @@ const TOKEN = process.env.OD_API_TOKEN || '';
 const SECRET = process.env.STUDIO_HANDOFF_SECRET || '';
 const SIP_ORIGIN = (process.env.SIP_ORIGIN || '').replace(/\/$/, '');
 const COOKIE = 'sip_studio';
+// Entry links are accepted once: their one-time id (jti) is recorded here, on the
+// data volume, so a restart does not make an old link valid again.
+const USED_LINKS = nodePath.join(process.env.OD_DATA_DIR || '/app/.od', 'sip-entry-links');
 const SESSION_SECONDS = 12 * 60 * 60;
 
 if (!TOKEN || !SECRET || !SIP_ORIGIN) {
@@ -68,12 +71,32 @@ function deny(res) {
 <p><a href="${SIP_ORIGIN}" style="color:#0066cc">Go to SIP</a></p></div></body>`);
 }
 
-function enter(req, res, url) {
+async function claimOnce(jti, exp) {
+  if (!/^[a-f0-9]{32}$/.test(String(jti || ''))) return false;
+  await fs.mkdir(USED_LINKS, { recursive: true });
+  try {
+    await fs.writeFile(nodePath.join(USED_LINKS, jti), String(exp), { flag: 'wx', mode: 0o600 });
+    return true;
+  } catch {
+    return false; // already used
+  }
+}
+
+async function forgetExpiredLinks() {
+  const now = Math.floor(Date.now() / 1000);
+  for (const name of await fs.readdir(USED_LINKS).catch(() => [])) {
+    const exp = Number(await fs.readFile(nodePath.join(USED_LINKS, name), 'utf8').catch(() => '0'));
+    if (exp < now) await fs.rm(nodePath.join(USED_LINKS, name), { force: true });
+  }
+}
+
+async function enter(req, res, url) {
   const claims = verify(url.searchParams.get('t'));
   if (!claims) return deny(res);
   if (claims.typ === 'session') return deny(res); // a session cookie is not an entry link
+  if (!(await claimOnce(claims.jti, claims.exp))) return deny(res);
   const session = b64(JSON.stringify({ typ: 'session', sub: claims.sub, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS }));
-  const next = typeof claims.next === 'string' && claims.next.startsWith('/') && !claims.next.startsWith('//') ? claims.next : '/';
+  const next = typeof claims.next === 'string' && /^\/(?!\/)[^\\\r\n]*$/.test(claims.next) && !claims.next.startsWith('/__sip/') ? claims.next : '/';
   securityHeaders(res);
   res.writeHead(302, {
     Location: next,
@@ -82,6 +105,15 @@ function enter(req, res, url) {
     'Cache-Control': 'no-store',
   });
   res.end();
+}
+
+// Requests that change something must come from the studio page itself (or from SIP's
+// backend with the daemon token): a cookie alone could be sent by another site.
+function sameOriginWrite(req) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return true;
+  if (req.headers.authorization === `Bearer ${TOKEN}`) return true;
+  const own = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+  return req.headers.origin === own;
 }
 
 function authorised(req) {
@@ -315,6 +347,13 @@ http
     if (url.pathname === '/__sip/enter') return enter(req, res, url);
     if (url.pathname === '/api/health') return proxy(req, res); // Railway health check
     if (!authorised(req)) return deny(res);
+    if (!sameOriginWrite(req)) {
+      securityHeaders(res);
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Request refused.');
+    }
     return proxy(req, res);
   })
   .listen(PORT, '::', () => console.log(`gateway listening on ${PORT}, Open Design on 127.0.0.1:${UPSTREAM_PORT}`));
+forgetExpiredLinks();
+setInterval(forgetExpiredLinks, 60 * 60 * 1000).unref();
