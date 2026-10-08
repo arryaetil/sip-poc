@@ -245,7 +245,7 @@ class FakeSerper:
         self.queries.append(query)
         if "site:linkedin.com" in query:
             return [SearchResult("x", "https://www.linkedin.com/in/someone", ""),
-                    SearchResult("x", "https://nl.linkedin.com/company/dealer-groep", "")]
+                    SearchResult("x", "https://nl.linkedin.com/company/dealer-groep", query)]
         return [SearchResult(f"Dealer {i}", f"https://dealer{i}.example/", "dealer") for i in range(6)] + [
             SearchResult("Gids", "https://www.goudengids.nl/dealers", "")
         ]
@@ -577,3 +577,19 @@ def test_a_city_that_is_not_on_its_page_is_dropped():
         country=LeadFact(), phone=LeadFact(), email=LeadFact(), extra=[], why_fits="",
     )
     assert build_row(LeadCandidate(name="X", website="https://x.example"), pages, extraction, []).city.value is None
+
+
+def test_linkedin_rejects_namesakes_and_requires_exact_company_website():
+    class EvidenceSearch:
+        def search(self, *args, **kwargs):
+            return [SearchResult("Essent", "https://www.linkedin.com/company/essent-us", "Website essent.us"),
+                    SearchResult("Essent", "https://www.linkedin.com/company/essent-fake", "Website notessent.nl"),
+                    SearchResult("Essent", "https://nl.linkedin.com/company/essent", "Website https://www.essent.nl/")]
+    search = LeadSearch(None, None, EvidenceSearch(), None)
+    assert search._linkedin("Essent", "Nederland", "https://www.essent.nl") == "https://www.linkedin.com/company/essent/people/"
+    class NoEvidence:
+        def search(self, *args, **kwargs):
+            return [SearchResult("Essent", "https://www.linkedin.com/company/essent-us", "Energy company")]
+    search.serper = NoEvidence()
+    assert search._linkedin("Essent", "Nederland", "https://essent.nl") is None
+    assert search._linkedin("Essent", "Nederland") is None
