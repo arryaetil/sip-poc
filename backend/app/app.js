@@ -140,6 +140,71 @@ let portfolioSources = [];
 let knowledgeConversationId = null;
 let pendingDelete = null;
 let currentRole = "admin";
+// Set while the review page shows changes proposed by an update conversation.
+let pendingUpdate = null;
+let updatableContexts = [];
+const conversationTarget = document.querySelector("#conversation-target");
+const conversationTargetField = document.querySelector("#conversation-target-field");
+const reviewChanges = document.querySelector("#review-changes");
+const reviewChangesList = document.querySelector("#review-changes-list");
+
+// Field names of a Business Context, as the review form labels them.
+const CONTEXT_FIELD_LABELS = {
+  status: "history.field.status",
+  name: "review.field.name",
+  offering_type: "review.field.type",
+  short_summary: "review.field.short_summary",
+  customer_problems_addressed: "review.field.customer_problems",
+  core_capabilities: "review.field.core_capabilities",
+  target_organisations: "review.field.target_organisations",
+  relevant_industries: "review.field.relevant_industries",
+  relevant_roles_and_decision_makers: "review.field.relevant_roles",
+  geographic_focus: "review.field.geographic_focus",
+  value_proposition: "review.field.value_proposition",
+  differentiators: "review.field.differentiators",
+  people: "review.field.people",
+  supporting_evidence_or_knowledge_sources: "review.field.evidence_sources",
+  key_marketing_messages: "review.field.key_marketing_messages",
+  assumptions: "review.field.assumptions",
+  open_questions: "review.field.open_questions",
+};
+
+function contextFieldLabel(field) {
+  return CONTEXT_FIELD_LABELS[field] ? t(CONTEXT_FIELD_LABELS[field]) : field;
+}
+
+// What changed per field: removed lines, added lines, or old and new text.
+function renderContextChanges(changes, container) {
+  container.replaceChildren();
+  if (!changes.length) {
+    const none = document.createElement("p");
+    none.className = "context-changes-none";
+    none.textContent = t("review.changes_none");
+    container.append(none);
+    return;
+  }
+  changes.forEach((change) => {
+    const block = document.createElement("div");
+    block.className = "context-change";
+    const label = document.createElement("h3");
+    label.textContent = contextFieldLabel(change.field);
+    block.append(label);
+    const lines = change.kind === "list"
+      ? [...change.removed.map((text) => ["removed", text]), ...change.added.map((text) => ["added", text])]
+      : [["removed", change.before], ["added", change.after]].filter(([, text]) => text);
+    lines.forEach(([kind, text]) => {
+      const line = document.createElement("p");
+      line.className = `context-change-line is-${kind}`;
+      const mark = document.createElement("span");
+      mark.className = "context-change-mark";
+      mark.setAttribute("aria-label", t(kind === "added" ? "history.added" : "history.removed"));
+      mark.textContent = kind === "added" ? "+" : "−";
+      line.append(mark, document.createTextNode(text));
+      block.append(line);
+    });
+    container.append(block);
+  });
+}
 let currentUserEmail = "";
 
 async function api(path, options = {}) {
@@ -365,19 +430,21 @@ function renderConversation(conversation, animateLatest = false) {
   }
 
   const isSaved = Boolean(conversation.portfolio_context_id);
+  const isUpdate = Boolean(conversation.updates_context_id);
   readiness.hidden = !conversation.is_ready_to_save && !isSaved;
   readiness.dataset.ready = String(conversation.is_ready_to_save && !isSaved);
+  const actionLabel = isUpdate ? t("builder.review_changes") : t("builder.save_to_portfolio");
   if (isSaved) {
-    readinessText.textContent = t("builder.saved_note");
-    saveToPortfolio.textContent = t("builder.saved_to_portfolio");
+    readinessText.textContent = isUpdate ? t("builder.changes_saved_note") : t("builder.saved_note");
+    saveToPortfolio.textContent = isUpdate ? t("builder.changes_saved") : t("builder.saved_to_portfolio");
     saveToPortfolio.disabled = true;
   } else if (conversation.is_ready_to_save) {
     readinessText.textContent = conversation.readiness_reason || t("builder.ready_note_default");
-    saveToPortfolio.textContent = t("builder.save_to_portfolio");
+    saveToPortfolio.textContent = actionLabel;
     saveToPortfolio.disabled = false;
   } else {
     readinessText.textContent = conversation.readiness_reason || t("builder.not_ready_default");
-    saveToPortfolio.textContent = t("builder.save_to_portfolio");
+    saveToPortfolio.textContent = actionLabel;
     saveToPortfolio.disabled = true;
   }
   setStatus(chatStatus, "");
@@ -410,10 +477,12 @@ conversationStartForm.addEventListener("submit", async (event) => {
   readiness.hidden = true;
   showView("builder");
   setStatus(chatStatus, t("builder.thinking"), "success");
+  const target = updatableContexts.find((item) => item.id === conversationTarget.value);
+  if (target) builderTitle.textContent = t("builder.updating", { name: target.name });
   try {
     const conversation = await api("/api/conversations", {
       method: "POST",
-      body: JSON.stringify({ language: getLanguage(), kind: "context" }),
+      body: JSON.stringify({ language: getLanguage(), kind: "context", updates_context_id: target ? target.id : null }),
     });
     const turn = await api(`/api/conversations/${conversation.id}/messages`, {
       method: "POST",
@@ -515,6 +584,7 @@ function renderConversations(conversations) {
 
 async function loadConversations() {
   conversationList.innerHTML = '<div class="loading-state" aria-label="Loading conversations"><span></span><span></span></div>';
+  loadUpdatableContexts();
   try {
     renderConversations(await api("/api/conversations"));
   } catch (error) {
@@ -522,8 +592,45 @@ async function loadConversations() {
   }
 }
 
+// Product Owner and admin can also update an approved context through a conversation.
+async function loadUpdatableContexts() {
+  const allowed = currentRole === "admin" || currentRole === "product_owner";
+  conversationTargetField.hidden = true;
+  if (!allowed) return;
+  try {
+    updatableContexts = (await api("/api/contexts")).filter((item) => item.status === "approved")
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    updatableContexts = [];
+  }
+  const previous = conversationTarget.value;
+  conversationTarget.replaceChildren(new Option(t("conversations.target_new"), ""));
+  if (updatableContexts.length) {
+    const group = document.createElement("optgroup");
+    group.label = t("conversations.target_update_group");
+    updatableContexts.forEach((item) => group.append(new Option(item.name, item.id)));
+    conversationTarget.append(group);
+  }
+  conversationTarget.value = updatableContexts.some((item) => item.id === previous) ? previous : "";
+  conversationTargetField.hidden = !updatableContexts.length;
+  syncConversationPlaceholder();
+}
+
+function syncConversationPlaceholder() {
+  const target = updatableContexts.find((item) => item.id === conversationTarget.value);
+  conversationStartMessage.placeholder = target
+    ? t("conversations.update_placeholder", { name: target.name })
+    : t("conversations.prompt_placeholder");
+}
+
+conversationTarget.addEventListener("change", syncConversationPlaceholder);
+
 function fillContextForm(context, status = "draft") {
   window.leadFinder?.syncReview({ ...context, status });
+  reviewChanges.hidden = !pendingUpdate;
+  saveDraftButton.hidden = currentRole === "sales" || Boolean(pendingUpdate);
+  approveContextButton.textContent = pendingUpdate ? t("review.save_changes") : t("review.approve");
+  window.contextHistory?.syncReview(pendingUpdate ? null : (context.id || currentContextId));
   contextFields.forEach((name) => {
     const field = contextForm.elements.namedItem(name);
     const value = context[name];
@@ -576,8 +683,29 @@ function readContextForm() {
   );
 }
 
+async function reviewConversationChanges() {
+  saveToPortfolio.disabled = true;
+  saveToPortfolio.textContent = t("builder.preparing");
+  setStatus(chatStatus, t("builder.preparing_changes"), "success");
+  try {
+    const proposal = await api(`/api/conversations/${currentConversation.id}/update-proposal`, { method: "POST" });
+    currentContextId = proposal.context_id;
+    pendingUpdate = { conversationId: currentConversation.id };
+    reviewOrigin = "builder";
+    backFromReview.textContent = t("review.back");
+    fillContextForm(proposal.proposal, "approved");
+    renderContextChanges(proposal.changes, reviewChangesList);
+    renderConversation(currentConversation);
+    showView("review");
+  } catch (error) {
+    renderConversation(currentConversation);
+    setStatus(chatStatus, error.message);
+  }
+}
+
 async function saveConversationContext() {
   if (!currentConversation?.is_ready_to_save || currentConversation.portfolio_context_id) return;
+  if (currentConversation.updates_context_id) return reviewConversationChanges();
   saveToPortfolio.disabled = true;
   saveToPortfolio.textContent = t("builder.preparing");
   setStatus(chatStatus, t("builder.saving_status"), "success");
@@ -609,8 +737,15 @@ async function saveContext(status) {
       : [];
     const saved = await api(path, {
       method: currentContextId ? "PUT" : "POST",
-      body: JSON.stringify({ context: readContextForm(), status, publish_upload_ids: publishUploadIds }),
+      body: JSON.stringify({
+        context: readContextForm(),
+        status,
+        publish_upload_ids: publishUploadIds,
+        source: pendingUpdate ? "conversation" : "form",
+        conversation_id: pendingUpdate ? pendingUpdate.conversationId : null,
+      }),
     });
+    pendingUpdate = null;
     currentContextId = saved.id;
     fillContextForm(saved, saved.status);
     setStatus(reviewStatus, saved.status === "approved" ? t("review.approved_status") : t("review.saved_status"), "success");
@@ -1291,6 +1426,7 @@ async function openContext(contextId) {
   try {
     const context = await api(`/api/contexts/${contextId}`);
     currentContextId = context.id;
+    pendingUpdate = null;
     reviewOrigin = "portfolio";
     backFromReview.textContent = t("review.back_portfolio");
     fillContextForm(context, context.status);

@@ -278,6 +278,37 @@ class ContextStore:
                 connection.execute("ALTER TABLE conversations ADD COLUMN lead_brief TEXT")
             except sqlite3.OperationalError:
                 pass
+            # Every saved state of a Business Context: who, when, how. A context and its
+            # versions are deleted together (delete_context).
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS business_context_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    context_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    changed_by TEXT,
+                    source TEXT NOT NULL,
+                    restored_from INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (context_id, version)
+                )
+                """
+            )
+            # Contexts saved before versions existed start at version 1 as they are now.
+            connection.execute(
+                """
+                INSERT INTO business_context_versions (context_id, version, status, content, source, created_at)
+                SELECT c.id, 1, c.status, c.content, 'existing', c.updated_at FROM business_contexts c
+                WHERE NOT EXISTS (SELECT 1 FROM business_context_versions v WHERE v.context_id = c.id)
+                """
+            )
+            try:
+                # A context conversation that updates an existing Business Context.
+                connection.execute("ALTER TABLE conversations ADD COLUMN updates_context_id TEXT")
+            except sqlite3.OperationalError:
+                pass
             try:
                 # Who started a lead list, shown to the sales team that shares the lists.
                 connection.execute("ALTER TABLE lead_lists ADD COLUMN created_by TEXT")
@@ -344,27 +375,67 @@ class ContextStore:
             row = connection.execute("SELECT owner_id FROM business_contexts WHERE id = ?", (context_id,)).fetchone()
         return row["owner_id"] if row else None
 
-    def create(self, context: BusinessContext, status: str, owner_id: str) -> StoredBusinessContext:
+    def create(
+        self, context: BusinessContext, status: str, owner_id: str, changed_by: str | None = None
+    ) -> StoredBusinessContext:
         context_id = str(uuid4())
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO business_contexts (id, status, content, owner_id) VALUES (?, ?, ?, ?)",
                 (context_id, status, context.model_dump_json(), owner_id),
             )
+            self._add_version(connection, context_id, status, context.model_dump_json(), changed_by, "created")
         return self.get(context_id, owner_id)  # type: ignore[return-value]
 
+    @staticmethod
+    def _add_version(connection, context_id, status, content, changed_by, source, restored_from=None) -> None:
+        """A new version, unless nothing changed since the last one."""
+        last = connection.execute(
+            "SELECT version, status, content FROM business_context_versions WHERE context_id = ? ORDER BY version DESC LIMIT 1",
+            (context_id,),
+        ).fetchone()
+        if last is not None and last["status"] == status and json.loads(last["content"]) == json.loads(content):
+            return
+        connection.execute(
+            """
+            INSERT INTO business_context_versions (context_id, version, status, content, changed_by, source, restored_from)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (context_id, (last["version"] if last else 0) + 1, status, content, changed_by, source, restored_from),
+        )
+
+    def list_context_versions(self, context_id: str) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM business_context_versions WHERE context_id = ? ORDER BY version DESC", (context_id,)
+            ).fetchall()
+
     def update(
-        self, context_id: str, context: BusinessContext, status: str, owner_id: str, is_admin: bool = False
+        self,
+        context_id: str,
+        context: BusinessContext,
+        status: str,
+        owner_id: str,
+        is_admin: bool = False,
+        *,
+        may_edit_approved: bool = False,
+        changed_by: str | None = None,
+        source: str = "form",
+        restored_from: int | None = None,
     ) -> StoredBusinessContext | None:
+        """Save a context and record the new version. Drafts stay their owner's;
+        `may_edit_approved` (Product Owner) also opens approved contexts of others."""
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE business_contexts
                 SET status = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND (? OR owner_id = ?)
+                WHERE id = ? AND (? OR owner_id = ? OR (? AND status = 'approved'))
                 """,
-                (status, context.model_dump_json(), context_id, int(is_admin), owner_id),
+                (status, context.model_dump_json(), context_id, int(is_admin), owner_id, int(may_edit_approved)),
             )
+            if cursor.rowcount:
+                self._add_version(connection, context_id, status, context.model_dump_json(), changed_by, source, restored_from)
         return self.get(context_id, owner_id, is_admin) if cursor.rowcount else None
 
     def delete_context(self, context_id: str, owner_id: str, is_admin: bool = False) -> bool:
@@ -392,6 +463,8 @@ class ContextStore:
                 """,
                 (context_id,),
             )
+            connection.execute("DELETE FROM business_context_versions WHERE context_id = ?", (context_id,))
+            connection.execute("UPDATE conversations SET updates_context_id = NULL WHERE updates_context_id = ?", (context_id,))
             connection.execute("DELETE FROM business_contexts WHERE id = ?", (context_id,))
         return True
 
@@ -412,12 +485,14 @@ class ContextStore:
             ).fetchall()
         return [(row["id"], row["storage_path"]) for row in rows]
 
-    def create_conversation(self, owner_id: str, language: str = "en", kind: str = "context") -> ConversationDetail:
+    def create_conversation(
+        self, owner_id: str, language: str = "en", kind: str = "context", updates_context_id: str | None = None
+    ) -> ConversationDetail:
         conversation_id = str(uuid4())
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO conversations (id, language, owner_id, kind) VALUES (?, ?, ?, ?)",
-                (conversation_id, language, owner_id, kind),
+                "INSERT INTO conversations (id, language, owner_id, kind, updates_context_id) VALUES (?, ?, ?, ?, ?)",
+                (conversation_id, language, owner_id, kind, updates_context_id),
             )
         return self.get_conversation(conversation_id, owner_id)  # type: ignore[return-value]
 
@@ -593,6 +668,7 @@ class ContextStore:
             is_ready_to_save=bool(row["is_ready_to_save"]),
             readiness_reason=row["readiness_reason"],
             portfolio_context_id=row["portfolio_context_id"],
+            updates_context_id=row["updates_context_id"],
             message_count=row["message_count"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],

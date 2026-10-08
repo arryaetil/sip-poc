@@ -129,6 +129,7 @@ PUBLIC_PATHS = {
     "/styles.css",
     "/app.js",
     "/leads.js",
+    "/context-history.js",
     "/i18n.js",
 }
 
@@ -476,6 +477,11 @@ def styles() -> FileResponse:
 @app.get("/app.js", response_class=FileResponse)
 def frontend_script() -> FileResponse:
     return FileResponse(APP_DIR / "app.js", headers=REVALIDATE)
+
+
+@app.get("/context-history.js", response_class=FileResponse)
+def context_history_script() -> FileResponse:
+    return FileResponse(APP_DIR / "context-history.js", headers=REVALIDATE)
 
 
 @app.get("/leads.js", response_class=FileResponse)
@@ -1498,8 +1504,48 @@ def list_conversations(
 def create_conversation(http_request: Request, request: ConversationCreateRequest | None = None) -> ConversationDetail:
     language = request.language if request else "en"
     kind = request.kind if request else "context"
-    owner_id, _ = _actor(http_request)
-    return get_context_store().create_conversation(owner_id, language, kind)
+    owner_id, is_admin = _actor(http_request)
+    target = request.updates_context_id if request else None
+    if target:
+        # Updating is for an approved context, by the roles that may change one.
+        context = get_context_store().get(target, owner_id, is_admin)
+        if kind != "context" or context is None or context.status != "approved" or not _may_edit_approved(http_request):
+            raise HTTPException(status_code=404, detail="Approved Business Context not found")
+    return get_context_store().create_conversation(owner_id, language, kind, target)
+
+
+def _may_edit_approved(request: Request) -> bool:
+    """Product Owner and admin may change any approved Business Context."""
+    return getattr(request.state, "user_role", "admin") in ("admin", "product_owner")
+
+
+def _changed_by(request: Request) -> str | None:
+    return getattr(request.state, "user_email", None)
+
+
+UPDATE_INSTRUCTIONS = (
+    "This conversation updates an existing, approved Business Context; it does not create a new one. "
+    "Its current version is the first message of the conversation (from SIP). Ask what has changed "
+    "(new offerings, target groups, regions, evidence, wording) one question at a time, and keep everything "
+    "the user does not change. Set is_ready_to_save to true once the changes are clear; the user then "
+    "reviews old and new side by side before saving."
+)
+
+
+def _update_history(conversation: ConversationDetail, owner_id: str, is_admin: bool) -> list[ConversationMessage]:
+    """For an update conversation: the current context first, then what was said.
+
+    Sent as conversation history rather than as instructions, which Dify caps at
+    4,000 characters."""
+    target = get_context_store().get(conversation.updates_context_id or "", owner_id, is_admin)
+    if target is None:
+        raise HTTPException(status_code=404, detail="The Business Context being updated no longer exists")
+    current = BusinessContext(**target.model_dump()).model_dump_json(indent=1)
+    note = ConversationMessage(
+        id=0, role="user", created_at=target.updated_at,
+        content=f"[SIP] Current version of the Business Context being updated:\n{current}",
+    )
+    return [note, *conversation.messages]
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=ConversationDetail)
@@ -1532,9 +1578,12 @@ def add_conversation_message(
     if conversation is None or conversation.kind == "product_owner":
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    history, extra = conversation.messages, ""
+    if conversation.updates_context_id:
+        history, extra = _update_history(conversation, owner_id, is_admin), UPDATE_INSTRUCTIONS
     try:
         turn = get_assistant().strategist_turn(
-            conversation.messages, request.message, conversation.language, owner_id
+            history, request.message, conversation.language, owner_id, extra
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -1570,6 +1619,8 @@ def save_conversation_to_portfolio(conversation_id: str, request: Request) -> St
     conversation = store.get_conversation(conversation_id, owner_id, is_admin)
     if conversation is None or conversation.kind == "product_owner":
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if conversation.updates_context_id:
+        raise HTTPException(status_code=409, detail="This conversation updates an existing context; review the changes instead")
     if conversation.portfolio_context_id:
         context = store.get(conversation.portfolio_context_id, owner_id, is_admin)
         if context is not None:
@@ -1581,7 +1632,10 @@ def save_conversation_to_portfolio(conversation_id: str, request: Request) -> St
         )
 
     context = store.create(
-        _prepare_business_context_from_conversation(conversation, owner_id), status="draft", owner_id=owner_id
+        _prepare_business_context_from_conversation(conversation, owner_id),
+        status="draft",
+        owner_id=owner_id,
+        changed_by=_changed_by(request),
     )
     store.link_conversation_to_context(conversation_id, context.id, owner_id, is_admin)
     _sync_context_knowledge(context)
@@ -1704,7 +1758,7 @@ def get_context(context_id: str, request: Request) -> StoredBusinessContext:
 @app.post("/api/contexts", response_model=StoredBusinessContext, status_code=201)
 def create_context(request: SaveContextRequest, http_request: Request) -> StoredBusinessContext:
     owner_id, _ = _actor(http_request)
-    saved = get_context_store().create(request.context, request.status, owner_id)
+    saved = get_context_store().create(request.context, request.status, owner_id, changed_by=_changed_by(http_request))
     if request.status == "approved":
         _publish_selected_evidence(saved.id, owner_id, request.publish_upload_ids)
     _sync_context_knowledge(saved)
@@ -1714,9 +1768,19 @@ def create_context(request: SaveContextRequest, http_request: Request) -> Stored
 @app.put("/api/contexts/{context_id}", response_model=StoredBusinessContext)
 def update_context(context_id: str, request: SaveContextRequest, http_request: Request) -> StoredBusinessContext:
     owner_id, is_admin = _actor(http_request)
-    context = get_context_store().update(context_id, request.context, request.status, owner_id, is_admin)
+    context = get_context_store().update(
+        context_id, request.context, request.status, owner_id, is_admin,
+        may_edit_approved=_may_edit_approved(http_request),
+        changed_by=_changed_by(http_request),
+        source=request.source,
+    )
     if context is None:
         raise HTTPException(status_code=404, detail="Business Context not found")
+    if request.conversation_id:
+        # The update conversation is done: it now points at the context it changed.
+        conversation = get_context_store().get_conversation(request.conversation_id, owner_id, is_admin)
+        if conversation is not None and conversation.updates_context_id == context_id:
+            get_context_store().link_conversation_to_context(request.conversation_id, context_id, owner_id, is_admin)
     if request.status == "approved":
         _publish_selected_evidence(context_id, owner_id, request.publish_upload_ids)
     _sync_context_knowledge(context)
@@ -1775,5 +1839,7 @@ def delete_context(context_id: str, request: Request) -> Response:
 
 
 from app.lead_routes import router as lead_router  # noqa: E402 - the routes use helpers defined above
+from app.context_history import router as context_history_router  # noqa: E402
 
 app.include_router(lead_router)
+app.include_router(context_history_router)

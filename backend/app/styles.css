@@ -1084,3 +1084,31 @@ a.primary-button { display: inline-flex; align-items: center; text-decoration: n
   .lead-progress-track::after { display: none; }
   .lead-progress-bar { transition: none; }
 }
+
+/* Business Context versions: what changed (review page and history panel). */
+.context-changes-section { margin: 0 0 28px; padding: 20px 22px; border: 1px solid #c9dfe1; border-radius: 12px; background: #f5fafa; }
+.context-changes-section h2 { margin: 0 0 14px; font-size: 17px; }
+.context-changes { display: grid; gap: 14px; }
+.context-change h3 { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.context-change-line { display: flex; gap: 10px; margin: 0 0 4px; padding: 6px 10px; border-radius: 6px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.context-change-line.is-added { background: #e9f4ec; color: #1d5a33; }
+.context-change-line.is-removed { background: #f9ecec; color: #8a2a2a; text-decoration: line-through; text-decoration-color: rgba(138, 42, 42, .45); }
+.context-change-mark { flex: none; width: 10px; font-weight: 700; text-decoration: none; }
+.context-changes-none { margin: 0; color: var(--muted); font-size: 14px; }
+
+.history-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 24px 24px; }
+.history-loading { color: var(--muted); font-size: 14px; }
+.history-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.history-item { width: 100%; display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--night); text-align: left; transition: border-color 150ms ease, background-color 150ms ease, transform 120ms cubic-bezier(.23, 1, .32, 1); }
+.history-item:active { transform: scale(.98); }
+@media (hover: hover) and (pointer: fine) { .history-item:hover { border-color: var(--border-strong); background: var(--seasal); } }
+.history-item-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.history-current { border-radius: 999px; padding: 2px 8px; background: #e7f3ec; color: #1d6b40; font-size: 11px; font-weight: 500; }
+.history-item-meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.history-item-changes { font-size: 13px; line-height: 1.45; }
+.history-version-title { margin: 0 0 4px; font-size: 18px; }
+.history-body .text-button { margin-bottom: 12px; }
+.history-body .context-changes { margin: 16px 0 18px; }
+.history-status-change { margin: 0; padding: 6px 10px; border-radius: 6px; background: var(--seasal); font-size: 14px; }
+.history-restore { width: 100%; }
+#review-view .header-actions { flex-wrap: wrap; justify-content: flex-end; }

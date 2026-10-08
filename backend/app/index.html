@@ -9,6 +9,7 @@
   <script src="/i18n.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/leads.js" defer></script>
+  <script src="/context-history.js" defer></script>
 </head>
 <body class="home-open">
   <header class="topbar">
@@ -239,6 +240,10 @@
           <p class="launcher-kicker" data-i18n="conversations.kicker">Create a Business Context</p>
           <h1 id="conversations-title" data-i18n="conversations.prompt_title">What Business Context would you like to create?</h1>
           <form id="conversation-start-form" class="launcher-form">
+            <label class="lead-context-field" id="conversation-target-field" hidden>
+              <span data-i18n="conversations.target_label">What</span>
+              <select id="conversation-target"></select>
+            </label>
             <textarea id="conversation-start-message" rows="2" data-i18n-placeholder="conversations.prompt_placeholder" placeholder="Describe a product, service or idea…" required></textarea>
             <div class="launcher-actions">
               <span data-i18n="conversations.prompt_hint">Start in your own words</span>
@@ -313,10 +318,16 @@
             <p data-i18n="review.subtitle">Check the structured record saved from the conversation before approving it.</p>
           </div>
           <div class="header-actions">
+            <button id="review-history" class="secondary-button" type="button" data-i18n="history.button" hidden>Version history</button>
             <button id="review-find-leads" class="secondary-button" type="button" data-i18n="lead.find_for_context" hidden>Find leads</button>
             <span id="review-state" class="state-label" data-i18n="review.state_working">Working context</span>
           </div>
         </header>
+
+        <section id="review-changes" class="context-changes-section" aria-labelledby="review-changes-title" hidden>
+          <h2 id="review-changes-title" data-i18n="review.changes_title">What changes compared to the current version</h2>
+          <div id="review-changes-list" class="context-changes"></div>
+        </section>
 
         <form id="context-form" class="context-form">
           <section class="form-section" aria-labelledby="overview-heading">
@@ -805,6 +816,19 @@
     <footer class="source-panel-footer">
       <button id="source-panel-open" class="secondary-button" type="button"></button>
     </footer>
+  </aside>
+
+  <aside id="history-panel" class="source-panel" aria-labelledby="history-panel-title" hidden>
+    <header class="source-panel-header">
+      <div>
+        <p class="source-panel-kind" data-i18n="history.kicker">Version history</p>
+        <h2 id="history-panel-title"></h2>
+      </div>
+      <button id="history-panel-close" class="source-panel-close" type="button" data-i18n-aria-label="source_panel.close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div id="history-panel-body" class="history-body"></div>
   </aside>
 
   <dialog id="delete-dialog" class="confirm-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">

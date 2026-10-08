@@ -74,6 +74,8 @@ class StudioProjectRequest(BaseModel):
 class ConversationCreateRequest(BaseModel):
     language: Literal["en", "nl", "de"] = "en"
     kind: Literal["context", "knowledge", "product_owner", "lead"] = "context"
+    # Set to update an approved Business Context through the conversation.
+    updates_context_id: str | None = None
 
 
 class UserInfo(BaseModel):
@@ -122,6 +124,7 @@ class ConversationSummary(BaseModel):
     is_ready_to_save: bool
     readiness_reason: str
     portfolio_context_id: str | None
+    updates_context_id: str | None = None
     message_count: int
     created_at: str
     updated_at: str
@@ -139,6 +142,9 @@ class ConversationTurnResponse(BaseModel):
 class SaveContextRequest(BaseModel):
     context: BusinessContext
     status: Literal["draft", "approved"]
+    # How the change was made, for the version history.
+    source: Literal["form", "conversation"] = "form"
+    conversation_id: str | None = None  # the update conversation these changes came from
     publish_upload_ids: list[str] = Field(default_factory=list)
 
 
