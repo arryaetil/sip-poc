@@ -236,13 +236,19 @@ function proxy(req, res) {
 // are hidden with one style block added to every page. Open Design itself is not
 // changed, so an image update cannot break it; at worst a part shows again.
 // Selectors are Open Design v0.24.0's own test ids and class names.
-export const STUDIO_STYLE = `<style id="sip-studio-simplify">
-[data-testid="entry-nav-community"], [data-testid="entry-nav-design-systems"],
-[data-testid="entry-nav-plugins"], [data-testid="entry-settings-button"],
-.entry-nav-rail__footer, .home-hero__workdir-row, .home-hero__execution-switcher,
-[data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],
-[data-testid="plugins-home-section"] { display: none !important; }
-</style>`;
+const STUDIO_CSS = '[data-testid="entry-nav-community"], [data-testid="entry-nav-design-systems"],'
+  + ' [data-testid="entry-nav-plugins"], [data-testid="entry-settings-button"],'
+  + ' .entry-nav-rail__footer, .home-hero__workdir-row, .home-hero__execution-switcher,'
+  + ' [data-testid="home-hero-plugin-presets"], [data-testid="home-hero-prompt-examples"],'
+  + ' [data-testid="plugins-home-section"] { display: none !important; }';
+// The style block, plus a few lines that put it back should the app rebuild <head>
+// while it starts (React owns the whole document).
+export const STUDIO_STYLE = `<style id="sip-studio-simplify">${STUDIO_CSS}</style>`
+  + `<script id="sip-studio-keep">(function(){var css=${JSON.stringify(STUDIO_CSS)};`
+  + `function ensure(){if(document.head&&!document.getElementById('sip-studio-simplify')){`
+  + `var s=document.createElement('style');s.id='sip-studio-simplify';s.textContent=css;document.head.appendChild(s);}}`
+  + `new MutationObserver(ensure).observe(document.documentElement,{childList:true,subtree:false});`
+  + `document.addEventListener('DOMContentLoaded',function(){ensure();if(document.head)new MutationObserver(ensure).observe(document.head,{childList:true});});})();</script>`;
 
 function wantsPage(req) {
   return req.method === 'GET' && String(req.headers.accept || '').includes('text/html');
@@ -255,7 +261,13 @@ function forward(req, res, body) {
   }
   // A page is changed before it is sent on, so ask for it uncompressed.
   const page = wantsPage(req);
-  if (page) delete headers['accept-encoding'];
+  if (page) {
+    delete headers['accept-encoding'];
+    // Without these the daemon answers 304 and the browser shows its stored copy,
+    // which has no style block.
+    delete headers['if-none-match'];
+    delete headers['if-modified-since'];
+  }
   headers.authorization = `Bearer ${TOKEN}`;
   headers.host = `127.0.0.1:${UPSTREAM_PORT}`;
   if (body) headers['content-length'] = String(body.length);
@@ -274,7 +286,9 @@ function forward(req, res, body) {
         response.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8');
           const changed = Buffer.from(text.includes('</head>') ? text.replace('</head>', `${STUDIO_STYLE}</head>`) : text);
-          delete out['content-length'];
+          delete out['etag'];
+          delete out['last-modified'];
+          out['cache-control'] = 'no-store';
           out['content-length'] = String(changed.length);
           res.writeHead(response.statusCode || 502, out);
           res.end(changed);

@@ -51,7 +51,9 @@ const upstream = http.createServer((req, res) => {
     if (url.pathname === '/page') {
       // Like Open Design: pages are compressed when the browser allows it.
       if (String(req.headers['accept-encoding'] || '').includes('gzip')) { res.writeHead(500); return res.end('compressed'); }
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      // Like Open Design: a page the browser already has is answered with 304.
+      if (req.headers['if-none-match']) { res.writeHead(304, { etag: '"v1"' }); return res.end(); }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', etag: '"v1"', 'cache-control': 'public, max-age=0' });
       return res.end('<html><head><title>OD</title></head><body>studio</body></html>');
     }
     res.writeHead(200, { 'content-type': 'text/plain' });
@@ -119,11 +121,14 @@ try {
   assert.equal((await fetch(`${base}/__sip/enter?t=${cookie.split('=')[1]}`, { redirect: 'manual' })).status, 401);
 
   // Pages get the style that hides what marketing does not need; other responses do not.
-  const page = await fetch(`${base}/page`, { headers: { cookie, accept: 'text/html', 'accept-encoding': 'gzip, br' } });
+  const page = await fetch(`${base}/page`, { headers: { cookie, accept: 'text/html', 'accept-encoding': 'gzip, br', 'if-none-match': '"v1"' } });
   const pageText = await page.text();
   assert.equal(page.status, 200);
-  assert.match(pageText, /<style id="sip-studio-simplify">[\s\S]*entry-nav-community[\s\S]*home-hero-prompt-examples[\s\S]*<\/style><\/head>/);
+  assert.match(pageText, /<style id="sip-studio-simplify">[\s\S]*entry-nav-community[\s\S]*home-hero-prompt-examples[\s\S]*<\/script><\/head>/);
   assert.equal(Number(page.headers.get('content-length')), Buffer.byteLength(pageText));
+  assert.equal(page.headers.get('cache-control'), 'no-store');
+  assert.equal(page.headers.get('etag'), null);
+  assert.match(pageText, /<script id="sip-studio-keep">/);
   assert.doesNotMatch(await (await fetch(`${base}/other`, { headers: { cookie } })).text(), /sip-studio-simplify/);
   console.log('studio gateway: brand files from disk, house style for studio projects, pass-through, session cookie and simplified page checks passed');
 } finally {
