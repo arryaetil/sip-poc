@@ -942,34 +942,6 @@
   $("#lead-back-from-result").addEventListener("click", () => openLeadFinder());
   $("#nav-lead").addEventListener("click", () => openLeadFinder());
 
-  const reviewButton = $("#review-find-leads");
-  let reviewContextId = null;
-  reviewButton.addEventListener("click", () => openLeadFinder(reviewContextId));
-
-  let sourceButton = null;
-
-  window.leadFinder = {
-    syncReview(context) {
-      reviewContextId = context.id || (typeof currentContextId === "string" ? currentContextId : null);
-      reviewButton.hidden = !(allowed() && context.status === "approved" && reviewContextId);
-    },
-    syncSourcePanel(source) {
-      if (!sourceButton) {
-        sourceButton = el("button", "secondary-button lead-source-panel-action", t("lead.find_for_context"));
-        sourceButton.type = "button";
-        sourceButton.addEventListener("click", () => {
-          const contextId = sourceButton.dataset.contextId;
-          closeSourcePanel();
-          openLeadFinder(contextId);
-        });
-        $("#source-panel-open").after(sourceButton);
-      }
-      sourceButton.textContent = t("lead.find_for_context");
-      sourceButton.dataset.contextId = source.item_id || "";
-      sourceButton.hidden = !(allowed() && source.kind === "context" && source.item_id);
-    },
-  };
-
   // Re-render translated, generated text when the language changes.
   $("#language-switcher")?.addEventListener("change", () => setTimeout(() => {
     if (!result.hidden && list) renderList();

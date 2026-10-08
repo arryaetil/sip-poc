@@ -601,7 +601,6 @@ async function loadConversations() {
 }
 
 function fillContextForm(context, status = "draft") {
-  window.leadFinder?.syncReview({ ...context, status });
   reviewChanges.hidden = !pendingUpdate;
   saveDraftButton.hidden = currentRole === "sales" || Boolean(pendingUpdate);
   approveContextButton.textContent = pendingUpdate ? t("review.save_changes") : t("review.approve");
@@ -1064,7 +1063,6 @@ function openSourcePanel(source, trigger) {
     sourcePanelOpen.textContent = t(isPdf ? "source_panel.open_pdf" : "source_panel.download");
     sourcePanelAction = () => window.open(`/api/uploads/${source.item_id}${isPdf ? "?inline=true" : ""}`, "_blank", "noopener");
   }
-  window.leadFinder?.syncSourcePanel(source);
   sourcePanel.hidden = false;
   document.querySelector("#source-panel-close").focus();
 }
