@@ -63,6 +63,10 @@ export async function renderExport(projectId, format, body, upstream, executable
     if(body.index!=null && body.index>=count)throw error(400,'Deze pagina bestaat niet in het ontwerp.');
     if(count>40)throw error(413,'Exporteer maximaal 40 pagina’s tegelijk.');
     const captures=[];
+    // Screenshotting a tall page resizes Chromium's viewport. Project resize
+    // handlers can overwrite even inline !important via style.transform=... .
+    // A stylesheet rule keeps the export layout stable through that event.
+    await page.addStyleTag({content:'[data-sip-export-wrapper]{transform:none!important;position:relative!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;margin:0!important}'});
     for(let i=0;i<(format==='image'?1:count);i++) {
       const index=format==='image'?(body.index||0):i;
       let target=slides?slides.nth(index):page.locator('[data-export-root], .poster, .post, .artboard, main').first();
@@ -76,6 +80,7 @@ export async function renderExport(projectId, format, body, upstream, executable
           // Generated decks often use centered, absolutely positioned wrappers.
           // Removing only their scale leaves the page outside the screenshot.
           for(let p=node;p&&p!==document.body;p=p.parentElement){
+            p.setAttribute('data-sip-export-wrapper','');
             for(const [key,value] of Object.entries({transform:'none',position:'relative',left:'0',top:'0',right:'auto',bottom:'auto',margin:'0',padding:p===node?getComputedStyle(p).padding:'0',overflow:p===node?'hidden':'visible'}))p.style.setProperty(key,value,'important');
           }
           node.style.setProperty('width',width+'px','important');node.style.setProperty('height',height+'px','important');
