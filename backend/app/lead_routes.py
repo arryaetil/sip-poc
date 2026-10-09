@@ -45,6 +45,7 @@ router = APIRouter(prefix="/api/leads")
 HOUSEKEEPING_SECONDS = 6 * 60 * 60
 # Spending guard: one search at a time per user, and a daily number of searches.
 DAILY_LEAD_SEARCHES = 10
+LEAD_READY_REASON = "Lead search brief confirmed."
 
 
 def _main():
@@ -88,6 +89,7 @@ class LeadChatResponse(BaseModel):
 
 
 class LeadConversation(BaseModel):
+    ready: bool = False
     conversation: ConversationSummary
     messages: list[ConversationMessage]
     brief: LeadBrief | None
@@ -327,8 +329,8 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
         conversation_id=conversation.id,
         user_message=body.message,
         assistant_message=turn.message,
-        is_ready_to_save=ready,
-        readiness_reason="Lead search brief confirmed." if ready else "Lead search brief needs clarification or confirmation.",
+        is_ready_to_save=False,
+        readiness_reason=LEAD_READY_REASON if ready else "Lead search brief needs clarification or confirmation.",
         owner_id=owner_id,
     )
     if updated is None:
@@ -362,6 +364,7 @@ def lead_conversation(conversation_id: str, request: Request) -> LeadConversatio
     except HTTPException:
         context = None  # deleted or no longer approved; the chat can still be read
     return LeadConversation(
+        ready=bool(context) and conversation.readiness_reason == LEAD_READY_REASON,
         conversation=ConversationSummary(**conversation.model_dump(exclude={"messages"})),
         messages=conversation.messages,
         brief=main.get_context_store().lead_brief(conversation.id),
@@ -393,7 +396,7 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
     context = _approved_context(body.context_id, owner_id, is_admin)
     if body.conversation_id:
         conversation = _owned_lead_conversation(body.conversation_id, owner_id)
-        if not conversation.is_ready_to_save or conversation.portfolio_context_id != context.id:
+        if conversation.readiness_reason != LEAD_READY_REASON or conversation.portfolio_context_id != context.id:
             raise HTTPException(status_code=422, detail="Confirm a supported search brief in the chat first")
         agreed = store.lead_brief(conversation.id)
         if agreed is None or clean_brief(body.brief) != agreed:

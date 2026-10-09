@@ -626,6 +626,9 @@ def test_chat_resolves_offering_after_clarification_without_dropdown(app_env):
     assistant.intake.append(LeadIntakeTurn(message="Druk op Start zoeken", brief=brief(), ready=True, context_id=target))
     confirmed = http.post("/api/leads/chat", json={"message": "Akkoord, start", "conversation_id": first["conversation_id"]}).json()
     assert confirmed["ready"] is True
+    reopened = http.get(f"/api/leads/conversations/{first['conversation_id']}").json()
+    assert reopened["ready"] is True
+    assert reopened["conversation"]["is_ready_to_save"] is False, "Search confirmation is never permission to approve a Business Context"
     payload = {"context_id": target, "conversation_id": first["conversation_id"], "brief": confirmed["brief"]}
     assert http.post("/api/leads/lists", json=payload).status_code == 201
     assert len(started) == 1
