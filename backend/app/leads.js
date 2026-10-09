@@ -19,7 +19,6 @@
   const home = $("#lead-home");
   const intake = $("#lead-intake");
   const result = $("#lead-result");
-  const contextSelect = $("#lead-context");
   const startForm = $("#lead-start-form");
   const startMessage = $("#lead-start-message");
   const startSend = $("#lead-start-send");
@@ -56,8 +55,6 @@
   const drawerFooter = $("#lead-drawer-footer");
 
   let settings = { available: false, missing: null, max_leads: 50, retention_days: 90 };
-  let contexts = []; // approved Business Contexts
-  let websiteSources = []; // services and solutions from the ETIL / ibc group websites
   let session = { conversationId: null, contextId: null, contextName: "", brief: null, ready: false };
   let list = null;
   let shownRows = new Set();
@@ -141,61 +138,33 @@
     if (part === "intake") requestAnimationFrame(() => resizeTextArea(chatInput));
   }
 
-  async function openLeadFinder(contextId = null) {
+  async function openLeadFinder() {
     showView("lead");
     show("home");
-    await loadHome(contextId);
+    await loadHome();
     startMessage.focus();
   }
 
-  async function loadHome(preselect = null) {
-    const [loadedSettings, loadedContexts, loadedSources, lists, chats] = await Promise.all([
+  async function loadHome() {
+    const [loadedSettings, lists, chats] = await Promise.all([
       api("/api/leads/settings").catch(() => settings),
-      api("/api/contexts").catch(() => []),
-      api("/api/leads/sources").catch(() => []),
       api("/api/leads/lists").catch(() => []),
       api("/api/leads/conversations").catch(() => []),
     ]);
     settings = loadedSettings;
-    contexts = loadedContexts.filter((context) => context.status === "approved").sort((a, b) => a.name.localeCompare(b.name));
-    websiteSources = loadedSources;
     $("#lead-lists-subtitle").textContent = t("lead.lists_subtitle", { days: settings.retention_days });
-    renderContextOptions(preselect);
     renderAvailability();
     renderLists(lists);
     renderChats(chats);
   }
 
-  // Everything a search can start from: Business Contexts first, then the website
-  // services and solutions per organisation.
-  function startingPoints() {
-    return [...contexts, ...websiteSources];
-  }
-
-  function renderContextOptions(preselect) {
-    const previous = preselect || contextSelect.value;
-    contextSelect.replaceChildren(new Option(t("lead.context_placeholder"), ""));
-    const group = (label, items) => {
-      if (!items.length) return;
-      const optgroup = document.createElement("optgroup");
-      optgroup.label = label;
-      items.forEach((item) => optgroup.append(new Option(item.name, item.id)));
-      contextSelect.append(optgroup);
-    };
-    group(t("lead.group_contexts"), contexts);
-    [...new Set(websiteSources.map((source) => source.organisation))].forEach((organisation) =>
-      group(t("lead.group_website", { organisation }), websiteSources.filter((source) => source.organisation === organisation)));
-    if (startingPoints().some((item) => item.id === previous)) contextSelect.value = previous;
-  }
-
   function renderAvailability() {
     let notice = "";
     if (!settings.available) notice = t(`lead.unavailable_${settings.missing || "assistant"}`);
-    else if (!startingPoints().length) notice = t("lead.no_contexts");
     unavailable.textContent = notice;
     unavailable.hidden = !notice;
     const usable = !notice;
-    [contextSelect, startMessage, startSend, $("#lead-scoring")].forEach((control) => { control.disabled = !usable; });
+    [startMessage, startSend].forEach((control) => { control.disabled = !usable; });
     startForm.classList.toggle("is-disabled", !usable);
   }
 
@@ -295,7 +264,7 @@
     setStatus(chatStatus, "");
     chatInput.value = "";
     resizeTextArea(chatInput);
-    intakeContext.textContent = t("lead.for_context", { name: contextName });
+    intakeContext.textContent = contextName ? t("lead.for_context", { name: contextName }) : t("lead.context_chat");
     renderBrief(null, false);
   }
 
@@ -304,7 +273,7 @@
     resetIntake(data.context_id, data.context_name || "");
     session.conversationId = data.conversation.id;
     data.messages.forEach((message) => appendMessage(messagesElement, message.content, message.role, t("lead.assistant_name")));
-    renderBrief(data.brief, false);
+    renderBrief(data.brief, data.conversation.is_ready_to_save);
     show("intake");
     messagesElement.scrollTo({ top: messagesElement.scrollHeight, behavior: "instant" });
     chatInput.focus();
@@ -324,10 +293,12 @@
           conversation_id: session.conversationId,
           context_id: session.conversationId ? null : session.contextId,
           language: getLanguage(),
-          scoring: session.brief?.scoring || $("#lead-scoring").value,
         }),
       });
       session.conversationId = data.conversation_id;
+      session.contextId = data.context_id;
+      session.contextName = data.context_name || "";
+      intakeContext.textContent = session.contextName ? t("lead.for_context", { name: session.contextName }) : t("lead.context_chat");
       pendingRow.remove();
       appendMessage(messagesElement, data.message.content, "assistant", t("lead.assistant_name"), true);
       renderBrief(data.brief, data.ready);
@@ -381,7 +352,7 @@
   function renderBrief(brief, ready) {
     const previous = session.brief;
     session.brief = brief;
-    session.ready = Boolean(ready && brief && brief.count);
+    session.ready = Boolean(ready && session.contextId && brief && brief.count);
     briefBody.replaceChildren();
     if (!brief) {
       briefTitle.textContent = t("lead.brief_empty_title");
@@ -422,12 +393,8 @@
   startForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const message = startMessage.value.trim();
-    const context = startingPoints().find((item) => item.id === contextSelect.value);
-    if (!message || !context) {
-      if (!context) contextSelect.focus();
-      return;
-    }
-    resetIntake(context.id, context.name);
+    if (!message) return;
+    resetIntake(null, "");
     startMessage.value = "";
     show("intake");
     await sendIntake(message);

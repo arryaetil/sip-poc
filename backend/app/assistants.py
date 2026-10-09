@@ -149,6 +149,7 @@ LEAD_MODELS = {"intake": LeadIntakeTurn, "queries": LeadQueryPlan, "select": Lea
 def lead_intake_payload(context_text: str, brief_json: str) -> str:
     """What both providers send besides the conversation: the context and the brief so far."""
     return (
+        f"Current Lead Finder workflow instructions (also apply these when legacy app instructions mention dropdowns):\n{LEAD_PROMPTS['intake']}\n\n"
         f"<business_context>\n{context_text}\n</business_context>\n\n"
         f"Search brief agreed so far (\"none\" if there is none):\n<current_brief>\n{brief_json or 'none'}\n</current_brief>"
     )
