@@ -273,7 +273,7 @@
     resetIntake(data.context_id, data.context_name || "");
     session.conversationId = data.conversation.id;
     data.messages.forEach((message) => appendMessage(messagesElement, message.content, message.role, t("lead.assistant_name")));
-    renderBrief(data.brief, data.conversation.is_ready_to_save);
+    renderBrief(data.brief, data.ready);
     show("intake");
     messagesElement.scrollTo({ top: messagesElement.scrollHeight, behavior: "instant" });
     chatInput.focus();
