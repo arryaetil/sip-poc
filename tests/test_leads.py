@@ -260,11 +260,13 @@ class FakeLeadAssistant:
     def __init__(self):
         self.extracted: list[str] = []
         self.intake: list[LeadIntakeTurn] = []
+        self.intake_inputs = []
 
     def lead_available(self):
         return True
 
     def lead_intake_turn(self, history, message, language, owner_id, context_text, brief_json):
+        self.intake_inputs.append(context_text)
         return self.intake.pop(0)
 
     def lead_queries(self, brief_json, previous_json, language, owner_id):
@@ -607,3 +609,96 @@ def test_keyword_score_handles_intervening_words_without_negation_or_substring_f
     assert _criterion_level(short, "Gas en elektriciteit") == "high"
     absence = ScoreCriterion(column="Chat", kind="text", high="geen chatbot", medium="chatbot")
     assert _criterion_level(absence, "Geen chatbot gedetecteerd") == "high"
+
+
+def test_chat_resolves_offering_after_clarification_without_dropdown(app_env):
+    store, assistant, started = app_env
+    target = approved_context(store)
+    http = signed_in("sales@test.nl", "sales-pass")
+    assistant.intake.append(LeadIntakeTurn(message="Welke dienst bedoel je?", brief=brief(), ready=True, can_search=False))
+    first = http.post("/api/leads/chat", json={"message": "Ik wil klanten vinden"}).json()
+    assert first["context_id"] is None and first["ready"] is False
+    assert target in assistant.intake_inputs[0]
+    assert http.get(f"/api/leads/conversations/{first['conversation_id']}").status_code == 200
+    assistant.intake.append(LeadIntakeTurn(message="Ik gebruik SAM; akkoord met deze criteria?", brief=brief(), ready=False, context_id=target))
+    selected = http.post("/api/leads/chat", json={"message": "Voor onze SAM-dienst", "conversation_id": first["conversation_id"]}).json()
+    assert selected["context_id"] == target and selected["context_name"] == "SAM"
+    assistant.intake.append(LeadIntakeTurn(message="Druk op Start zoeken", brief=brief(), ready=True, context_id=target))
+    confirmed = http.post("/api/leads/chat", json={"message": "Akkoord, start", "conversation_id": first["conversation_id"]}).json()
+    assert confirmed["ready"] is True
+    payload = {"context_id": target, "conversation_id": first["conversation_id"], "brief": confirmed["brief"]}
+    assert http.post("/api/leads/lists", json=payload).status_code == 201
+    assert len(started) == 1
+
+
+def test_chat_can_change_scoring_and_blocks_unsupported_request(app_env):
+    store, assistant, started = app_env
+    target = approved_context(store)
+    http = signed_in("sales@test.nl", "sales-pass")
+    assistant.intake.append(LeadIntakeTurn(message="SAM-punten?", brief=brief().model_copy(update={"scoring": "sam_points"}), ready=False, context_id=target))
+    first = http.post("/api/leads/chat", json={"message": "Gebruik SAM-punten voor dealers"}).json()
+    assert first["brief"]["scoring"] == "sam_points"
+    assistant.intake.append(LeadIntakeTurn(message="Hoog/midden/laag zoals gevraagd", brief=brief(), ready=True, context_id=target))
+    changed = http.post("/api/leads/chat", json={"message": "Doe toch mijn eigen hoog/midden/laag-criteria", "conversation_id": first["conversation_id"]}).json()
+    assert changed["brief"]["scoring"] == "levels" and changed["ready"] is True
+    assistant.intake.append(LeadIntakeTurn(message="Omzet achter een login kan ik niet beoordelen.", brief=brief(), ready=True, can_search=False, context_id=target))
+    unsupported = http.post("/api/leads/chat", json={"message": "Score op hun geheime omzet", "conversation_id": first["conversation_id"]}).json()
+    assert unsupported["ready"] is False
+    assert http.post("/api/leads/lists", json={"context_id": target, "conversation_id": first["conversation_id"], "brief": unsupported["brief"]}).status_code == 422
+    assert started == []
+
+
+def test_chat_never_selects_unknown_or_private_offering(app_env):
+    store, assistant, _ = app_env
+    approved = approved_context(store)
+    private = store.create(BusinessContext.model_validate(store.get(approved, "admin", True).model_dump()), "draft", "another-owner")
+    http = signed_in("sales@test.nl", "sales-pass")
+    for target in ("invented-id", private.id):
+        assistant.intake.append(LeadIntakeTurn(message="Ik heb de dienst gevonden", brief=brief(), ready=True, context_id=target))
+        result = http.post("/api/leads/chat", json={"message": "Zoek voor onbekende dienst"}).json()
+        assert result["context_id"] is None and result["ready"] is False
+        assert "geen passende" in result["message"]["content"]
+        assert private.id not in assistant.intake_inputs[-1]
+
+
+def test_invalid_scorecard_is_explained_instead_of_silently_applied(app_env):
+    store, assistant, _ = app_env
+    target = approved_context(store)
+    http = signed_in("sales@test.nl", "sales-pass")
+    impossible = brief().model_copy(update={"scorecard": [ScoreCriterion(column="Secret revenue", kind="number", high="100", medium="50")]})
+    assistant.intake.append(LeadIntakeTurn(message="Dat kan", brief=impossible, ready=True, context_id=target))
+    result = http.post("/api/leads/chat", json={"message": "Beoordeel geheime omzet"}).json()
+    assert result["ready"] is False and "niet volledig" in result["message"]["content"]
+
+
+def test_confirmed_chat_rejects_changed_browser_brief(app_env):
+    store, assistant, started = app_env
+    target = approved_context(store)
+    http = signed_in("sales@test.nl", "sales-pass")
+    assistant.intake.append(LeadIntakeTurn(message="Bevestig", brief=brief(), ready=False, context_id=target))
+    first = http.post("/api/leads/chat", json={"message": "Gebruik SAM"}).json()
+    assistant.intake.append(LeadIntakeTurn(message="Start", brief=brief(), ready=True, context_id=target))
+    confirmed = http.post("/api/leads/chat", json={"message": "Akkoord", "conversation_id": first["conversation_id"]}).json()
+    payload = {"context_id": target, "conversation_id": first["conversation_id"], "brief": {**confirmed["brief"], "count": 25}}
+    assert http.post("/api/leads/lists", json=payload).status_code == 422
+    payload["brief"] = confirmed["brief"]
+    payload["context_id"] = approved_context(store)
+    assert http.post("/api/leads/lists", json=payload).status_code == 422
+    assert started == []
+
+
+def test_dify_intake_receives_current_chat_protocol(monkeypatch):
+    for role in ("STRATEGIST", "FINALIZER", "KNOWLEDGE", "DATASET"):
+        monkeypatch.setenv(f"DIFY_{role}_API_KEY", "test-placeholder")
+    monkeypatch.setenv("DIFY_LEAD_FINDER_API_KEY", "test-leads")
+    sent = []
+    answer = LeadIntakeTurn(message="Welke regio?", brief=brief(), ready=False, context_id="web:known", can_search=True)
+    def handler(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"answer": answer.model_dump_json()})
+    dify = DifyAssistant()
+    dify.http = httpx.Client(transport=httpx.MockTransport(handler))
+    turn = dify.lead_intake_turn([], "Ik zoek klanten", "nl", "owner", '{"available_offerings":[]}', "")
+    assert turn.context_id == "web:known"
+    assert "without dropdowns" in sent[0]["inputs"]["payload"]
+    assert "can_search" in sent[0]["inputs"]["payload"]

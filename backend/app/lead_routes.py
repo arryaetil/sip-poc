@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 import hashlib
+import json
 from types import SimpleNamespace
 import logging
 import re
@@ -74,7 +75,7 @@ class LeadChatRequest(BaseModel):
     conversation_id: str | None = None
     context_id: str | None = None
     language: Literal["en", "nl", "de"] = "nl"
-    scoring: Literal["levels", "sam_points"] = "levels"
+    scoring: Literal["levels", "sam_points"] | None = None
 
 
 class LeadChatResponse(BaseModel):
@@ -82,8 +83,8 @@ class LeadChatResponse(BaseModel):
     message: ConversationMessage
     brief: LeadBrief
     ready: bool
-    context_id: str
-    context_name: str
+    context_id: str | None
+    context_name: str | None
 
 
 class LeadConversation(BaseModel):
@@ -252,26 +253,41 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     main = _main()
     owner_id, is_admin = main._actor(request)
     store = main.get_context_store()
+    context = None
     if body.conversation_id:
         conversation = _owned_lead_conversation(body.conversation_id, owner_id)
-        context_id = conversation.portfolio_context_id
-        if not context_id:
-            raise HTTPException(status_code=404, detail="Lead conversation has no Business Context")
-        context = _approved_context(context_id, owner_id, is_admin)
+        if conversation.portfolio_context_id:
+            try:
+                context = _approved_context(conversation.portfolio_context_id, owner_id, is_admin)
+            except HTTPException:
+                pass  # The conversation stays usable after a source is withdrawn.
     else:
-        if not body.context_id:
-            raise HTTPException(status_code=422, detail="Choose an approved Business Context first")
-        context = _approved_context(body.context_id, owner_id, is_admin)
+        if body.context_id:
+            context = _approved_context(body.context_id, owner_id, is_admin)
         conversation = store.create_conversation(owner_id, body.language, "lead")
-        store.link_conversation_to_context(conversation.id, context.id, owner_id)
+    offerings = [
+        {"id": item.id, "name": item.name, "summary": item.short_summary[:700]}
+        for item in store.list(owner_id, is_admin, approved_only=True)
+    ]
+    for document in load_knowledge_documents():
+        profile = create_website_offering_profile(document)
+        if profile.offering_type:
+            offerings.append({"id": WEB_PREFIX + document.source_id,
+                              "name": profile.name or document.title,
+                              "organisation": document.organisation,
+                              "summary": document.content[:700]})
+    context_text = json.dumps({
+        "selected_offering": {"id": context.id, "name": context.name, "facts": context.text} if context else None,
+        "available_offerings": offerings,
+    }, ensure_ascii=False)
     current = store.lead_brief(conversation.id)
     try:
         turn = _main().get_assistant().lead_intake_turn(
             conversation.messages,
-            body.message + ("\nSelected scoring: " + (current.scoring if current else body.scoring)),
+            body.message,
             body.language,
             owner_id,
-            context.text,
+            context_text,
             current.model_dump_json() if current else "",
         )
     except RuntimeError as exc:
@@ -282,13 +298,37 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
     except Exception as exc:
         logger.error("Lead finder request failed:\n%s", traceback.format_exc())
         raise HTTPException(status_code=502, detail="The Lead finder could not be reached. Please try again.") from exc
-    brief = clean_brief(turn.brief.model_copy(update={"scoring": current.scoring if current else body.scoring}))
+    selected_id = turn.context_id or (context.id if context else None)
+    supported = turn.can_search
+    if selected_id:
+        if selected_id not in {item["id"] for item in offerings}:
+            context = None
+            supported = False
+            turn.message = {"nl": "Ik vind hiervoor geen passende beschikbare dienst. Welke dienst of welk product bedoel je?",
+                            "de": "Ich finde dafür kein verfügbares Angebot. Welchen Service oder welches Produkt meinst du?",
+                            "en": "I cannot find a matching available offering. Which service or product do you mean?"}[body.language]
+        else:
+            context = _approved_context(selected_id, owner_id, is_admin)
+            store.link_conversation_to_context(conversation.id, context.id, owner_id)
+    proposed = turn.brief
+    # Legacy API clients may still explicitly choose a mode; chat clients do not.
+    if body.scoring is not None:
+        proposed = proposed.model_copy(update={"scoring": body.scoring})
+    brief = clean_brief(proposed)
+    if brief.scoring == "levels" and (len(brief.scorecard) != len(proposed.scorecard)
+                                        or len(brief.extra_columns) != len(proposed.extra_columns)):
+        supported = False
+        turn.message = {"nl": "Deze scorekaart kan ik niet volledig uitvoeren. Ik kan maximaal vier criteria op land, plaats of drie extra gegevens beoordelen. Hoe wil je de beoordeling vereenvoudigen?",
+                        "de": "Diese Bewertung kann ich nicht vollständig ausführen. Möglich sind vier Kriterien zu Land, Ort oder drei zusätzlichen Angaben. Wie möchtest du sie vereinfachen?",
+                        "en": "I cannot fully apply this scorecard. I can assess up to four criteria using country, city or three extra facts. How would you like to simplify it?"}[body.language]
+    ready = bool(context) and supported and turn.ready and brief_complete(brief) and (
+        sum(1 for message in conversation.messages if message.role == "user") + 1 >= MIN_USER_TURNS)
     updated = store.add_conversation_turn(
         conversation_id=conversation.id,
         user_message=body.message,
         assistant_message=turn.message,
-        is_ready_to_save=False,
-        readiness_reason="Lead conversations are not saved as Business Contexts.",
+        is_ready_to_save=ready,
+        readiness_reason="Lead search brief confirmed." if ready else "Lead search brief needs clarification or confirmation.",
         owner_id=owner_id,
     )
     if updated is None:
@@ -298,12 +338,9 @@ def lead_chat(body: LeadChatRequest, request: Request) -> LeadChatResponse:
         conversation_id=conversation.id,
         message=updated.messages[-1],
         brief=brief,
-        # The model may say ready too early; SIP also wants a complete brief and a real
-        # conversation (the opening message plus at least two answers).
-        ready=turn.ready and brief_complete(brief)
-        and sum(1 for message in updated.messages if message.role == "user") >= MIN_USER_TURNS,
-        context_id=context.id,
-        context_name=context.name,
+        ready=ready,
+        context_id=context.id if context else None,
+        context_name=context.name if context else None,
     )
 
 
@@ -355,7 +392,12 @@ def create_lead_list(body: CreateLeadListRequest, request: Request) -> LeadListD
         raise HTTPException(status_code=503, detail="The Lead finder assistant is not available yet.")
     context = _approved_context(body.context_id, owner_id, is_admin)
     if body.conversation_id:
-        _owned_lead_conversation(body.conversation_id, owner_id)
+        conversation = _owned_lead_conversation(body.conversation_id, owner_id)
+        if not conversation.is_ready_to_save or conversation.portfolio_context_id != context.id:
+            raise HTTPException(status_code=422, detail="Confirm a supported search brief in the chat first")
+        agreed = store.lead_brief(conversation.id)
+        if agreed is None or clean_brief(body.brief) != agreed:
+            raise HTTPException(status_code=422, detail="The search brief has changed; confirm it in the chat first")
     running, recent = store.lead_lists_by(owner_id)
     if running:
         raise HTTPException(status_code=429, detail="Your previous lead search is still running. Wait until it has finished.")

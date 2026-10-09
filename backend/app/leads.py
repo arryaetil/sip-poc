@@ -71,6 +71,8 @@ class LeadBrief(BaseModel):
 class LeadIntakeTurn(BaseModel):
     message: str
     brief: LeadBrief
+    context_id: str | None = None
+    can_search: bool = True
     # True only once the user confirmed the scorecard and named a number of leads.
     ready: bool
 
@@ -191,7 +193,7 @@ def clean_brief(brief: LeadBrief) -> LeadBrief:
     )
 
 
-MIN_USER_TURNS = 3
+MIN_USER_TURNS = 2
 
 
 def brief_complete(brief: LeadBrief) -> bool:
